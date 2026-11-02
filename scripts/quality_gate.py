@@ -18,6 +18,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MIN_SPEECH_CHARS = 20
+# Expected-Chinese script check. A real Chinese talk dense with English
+# technical terms can fall under ZH_MIN_CJK_RATIO and fail closed. That is
+# intentional. Thresholds are not CLI flags; omit --expected-lang to skip
+# the script check. See SKILL.md and scripts/README.md.
 ZH_MIN_CJK = 8
 ZH_MIN_CJK_RATIO = 0.35
 JA_MAX_LATIN_RATIO = 0.75

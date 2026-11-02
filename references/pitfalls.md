@@ -2,11 +2,13 @@
 
 These patterns came from real video-processing failures. They are stated as rules so implementers do not rediscover them the hard way. No secrets, account cookies, or private table ids are included.
 
+Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below that name Bilibili are about expired media URLs and Chinese ASR. This repo does not ship a Bilibili, Douyin, or Xiaohongshu fetcher.
+
 ## 1. Title / tweet is not a watch
 
 **Mistake:** Deposit a final note from title, description, engagement stats, or surrounding tweet text while the video itself was never transcribed.
 
-**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status.
+**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status. The note also has to quote a contiguous stretch of the transcript (40 characters). A pasted path under a rewritten title is not a quote.
 
 ## 2. Short video ≠ exempt
 
@@ -30,7 +32,9 @@ These patterns came from real video-processing failures. They are stated as rule
 
 **Mistake:** Default English recognition on Chinese Bilibili audio → Latin hallucination, loops, multilingual garbage → analyzer “helpfully” writes a note about the ASR failure as if that were the video’s topic.
 
-**Fix:** Set expected language for the platform/content. Run a quality gate **before** analysis. Do not let the analyzer be the hallucination detector.
+**Fix:** Set expected language for the content. Run a quality gate **before** analysis. Do not let the analyzer be the hallucination detector.
+
+**False reject:** `--expected-lang zh` also refuses a real Chinese talk when English technical terms pull the CJK ratio under 0.35, even if there are more than 8 CJK characters. That fail-closed is intentional. Omit `--expected-lang` only when you accept losing the script check; loop, gibberish, and confidence checks still run. `ZH_MIN_CJK` and `ZH_MIN_CJK_RATIO` live in `scripts/quality_gate.py`. They are not command-line flags. Do not lower them to force a bad transcript through.
 
 ## 6. “Has Chinese characters” is not quality
 
@@ -48,7 +52,7 @@ These patterns came from real video-processing failures. They are stated as rule
 
 **Mistake:** Print SESSDATA / cookies / API keys into logs, receipts, docs, or commits.
 
-**Fix:** Env var names only. Mention validity (“expired”) without values. Prefer public API paths first; cookies are optional accelerators.
+**Fix:** Env var names only. Mention validity (“expired”) without values. Prefer public API paths first; cookies are optional accelerators. The bundled YouTube and X hosts do not read a Bilibili session cookie.
 
 ## 9. Host clone instead of capability extract
 

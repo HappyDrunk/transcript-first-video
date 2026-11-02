@@ -7,6 +7,7 @@ Fixture mismatches exit 1. A live fetch that fails is recorded, not fatal.
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PY = sys.executable
 VERIFY = [PY, str(ROOT / "scripts" / "verify_note.py")]
 HOST = [PY, str(ROOT / "scripts" / "youtube_host.py")]
+XHOST = [PY, str(ROOT / "scripts" / "x_host.py")]
 LIVE_URL = "https://www.youtube.com/watch?v=KwhgfwOSToQ"
 LIVE_ID = "KwhgfwOSToQ"
 
@@ -93,6 +95,15 @@ CASES = [
         "expected_lang": "en",
         "expect_allowed": False,
         "summary": "Usable transcript, note never names the file.",
+    },
+    {
+        "id": "path-only",
+        "eval_id": 1,
+        "transcript": "evals/fixtures/usable_en_transcript.txt",
+        "note": "evals/fixtures/path_only_note.md",
+        "expected_lang": "en",
+        "expect_allowed": False,
+        "summary": "Usable transcript. The note pastes the path and a title, and does not quote the transcript.",
     },
 ]
 
@@ -172,6 +183,36 @@ def host_settle(video_id: str, transcript: str, expected_lang: str, out: Path) -
     }
 
 
+def x_host_settle(status_id: str, transcript: str, expected_lang: str, out: Path) -> dict:
+    cmd = [
+        *XHOST,
+        "--settle-transcript",
+        transcript,
+        "--status-id",
+        status_id,
+        "--expected-lang",
+        expected_lang,
+        "--out",
+        str(out),
+        "--json",
+    ]
+    completed = run(cmd)
+    payload = parse_json(completed.stdout)
+    job = out / f"x_{status_id}"
+    return {
+        "id": "x-usable",
+        "video_id": status_id,
+        "exit_code": completed.returncode,
+        "status": payload.get("status"),
+        "finished": payload.get("finished"),
+        "reason": payload.get("reason"),
+        "next_step": payload.get("next_step"),
+        "note_exists": (job / "note.md").is_file(),
+        "transcript_exists": (job / "transcript.txt").is_file(),
+        "verifier": payload.get("verifier"),
+    }
+
+
 def host_cases() -> list[dict]:
     results = []
     with tempfile.TemporaryDirectory(prefix="tfv-evidence-") as tmp:
@@ -189,6 +230,14 @@ def host_cases() -> list[dict]:
         loop = host_settle("zh-loop", "evals/fixtures/en_loop_transcript.txt", "zh", out)
         loop["expect"] = "expected Chinese plus English loop writes status only"
         results.append(loop)
+        x_usable = x_host_settle(
+            "123456789012345678",
+            "evals/fixtures/usable_en_transcript.txt",
+            "en",
+            out,
+        )
+        x_usable["expect"] = "x_host settle uses the same gate and writes a quoting note"
+        results.append(x_usable)
     return results
 
 
@@ -245,7 +294,7 @@ def markdown(report: dict) -> str:
         "",
         f"Generated {report['generated_at']} by `python3 scripts/run_evidence.py`.",
         "",
-        "Without a gate, a fluent note looks depositable (40 or more letters). With the gate, a note is allowed only when it cites a transcript file that passes the quality gate.",
+        "Without a gate, a fluent note looks depositable (40 or more letters). With the gate, a note is allowed only when it cites a transcript file that passes the quality gate and quotes a 40-character window of that transcript. A path alone is refused.",
         "",
         "## Verifier",
         "",
@@ -259,14 +308,18 @@ def markdown(report: dict) -> str:
         lines.append(f"| `{case['id']}` | {eval_id} | {naive} | {gate} | {case['exit_code']} |")
     lines.extend(["", "Reasons:", ""])
     for case in report["verifier"]:
-        why = "; ".join(case["reasons"]) if case["reasons"] else "cites a transcript that passed the gate"
+        why = (
+            "; ".join(case["reasons"])
+            if case["reasons"]
+            else "cites a transcript that passed the gate and quotes a window"
+        )
         lines.append(f"- `{case['id']}`: {why}")
     lines.extend(
         [
             "",
             "## Host deposit behavior",
             "",
-            "These rows call `youtube_host.py --settle-transcript` (no network). That path still runs the gate and does not pretend a fetch happened.",
+            "YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row calls `x_host.py --settle-transcript`. No network. Both still run the gate and do not pretend a fetch happened.",
             "",
             "| video id | status | note written | transcript written | exit | expect |",
             "| :--- | :--- | :--- | :--- | :--- | :--- |",
@@ -279,6 +332,15 @@ def markdown(report: dict) -> str:
         )
     live = report["live"]
     lines.extend(["", "## Live YouTube", ""])
+    if live.get("skipped"):
+        lines.append("Skipped (`--skip-live`). Offline fixture checks do not use the network.")
+        lines.append("")
+        lines.append(
+            "An X/Twitter live fetch is not part of this file. "
+            "`scripts/x_host.py` is covered by the offline settle row above."
+        )
+        lines.append("")
+        return "\n".join(lines)
     lines.append(f"URL: `{live['url']}`. Substitute: {live['substitute'] or 'none; this is eval id 1'}.")
     lines.append("")
     lines.append(f"Command: `{live['command']}`.")
@@ -294,12 +356,14 @@ def markdown(report: dict) -> str:
         if live.get("acquisition") == "caption-mirror":
             lines.append(
                 "yt-dlp did not return captions. The text came from the public mirror fallback. "
-                "The note cites the transcript path. Title and description are not stored."
+                "The note cites the transcript path and quotes it. Title and description are not stored."
             )
         elif live.get("acquisition") == "yt-dlp":
-            lines.append("Captions came from yt-dlp. The note cites the transcript path.")
+            lines.append("Captions came from yt-dlp. The note cites the transcript path and quotes it.")
         else:
-            lines.append(f"Acquisition was `{live.get('acquisition')}`. The note cites the transcript path.")
+            lines.append(
+                f"Acquisition was `{live.get('acquisition')}`. The note cites the transcript path and quotes it."
+            )
         lines.append("")
         if live.get("excerpt"):
             lines.append("Excerpt:")
@@ -309,6 +373,10 @@ def markdown(report: dict) -> str:
         lines.append(f"Result: {live.get('status')} (exit {live.get('exit_code')}).")
         lines.append("")
         lines.append(live.get("reason") or "no reason recorded")
+    lines.append("")
+    lines.append(
+        "X/Twitter live fetch is not part of this run. The `x-usable` settle row covers that host offline."
+    )
     lines.extend(["", "Attempts:", ""])
     for attempt in live.get("attempts") or []:
         flag = "ok" if attempt.get("ok") else "failed"
@@ -320,21 +388,45 @@ def markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
+def host_settle_ok(cases: list[dict]) -> bool:
+    by_id = {case.get("id") or case["video_id"]: case for case in cases}
+    checks = {
+        "usable-en": lambda case: case["finished"] is True and case["note_exists"] is True,
+        "stale-deposit-removed": lambda case: case["note_exists"] is False and case["transcript_exists"] is False,
+        "empty-asr": lambda case: case["finished"] is False and case["note_exists"] is False,
+        "zh-loop": lambda case: case["status"] == "quality_gate_failed" and case["note_exists"] is False,
+        "x-usable": lambda case: case["finished"] is True and case["note_exists"] is True and case["exit_code"] == 0,
+    }
+    return all(key in by_id and check(by_id[key]) for key, check in checks.items())
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Regenerate gate evidence. Live YouTube is optional.")
+    parser.add_argument(
+        "--skip-live",
+        action="store_true",
+        help="Do not fetch YouTube. Fixture and settle checks still run and still fail the process on mismatch.",
+    )
+    args = parser.parse_args(argv)
     verifier = [verifier_case(case) for case in CASES]
     host = host_cases()
-    live = live_case()
+    if args.skip_live:
+        live = {
+            "skipped": True,
+            "url": LIVE_URL,
+            "video_id": LIVE_ID,
+            "substitute": None,
+            "status": "skipped",
+            "finished": False,
+            "reason": "live fetch skipped (--skip-live)",
+            "command": "python3 scripts/run_evidence.py --skip-live",
+            "exit_code": None,
+            "attempts": [],
+        }
+    else:
+        live = live_case()
     mismatches = [case["id"] for case in verifier if not case["matched"]]
-    host_ok = (
-        host[0]["finished"] is True
-        and host[0]["note_exists"] is True
-        and host[1]["note_exists"] is False
-        and host[1]["transcript_exists"] is False
-        and host[2]["finished"] is False
-        and host[2]["note_exists"] is False
-        and host[3]["status"] == "quality_gate_failed"
-        and host[3]["note_exists"] is False
-    )
+    host_ok = host_settle_ok(host)
     report = {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
