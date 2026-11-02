@@ -65,7 +65,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` is a common place. Yours might be `skills/transcript-first-video/` beside the project that actually downloads audio. Either works, as long as that agent reads skills from there.
 
-When the clone finishes, nothing plays. You have the rules. Downloading, speech-to-text, and the queue stay in your own project. This repo leaves those programs out on purpose.
+When the clone finishes, nothing plays by itself. You have the rules. `scripts/` also has a small YouTube fetcher and a gate you can run before a note is allowed into a vault. The queue, other platforms, and the shelf where notes live stay in your project.
 
 ## How to use
 
@@ -112,7 +112,7 @@ Cookies and API keys stay out. A doc may name a setting, such as `BILIBILI_SESSD
 | [SKILL.md](SKILL.md) | The full rules: where words may come from, when to stop, what a note has to cite, how a cookie or a key stays a name. If this page and that file disagree, follow the file. |
 | [references/pitfalls.md](references/pitfalls.md) | Ten real mistakes, private details removed. Open it when a note looks done and you suspect it is not, or when a Chinese talk comes back as English junk. The stories include a queue nobody ran, a download link that expired, and a "mostly Chinese characters" transcript that was still garbage. |
 | [evals/evals.json](evals/evals.json) | Three practice cases. One YouTube link has to be read from captions or speech-to-text. One empty short clip has to stay unfinished. One Chinese talk heard as English loops must not ship the tidy failure essay as the video. They catch a slide back to "I read the title." |
-| [scripts/](scripts/) | Empty on purpose. The commands that queue a job and run one at a time live in your project. See [scripts/README.md](scripts/README.md). If you later pack those commands into this repo, they belong in this folder. |
+| [scripts/](scripts/) | A YouTube caption fetcher and a gate that refuses a note unless it names a real transcript. Queues and other platforms stay in your project. See [scripts/README.md](scripts/README.md). |
 
 ## License
 
@@ -181,7 +181,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` 是常见的一个位置。你的也可能是项目旁边的 `skills/transcript-first-video/`，跟真正下载音频的那个程序放一起。只要这个 Agent 会从那儿读 skill，就行。
 
-克隆完，什么也不会播。你拿到的是规矩。下载、转写、排队，都在你自己的项目里。这个仓库故意不带那些程序。
+克隆完，什么也不会自己播。你拿到的是规矩。`scripts/` 里还有一个很小的 YouTube 抓取，和一道入库前的门槛。队列、别的平台、笔记放哪，仍在你自己的项目里。
 
 ## 怎么用
 
@@ -228,7 +228,7 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `BILIB
 | [SKILL.md](SKILL.md) | 完整的规矩：字可以从哪来，什么时候该停，笔记必须点名什么，cookie 和密钥怎么只留名字。这页和那个文件要是说得不一样，以那个文件为准。 |
 | [references/pitfalls.md](references/pitfalls.md) | 十条真实翻过的车，私人信息已经去掉。笔记看着完成了、你又觉得不对，或者中文口播被听成英语胡话，先打开它。里面有没人去跑的队列、过期的下载地址，还有一份「大部分是汉字」却仍然是垃圾的文稿。 |
 | [evals/evals.json](evals/evals.json) | 三道练习。一条 YouTube 得从字幕或语音转文字来读。一条空的短视频得保持未完成。一条中文被听成英语打转的，不能把那篇整齐的失败作文当成视频发出去。它们用来抓住「又退回去读标题」。 |
-| [scripts/](scripts/) | 故意空着。把活放进队列、一次跑一条的命令在你自己的项目里。见 [scripts/README.md](scripts/README.md)。以后你要把这些命令收进这个仓库，就放在这个文件夹。 |
+| [scripts/](scripts/) | 一个 YouTube 字幕抓取，和一道没有真实文稿就不许写笔记的门槛。队列和别的平台仍在你的项目里。见 [scripts/README.md](scripts/README.md)。 |
 
 ## 许可
 

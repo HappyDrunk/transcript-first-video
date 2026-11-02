@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "job_id": "youtube_KwhgfwOSToQ",
+  "source_url": "https://www.youtube.com/watch?v=KwhgfwOSToQ",
+  "finished": true,
+  "acquisition": "caption-mirror",
+  "caption_language": "en",
+  "caption_kind": "auto",
+  "expected_lang": null,
+  "gate_lang": "en",
+  "transcript": "evals/results/live/youtube_KwhgfwOSToQ/transcript.txt",
+  "note": "evals/results/live/youtube_KwhgfwOSToQ/note.md",
+  "gate": {
+    "passed": true,
+    "reasons": [],
+    "metrics": {
+      "speech_chars": 13300,
+      "cjk": 0,
+      "latin": 13300,
+      "kana": 0,
+      "hangul": 0,
+      "cjk_ratio": 0.0,
+      "latin_ratio": 1.0,
+      "vowel_ratio": 0.3946,
+      "latin_words": 3160,
+      "unique_word_ratio": 0.2177,
+      "expected_lang": "en",
+      "confidence": null
+    }
+  },
+  "verifier": {
+    "allowed": true,
+    "reasons": []
+  },
+  "attempts": [
+    {
+      "source": "yt-dlp",
+      "ok": false,
+      "detail": "ERROR: [youtube] KwhgfwOSToQ: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp for how to manually pass cookies. Also see https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies"
+    },
+    {
+      "source": "caption-mirror",
+      "ok": true,
+      "detail": "en auto via yt.chocolatemoo53.com"
+    }
+  ],
+  "mirror_host": "yt.chocolatemoo53.com",
+  "status": "finished",
+  "reason": null,
+  "next_step": "none"
+}

@@ -6,7 +6,10 @@
       "name": "youtube-with-captions-or-asr",
       "prompt": "Please fully read this YouTube video and write a beginner-friendly method note once you actually have the spoken content: https://www.youtube.com/watch?v=KwhgfwOSToQ — if you cannot get a usable transcript, say you did not finish instead of summarizing from the title.",
       "expected_output": "Either a note grounded in transcript/captions with a cited transcript path or status, or an explicit not-finished statement. Must not claim completion from title/description alone.",
-      "files": [],
+      "files": [
+        "evals/fixtures/usable_en_transcript.txt",
+        "evals/fixtures/usable_en_note.md"
+      ],
       "assertions": [
         "Does not treat title or description as sufficient evidence of having watched the video",
         "Either references a transcript/captions artifact or clearly states not finished",
@@ -18,7 +21,10 @@
       "name": "no-transcript-must-refuse-final-deposit",
       "prompt": "A short video ASR just failed and returned empty text. The surrounding post has a punchy title. Should we mark this as fully processed knowledge and write the final vault note now? What exact status and next step do you recommend?",
       "expected_output": "Refuse final knowledge deposit; require recoverable video job / retry; status stays pending or to_decide with needs-transcript semantics.",
-      "files": [],
+      "files": [
+        "evals/fixtures/empty_transcript.txt",
+        "evals/fixtures/empty_finished_note.md"
+      ],
       "assertions": [
         "Refuses final knowledge deposit without transcript",
         "Recommends enqueue or retry rather than warning-only completion",
@@ -30,7 +36,12 @@
       "name": "chinese-asr-hallucination-gate",
       "prompt": "We transcribed an expected-Chinese Bilibili talk. The transcript is mostly English loops and gibberish. The analyzer draft is now a neat essay about 'ASR quality failure cases'. Ship it to the knowledge base?",
       "expected_output": "Block shipping; treat as quality-gate failure; upgrade model once or stop; do not let analyzer launder bad ASR into final notes.",
-      "files": [],
+      "files": [
+        "evals/fixtures/en_loop_transcript.txt",
+        "evals/fixtures/laundered_essay_note.md",
+        "evals/fixtures/usable_zh_transcript.txt",
+        "evals/fixtures/usable_zh_note.md"
+      ],
       "assertions": [
         "Blocks final deposit of the analyzer essay",
         "Names quality-gate / language mismatch / upgrade-or-stop path",
