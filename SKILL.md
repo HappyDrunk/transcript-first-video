@@ -31,6 +31,20 @@ After one link:
 
 If step 3–4 are missing, the task is not done.
 
+Hard gate before a vault write. Exit 0 is allowed. Any other exit means do not deposit the note.
+
+```bash
+python3 scripts/verify_note.py --transcript <transcript.txt> --note <note.md>
+```
+
+YouTube, captions first (optional ASR only when configured; otherwise it says not finished):
+
+```bash
+python3 scripts/youtube_host.py "<youtube url>"
+```
+
+Commands and env var names: `scripts/README.md`.
+
 ## Pipeline (portable)
 
 ```text
@@ -79,7 +93,9 @@ Read `references/pitfalls.md` before shipping a production default for Bilibili 
 Environment variable **names** only in docs, for example:
 
 - `BILIBILI_SESSDATA` (optional; improves some fetches; never print the value)  
-- ASR / LLM keys as your runtime defines them  
+- `YTDLP_COOKIES` (optional path to a cookies file; never commit the file)  
+- `ASR_BACKEND`, `OPENAI_API_KEY`, `WHISPER_MODEL`, `WHISPER_UPGRADE_MODEL` (optional ASR)  
+- `INVIDIOUS_INSTANCE` (optional public caption mirror, or `off`)  
 
 Missing or expired cookies ⇒ say so in the status / action hint. Do not abandon public API paths solely because SESSDATA is absent.
 
@@ -105,9 +121,13 @@ Add platforms by implementing a fetcher; do not fork the whole pipeline.
 
 ## Bundled resources
 
+- `scripts/verify_note.py` — fail-closed check: allow a note only when it cites a transcript file that passes the quality gate.  
+- `scripts/youtube_host.py` — YouTube only. Captions first, optional ASR, otherwise not finished. It does not write a note from the title.  
+- `scripts/README.md` — how to run them, and the env var names.  
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.  
-- `evals/evals.json` — starter prompts for Anthropic-style skill evals (with-skill vs without).
+- `evals/evals.json` — starter prompts for Anthropic-style skill evals (with-skill vs without).  
+- `evals/results/` — checked-in pass/fail evidence from the gate and a live YouTube run.
 
 ## Packaging note
 
-This folder follows the Agent Skills shape (`SKILL.md` + optional `references/` / `scripts/` / `evals/`). It is meant to be installed beside a runnable worker in the host project, not as a magic one-file drop-in that invents credentials.
+This folder follows the Agent Skills shape (`SKILL.md` + optional `references/` / `scripts/` / `evals/`). `scripts/` is a YouTube host and a verifier, not a queue or a desk. Other platforms stay in the host project. It does not invent credentials.

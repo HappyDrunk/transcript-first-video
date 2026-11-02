@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-02T16:27:00Z",
+  "verifier": [
+    {
+      "id": "usable-en",
+      "eval_id": 1,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/usable_en_note.md",
+      "expected_lang": "en",
+      "expect_allowed": true,
+      "summary": "Usable English transcript, note cites the path.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
+      "exit_code": 0,
+      "allowed": true,
+      "reasons": [],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "empty-asr",
+      "eval_id": 2,
+      "transcript": "evals/fixtures/empty_transcript.txt",
+      "note": "evals/fixtures/empty_finished_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Empty / music-only transcript with a fluent finished note.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/empty_transcript.txt --note evals/fixtures/empty_finished_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "quality gate failed: empty or unusable transcript (no speech text after cleanup)"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "zh-en-loop-launder",
+      "eval_id": 3,
+      "transcript": "evals/fixtures/en_loop_transcript.txt",
+      "note": "evals/fixtures/laundered_essay_note.md",
+      "expected_lang": "zh",
+      "expect_allowed": false,
+      "summary": "Expected Chinese, English loop transcript, laundered ASR essay cites the path.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/en_loop_transcript.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "quality gate failed: looping repeats: the same segment appears 6 times (43% of segments)",
+        "quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)",
+        "analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "usable-zh",
+      "eval_id": 3,
+      "transcript": "evals/fixtures/usable_zh_transcript.txt",
+      "note": "evals/fixtures/usable_zh_note.md",
+      "expected_lang": "zh",
+      "expect_allowed": true,
+      "summary": "Usable Chinese transcript passes the same language gate.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_zh_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
+      "exit_code": 0,
+      "allowed": true,
+      "reasons": [],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "clean-en-expected-zh",
+      "eval_id": 3,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/usable_en_note.md",
+      "expected_lang": "zh",
+      "expect_allowed": false,
+      "summary": "Fluent English is still a ratio fail when Chinese is expected.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang zh --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "gibberish",
+      "eval_id": null,
+      "transcript": "evals/fixtures/gibberish_transcript.txt",
+      "note": "evals/fixtures/gibberish_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Consonant gibberish with a fluent deposit note.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/gibberish_transcript.txt --note evals/fixtures/gibberish_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "missing-path",
+      "eval_id": null,
+      "transcript": "evals/fixtures/does_not_exist.txt",
+      "note": "evals/fixtures/laundered_essay_note.md",
+      "expected_lang": "zh",
+      "expect_allowed": false,
+      "summary": "Essay cites a transcript path that is not on disk.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/does_not_exist.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "missing transcript path: evals/fixtures/does_not_exist.txt does not exist",
+        "note does not cite transcript path evals/fixtures/does_not_exist.txt",
+        "analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "missing-citation",
+      "eval_id": 1,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/uncited_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Usable transcript, note never names the file.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/uncited_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "note does not cite transcript path evals/fixtures/usable_en_transcript.txt"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    }
+  ],
+  "host_settle": [
+    {
+      "video_id": "usable-en",
+      "exit_code": 0,
+      "status": "finished",
+      "finished": true,
+      "reason": null,
+      "next_step": "none",
+      "note_exists": true,
+      "transcript_exists": true,
+      "verifier": {
+        "allowed": true,
+        "reasons": []
+      },
+      "expect": "finished deposit, verifier allows"
+    },
+    {
+      "video_id": "usable-en",
+      "exit_code": 2,
+      "status": "not_finished",
+      "finished": false,
+      "reason": "empty or unusable transcript (no speech text after cleanup)",
+      "next_step": "stop",
+      "note_exists": false,
+      "transcript_exists": false,
+      "verifier": null,
+      "id": "stale-deposit-removed",
+      "expect": "rerun with empty text deletes the previous note and transcript"
+    },
+    {
+      "video_id": "empty-asr",
+      "exit_code": 2,
+      "status": "not_finished",
+      "finished": false,
+      "reason": "empty or unusable transcript (no speech text after cleanup)",
+      "next_step": "stop",
+      "note_exists": false,
+      "transcript_exists": false,
+      "verifier": null,
+      "expect": "empty transcript writes status only"
+    },
+    {
+      "video_id": "zh-loop",
+      "exit_code": 2,
+      "status": "quality_gate_failed",
+      "finished": false,
+      "reason": "looping repeats: the same segment appears 6 times (43% of segments); language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)",
+      "next_step": "stop",
+      "note_exists": false,
+      "transcript_exists": false,
+      "verifier": null,
+      "expect": "expected Chinese plus English loop writes status only"
+    }
+  ],
+  "live": {
+    "url": "https://www.youtube.com/watch?v=KwhgfwOSToQ",
+    "video_id": "KwhgfwOSToQ",
+    "substitute": null,
+    "command": "python3 scripts/youtube_host.py https://www.youtube.com/watch?v=KwhgfwOSToQ --out evals/results/live --json",
+    "exit_code": 0,
+    "status": "finished",
+    "finished": true,
+    "reason": null,
+    "next_step": "none",
+    "acquisition": "caption-mirror",
+    "caption_language": "en",
+    "caption_kind": "auto",
+    "mirror_host": "yt.chocolatemoo53.com",
+    "attempts": [
+      {
+        "source": "yt-dlp",
+        "ok": false,
+        "detail": "ERROR: [youtube] KwhgfwOSToQ: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp for how to manually pass cookies. Also see https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies"
+      },
+      {
+        "source": "caption-mirror",
+        "ok": true,
+        "detail": "en auto via yt.chocolatemoo53.com"
+      }
+    ],
+    "gate": {
+      "speech_chars": 13300,
+      "cjk": 0,
+      "latin": 13300,
+      "kana": 0,
+      "hangul": 0,
+      "cjk_ratio": 0.0,
+      "latin_ratio": 1.0,
+      "vowel_ratio": 0.3946,
+      "latin_words": 3160,
+      "unique_word_ratio": 0.2177,
+      "expected_lang": "en",
+      "confidence": null
+    },
+    "gate_passed": true,
+    "verifier": {
+      "allowed": true,
+      "reasons": []
+    },
+    "transcript": "evals/results/live/youtube_KwhgfwOSToQ/transcript.txt",
+    "note": "evals/results/live/youtube_KwhgfwOSToQ/note.md",
+    "transcript_chars": 17015,
+    "excerpt": "All right. Thank you so much, Basil, for the introduction. Hello there. Those of you in the audience, thank you so much for joining us today. My name is Kevin. Uh, technically we don't really have titles. So I am member of technical staff a"
+  },
+  "fixture_mismatches": [],
+  "host_settle_ok": true
+}
