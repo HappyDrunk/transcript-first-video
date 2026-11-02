@@ -4,9 +4,15 @@
 
 # English
 
-> AI has a bad habit with videos: it reads the title and acts like it watched. This skill is here to cure that.
+> AI has a bad habit with videos: it only reads the title. This skill is here to cure that.
 
-You hand it a YouTube, Bilibili, X, or short-video link. It should get the words that were actually spoken, then write notes from those words. The title, the blurb, the tweet, and the cover don’t count as watching.
+You hand it a YouTube, Bilibili, X, or short-video link. It finds the words that were actually spoken, then writes the notes from those words. A title, a blurb, a tweet, or a cover is not a watch.
+
+## What you get
+
+You paste a link. You get notes written from what was said, and the note names the transcript file.
+
+No captions, empty speech-to-text, or text that does not sound like a person: you get the next step. Queue it, try once with a stronger speech model, or stop.
 
 ## Quick install
 
@@ -18,54 +24,58 @@ Install this skill: https://github.com/HappyDrunk/transcript-first-video
 
 It reads the repo, finds `transcript-first-video`, and installs it.
 
-If your agent can’t install from a link, clone it into your skills folder and keep the folder name.
+If your agent can’t install from a link, clone it and keep the folder name.
 
 ```bash
 git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
 ```
 
-The program that downloads the audio and turns speech into text lives in your own project. This repo is the rules.
+## How to use
 
-Once it’s in, talk to it like this:
+Nothing to memorize. After it is installed, say:
 
 ```text
 Use transcript-first-video. Actually finish this video, then write the notes: <url>
 ```
 
-## Three awkward misses
+Or say it straighter:
 
-You’ve probably watched it do these.
+```text
+No transcript, say you didn’t finish.
+This one is twenty seconds and the speech-to-text came back empty. Don’t archive it. Queue it.
+The talk is in Chinese and the text came back as English nonsense. Stop. Don’t write the note.
+```
 
-**The title did the watching.** A link comes in. It skims the title and the blurb, writes something confident, and stops. Not one spoken sentence landed on the page. The note looks done. Nobody watched.
+## What it holds to
 
-**The short clip gets a pass.** Twenty seconds, and speech-to-text comes back empty. It adds “not transcribed” and files the item anyway. Short still means somebody talked. Empty means it isn’t done.
+- **Captions, then speech, then notes.** Official subtitles first, then a transcript already saved for that same video, then speech turned into text. The note comes from that text.
+- **No fake finish.** No usable transcript, no final note. The status stays `needs-transcript` or `video-pending`, and it names the next step. If you ask for a title-only pass, the note says the video was not watched.
+- **A short video still counts.** Twenty seconds is still somebody talking. Empty text stays unfinished.
+- **Bad speech-to-text stops.** Chinese heard as looping English junk is not a note. If the words don’t sound like a person, it stops, retries once with a stronger model, or says what failed. A tidy essay about the failure stays out of the knowledge base.
 
-**A bad transcript becomes a fake note.** The talk is in Chinese. The recognizer is set to English and loops the same nonsense. Then it writes a neat little essay about “the transcription failed,” and saves that essay as the talk. Before any note, look at the words: do they sound like a person? If they don’t, stop.
+## Who does the work
 
-## What “finished” means
+The rules live in this repo. The program that downloads the video and turns speech into text lives in your project. Open this folder and nothing plays.
 
-Finished means you have the words. Official subtitles, a transcript already saved for that same video, or speech turned into text that sounds like speech. The note is written from that text, and it names the file.
-
-No words, say you didn’t finish. Leave the final note unwritten. Keep a status such as `needs-transcript` or `video-pending`, or say the text didn’t sound like a person, and name the next step: queue it, try once with a stronger speech model, or stop. A note from the title alone waits until you ask for that shortcut, and the note says it didn’t watch.
-
-Look for words in this order: official subtitles, then a transcript already saved for that video, then speech-to-text, then an honest “I didn’t finish.” Run one speech job at a time. Long work can sit in the background. The chat stays yours.
+Keep passwords out. A doc may name a setting, such as `BILIBILI_SESSDATA`, and never the value.
 
 ## What’s in the repo
 
+```text
+transcript-first-video/
+├── SKILL.md
+├── references/pitfalls.md
+├── evals/evals.json
+├── scripts/
+└── LICENSE
+```
+
 | Path | What it’s for |
 | :--- | :--- |
-| [SKILL.md](SKILL.md) | The rules: where the words come from, when to stop, how secrets stay out |
+| [SKILL.md](SKILL.md) | The rules: where the words come from, and when to stop |
 | [references/pitfalls.md](references/pitfalls.md) | Real mistakes, private details removed. Open it when a note looks done but isn’t, or Chinese comes out as English junk |
 | [evals/evals.json](evals/evals.json) | Three practice cases. They catch a slide back to “I read the title” |
-| [scripts/](scripts/) | Empty on purpose. The commands that queue and run jobs live in your project. See [scripts/README.md](scripts/README.md) |
-
-## What this is not
-
-Open it and nothing plays. The agent reads the rules. Your project still downloads the audio and turns speech into text.
-
-Your inbox layout, note folders, timers, and another machine’s `.env` stay where they are.
-
-Passwords stay out. A doc may name a setting, such as `BILIBILI_SESSDATA`, and never the value. Keep cookies and API keys out of the repo, the logs, and the notes.
+| [scripts/](scripts/) | Empty on purpose. Queue and run commands live in your project. See [scripts/README.md](scripts/README.md) |
 
 ## License
 
@@ -73,9 +83,15 @@ MIT. See [LICENSE](LICENSE). Copyright (c) 2026 HappyDrunk.
 
 # 中文
 
-> AI「看视频」有个通病——其实只读了标题。这份 skill 想治的就是这件事。
+> AI「看视频」有个通病：其实只读了标题。这份 skill 想治的就是这件事。
 
-你丢给它一个 YouTube、B 站、X，或者一条短视频。它该做的是：先把嘴里说的话落成文字，再按这些话写笔记。标题、简介、推文、封面，不能拿来充「看过」。
+你丢给它一条 YouTube、B 站、X，或者短视频。它先把嘴里说的话找出来，再按这些话写笔记。标题、简介、推文、封面，都不算看过。
+
+## 装上之后你得到什么
+
+你丢进去一条链接。回来的是按嘴里说的话写成的笔记，笔记里写明文稿文件在哪。
+
+没有字幕、转写是空的、或者转出来的字不像人话，你拿到的是下一步：排队、换一个更强的语音模型再试一次，或者停。
 
 ## 快速安装
 
@@ -93,48 +109,52 @@ Agent 不能从链接直接装的话，克隆到本机的 Skills 目录，文件
 git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
 ```
 
-下载音频、把声音转成文字的程序在你自己的项目里。这个仓库只放规矩。
+## 怎么用
 
-装好之后这样用：
+不用背提示词。装好直接说：
 
 ```text
-用 transcript-first-video，把这个链接真正看完再写笔记：<url>
+用 transcript-first-video，把这个视频真正看完再写笔记：<url>
 ```
 
-## 三件尴尬事
+也可以更明确一点：
 
-你大概碰上过这三回。
+```text
+没拿到文稿就说没看完。
+这条只有二十秒，转写是空的。别归档，去排队。
+口播是中文，转出来全是英语胡话。停，别写笔记。
+```
 
-**拿标题装看完。** 链接一到，它扫一眼标题和简介，写得头头是道，收工。嘴里说的话，一个字没落地。笔记像写完了，人没看。
+## 它认的四条
 
-**短视频被放过。** 二十来秒，转写回来是空的。它补一句「没转写」，照样归档。短，也是有人在说话。空的，就还没做完。
+- **字幕，然后是人话，然后才是笔记。** 先官方字幕，再这条视频已经存好的文稿，再把声音转成文字。笔记从这段文字来。
+- **没看完就别装看完。** 没有能用的文稿，最终笔记先不写。状态留着，比如 `needs-transcript`、`video-pending`，并写上下一步。你要是开口说就按标题写一版，笔记里得写明：没看视频。
+- **短视频也算。** 二十秒也是有人在说话。转写空了，这事就还没完。
+- **烂转写就停。** 中文被听成来回转的英语胡话，这段字就不算笔记。不像人说的话，就停。换一个更强的模型再试一次，或者停下来说明白。那篇讲「转写失败了」的干净小作文，别存进知识库。
 
-**烂转写写成假笔记。** 口播是中文，识别器按英语去听，同一段胡话来回转。它接着写一篇干干净净的小作文，讲「转写失败了」，把这篇作文当成视频内容存下来。动笔之前先看一眼：这段字像不像人说的话。不像，就停。
+## 谁来干活
 
-## 怎样算看完了
+规矩在这个仓库里。下载视频、把声音转成文字的程序，在你自己的项目里。点开这个文件夹，什么也不会播。
 
-看完，就是手里有文稿。官方字幕、这条视频早就存好的文稿，或者一段听着像人话的转写，都算。笔记按这段文字来写，并且写明文件在哪。
-
-没有文稿，就直说没看完。最终笔记先别写。状态留着，比如 `needs-transcript`、`video-pending`，或者说这段字不像人话，再写下一步：排队、换一个更强的语音模型再试一次，或者停。只靠标题写，得你自己点头要这条凑合的路，而且笔记里写明「没看视频」。
-
-找字按这个顺序：先官方字幕，再这条视频已有的文稿，再语音转写，最后老实说没看完。语音一次做一条。费时间的活放后台，聊天留给你。
+密码别往这儿放。文档最多写出一个名字，比如 `BILIBILI_SESSDATA`，不会写出值。
 
 ## 仓库里有什么
 
+```text
+transcript-first-video/
+├── SKILL.md
+├── references/pitfalls.md
+├── evals/evals.json
+├── scripts/
+└── LICENSE
+```
+
 | 位置 | 干什么的 |
 | :--- | :--- |
-| [SKILL.md](SKILL.md) | 规矩：字从哪来，什么时候该停，密码怎么不写进来 |
+| [SKILL.md](SKILL.md) | 规矩：字从哪来，什么时候该停 |
 | [references/pitfalls.md](references/pitfalls.md) | 真实翻过的车，私人信息已经去掉。笔记看着完成了其实没有，或者中文被听成英语胡话，先看它 |
-| [evals/evals.json](evals/evals.json) | 三道练习。专门抓「又退回去读标题」 |
+| [evals/evals.json](evals/evals.json) | 三道练习，专门抓「又退回去读标题」 |
 | [scripts/](scripts/) | 故意空着。排队、跑任务的命令在你自己的项目里。见 [scripts/README.md](scripts/README.md) |
-
-## 它不是什么
-
-点开它，什么也不会播。Agent 读这些规矩。下载和转写，还是你的项目干。
-
-收件箱长什么样、笔记放哪、定时任务、另一台机器上的 `.env`，都留在原地。
-
-密码不放这儿。文档最多写出一个名字，比如 `BILIBILI_SESSDATA`，不会写出值。cookie 和 API key 别进仓库、日志、笔记。
 
 ## 许可
 
