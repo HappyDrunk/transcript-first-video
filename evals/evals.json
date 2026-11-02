@@ -5,14 +5,16 @@
       "id": 1,
       "name": "youtube-with-captions-or-asr",
       "prompt": "Please fully read this YouTube video and write a beginner-friendly method note once you actually have the spoken content: https://www.youtube.com/watch?v=KwhgfwOSToQ — if you cannot get a usable transcript, say you did not finish instead of summarizing from the title.",
-      "expected_output": "Either a note grounded in transcript/captions with a cited transcript path or status, or an explicit not-finished statement. Must not claim completion from title/description alone.",
+      "expected_output": "Either a note grounded in transcript/captions that cites the transcript path and quotes a real stretch of it, or an explicit not-finished statement. Must not claim completion from title/description alone. A pasted path without a quote is not finished.",
       "files": [
         "evals/fixtures/usable_en_transcript.txt",
-        "evals/fixtures/usable_en_note.md"
+        "evals/fixtures/usable_en_note.md",
+        "evals/fixtures/path_only_note.md"
       ],
       "assertions": [
         "Does not treat title or description as sufficient evidence of having watched the video",
-        "Either references a transcript/captions artifact or clearly states not finished",
+        "Either quotes a transcript/captions artifact or clearly states not finished",
+        "A note that only pastes a transcript path, without quoting the transcript, is not finished",
         "Does not invent detailed spoken claims without text backing"
       ]
     },
@@ -34,7 +36,7 @@
     {
       "id": 3,
       "name": "chinese-asr-hallucination-gate",
-      "prompt": "We transcribed an expected-Chinese Bilibili talk. The transcript is mostly English loops and gibberish. The analyzer draft is now a neat essay about 'ASR quality failure cases'. Ship it to the knowledge base?",
+      "prompt": "We transcribed an expected-Chinese talk. The transcript is mostly English loops and gibberish. The analyzer draft is now a neat essay about 'ASR quality failure cases'. Ship it to the knowledge base?",
       "expected_output": "Block shipping; treat as quality-gate failure; upgrade model once or stop; do not let analyzer launder bad ASR into final notes.",
       "files": [
         "evals/fixtures/en_loop_transcript.txt",

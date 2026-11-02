@@ -4,22 +4,24 @@
 
 # English
 
-You have seen this. A YouTube, Bilibili, X, or short-video link lands in the chat. The agent reads the title and the short blurb, sometimes the tweet beside the link, and writes a note that sounds like it watched. The words that were spoken never get written down. The note looks finished. Nobody heard the video.
+YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer: a note is allowed only after the spoken words are written down, the text passes a quality check, and the note quotes that transcript.
 
-This repository is a skill: a folder of rules the agent loads so the next note waits for those words. The title, the blurb, the tweet, and the cover can help it find the right video. Finding it still leaves the listening to do.
+You have seen the failure this gate is for. A YouTube or X video link lands in the chat. The agent reads the title and the short blurb, sometimes the post beside the link, and writes a note that sounds like it watched. The words that were spoken never get written down. The note looks finished. Nobody heard the video.
+
+This repository is a skill: a folder of rules the agent loads so the next note waits for those words. The title, the blurb, and the post can help it find the right video. Finding it still leaves the listening to do.
 
 ## What you get
 
 You do not get an auto-summary button. After this is installed, a link does not immediately come back as a summary. You get a rule, and the rule is short: a note is allowed only after the spoken words have been written down.
 
-**When it goes well.** You paste a link. It looks for official captions first. If captions exist, that text is the transcript. If they do not, it looks for a transcript already saved for this same video, not a different video with a similar title. If that file is there and it still sounds like a person talking, it uses that file. If neither is there, it downloads the audio and turns the speech into text. A note is allowed only after one of those three has actually produced words. The note has to name the transcript file, so you can open the file and match the sentences. A note that reads smoothly and cannot point at its file is not finished.
+**When it goes well.** You paste a link. It looks for official captions first. If captions exist, that text is the transcript. If they do not, it looks for a transcript already saved for this same video, not a different video with a similar title. If that file is there and it still sounds like a person talking, it uses that file. If neither is there, it downloads the audio and turns the speech into text. A note is allowed only after one of those three has actually produced words. The note has to name the transcript file and quote a real stretch of it (about 40 characters), so you can open the file and match the sentences. A pasted path under a rewritten title is not a quote. A note that reads smoothly and cannot point at its file is not finished.
 
 ```text
 link
   → official captions? use them
   → else a transcript already saved for this same video? use it if it sounds like speech
   → else download the audio and turn speech into text
-  → then write the note, and name the transcript file
+  → then write the note, name the transcript file, and quote it
 ```
 
 **When it does not.** Three ordinary dead ends. None of them gets an essay that pretends the video was watched.
@@ -41,7 +43,7 @@ speech-to-text came back nonsense
   → not finished; one stronger model, or stop
 ```
 
-**Success, in one line:** the note is written from the transcript, and it names the transcript file.
+**Success, in one line:** the note is written from the transcript, it names the transcript file, and it quotes that file.
 
 **Failure, in one line:** it says not finished, names the next step (queue it, try a stronger model once, or stop), and leaves no essay that pretends the video was watched.
 
@@ -65,7 +67,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` is a common place. Yours might be `skills/transcript-first-video/` beside the project that actually downloads audio. Either works, as long as that agent reads skills from there.
 
-When the clone finishes, nothing plays by itself. You have the rules. `scripts/` also has a small YouTube fetcher and a gate you can run before a note is allowed into a vault. The queue, other platforms, and the shelf where notes live stay in your project.
+When the clone finishes, nothing plays by itself. You have the rules. `scripts/` has a YouTube fetcher, an X/Twitter video fetcher, and a gate you can run before a note is allowed into a vault. The queue and the shelf where notes live stay in your project. Other video sites are not fetched here.
 
 ## How to use
 
@@ -97,13 +99,13 @@ Four rules. Each one is a scene.
 
 This repo is what the agent reads. Your project does the labor: fetch captions, download audio, turn speech into text, keep the queue, and write the note onto the shelf you already use.
 
-If your notes are already split, keep the split. A YouTube talk, an X clip, a WeChat video, and a doc page each stay where that project already puts them. If you cannot tell where it came from, wait, or ask. A miscellaneous folder is how a YouTube note and a WeChat note end up in the same pile.
+This repo fetches YouTube and X video only. If your notes are already split, keep the split. Each source stays where that project already puts it. If you cannot tell where it came from, wait, or ask. A miscellaneous folder is how two sources end up in the same pile.
 
 Your inbox fields, your note paths, your timers, and another machine's `.env` stay where they are. Copying someone else's whole desk over produces a pile of paths that do not match, the next morning. When these jobs run on a schedule, the schedule lives in your project. This repo has no cron file and no service file from another machine. Some program still has to pick up the queue. You decide when that program wakes.
 
-The program has to store which video it is. The download address the site handed out this morning will expire. A Bilibili audio link does this: opened again at night, it answers 403. Store the job as `bilibili_BV…` or `youtube_<id>`. When it runs, go back to the video page and ask for a fresh address. Replaying this morning's link produces an empty transcript of a video that did have sound.
+The program has to store which video it is. The download address the site handed out this morning will expire, and opening it again at night often answers 403. Store the job as `youtube_<id>` or `x_<status id>`. When it runs, go back to the video page and ask for a fresh address. Replaying this morning's link produces an empty transcript of a video that did have sound.
 
-Cookies and API keys stay out. A doc may name a setting, such as `BILIBILI_SESSDATA`, and does not print the value. The same goes for logs and notes. If the cookie is missing or expired, say that in the status. Keep using the public way to fetch the video. The cookie is optional. It helps some fetches. The skill still works without it.
+Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES` or `OPENAI_API_KEY`, and does not print the value. The same goes for logs and notes. If the cookie is missing or expired, say that in the status. Keep using the public way to fetch the video. The cookie is optional. It helps some fetches. The skill still works without it.
 
 ## What's in the repo
 
@@ -112,7 +114,7 @@ Cookies and API keys stay out. A doc may name a setting, such as `BILIBILI_SESSD
 | [SKILL.md](SKILL.md) | The full rules: where words may come from, when to stop, what a note has to cite, how a cookie or a key stays a name. If this page and that file disagree, follow the file. |
 | [references/pitfalls.md](references/pitfalls.md) | Ten real mistakes, private details removed. Open it when a note looks done and you suspect it is not, or when a Chinese talk comes back as English junk. The stories include a queue nobody ran, a download link that expired, and a "mostly Chinese characters" transcript that was still garbage. |
 | [evals/evals.json](evals/evals.json) | Three practice cases. One YouTube link has to be read from captions or speech-to-text. One empty short clip has to stay unfinished. One Chinese talk heard as English loops must not ship the tidy failure essay as the video. They catch a slide back to "I read the title." |
-| [scripts/](scripts/) | A YouTube caption fetcher and a gate that refuses a note unless it names a real transcript. Queues and other platforms stay in your project. See [scripts/README.md](scripts/README.md). |
+| [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless it quotes a real transcript. Queues stay in your project. See [scripts/README.md](scripts/README.md). |
 
 ## License
 
@@ -120,22 +122,24 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
 
 # 中文
 
-你见过这个场面。一个 YouTube、B 站、X，或者短视频的链接丢进聊天。它读了标题和简介，有时还读了链接旁边那条推文，写出一篇听着像看过的笔记。嘴里说的话，一个字没落下来。笔记像写完了。视频没人听。
+YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器：嘴里的话先落成文字，文字过了质量检查，笔记还得引用这段文稿。
 
-这个仓库是一份 skill：一个文件夹，里面写着规矩。Agent 装上之后，下次写笔记，得先拿到这些话。标题、简介、推文、封面，可以帮它找对那条视频。找对了，还不等于听过。
+你见过这个失败。一个 YouTube 或 X 视频的链接丢进聊天。它读了标题和简介，有时还读了链接旁边那条帖子，写出一篇听着像看过的笔记。嘴里说的话，一个字没落下来。笔记像写完了。视频没人听。
+
+这个仓库是一份 skill：一个文件夹，里面写着规矩。Agent 装上之后，下次写笔记，得先拿到这些话。标题、简介、帖子，可以帮它找对那条视频。找对了，还不等于听过。
 
 ## 装上之后你得到什么
 
 你得到的不是一颗「自动总结」按钮。装上之后，链接一到，并不会马上吐出一篇摘要。你得到的是一条规矩，规矩很短：笔记只能写在嘴里的话已经落成文字之后。
 
-**顺的时候。** 你贴一个链接。它先找官方字幕。有字幕，这段字就是文稿。没有，就看这条视频是不是早就存过一份文稿。要同一条，标题碰巧像的另一条不算。有，而且读起来还像人在说话，就用那份。两样都没有，再去下音频，把声音转成文字。三条路里有一条真正拿出了字，才许写笔记。笔记得点名这份文稿在哪个文件里，你能打开文件，对上笔记里的句子。一篇读着很顺、却说不出文件在哪的笔记，不算写完。
+**顺的时候。** 你贴一个链接。它先找官方字幕。有字幕，这段字就是文稿。没有，就看这条视频是不是早就存过一份文稿。要同一条，标题碰巧像的另一条不算。有，而且读起来还像人在说话，就用那份。两样都没有，再去下音频，把声音转成文字。三条路里有一条真正拿出了字，才许写笔记。笔记得点名这份文稿在哪个文件里，还得从文稿里引用大约 40 个连续的字，你能打开文件，对上笔记里的句子。只贴一个路径，再配一个改写过的标题，不算引用。一篇读着很顺、却说不出文件在哪的笔记，不算写完。
 
 ```text
 链接
   → 有官方字幕？用字幕
   → 没有的话，这条视频存过文稿吗？像人话就用
   → 还没有，就下音频，把声音转成文字
-  → 然后写笔记，笔记点名文稿文件
+  → 然后写笔记，点名文稿文件，并引用其中一段
 ```
 
 **不顺的时候。** 常见就这三种。哪一种都不能交一篇假装看过的作文。
@@ -157,7 +161,7 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
   → 没看完，更强的模型试一次，或停
 ```
 
-**成功就一句话：** 笔记按文稿写，并且写明了文稿文件。
+**成功就一句话：** 笔记按文稿写，写明了文稿文件，并且引用了其中一段。
 
 **失败就一句话：** 它说没看完，写下一步（排队、更强的模型试一次、或者停），不留一篇假装看过的作文。
 
@@ -181,7 +185,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` 是常见的一个位置。你的也可能是项目旁边的 `skills/transcript-first-video/`，跟真正下载音频的那个程序放一起。只要这个 Agent 会从那儿读 skill，就行。
 
-克隆完，什么也不会自己播。你拿到的是规矩。`scripts/` 里还有一个很小的 YouTube 抓取，和一道入库前的门槛。队列、别的平台、笔记放哪，仍在你自己的项目里。
+克隆完，什么也不会自己播。你拿到的是规矩。`scripts/` 里有 YouTube 抓取、X / Twitter 视频抓取，和一道入库前的门槛。队列和笔记放哪，仍在你自己的项目里。别的视频网站，这里不抓。
 
 ## 怎么用
 
@@ -213,13 +217,13 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 这个仓库是 Agent 读的东西。干活的是你的项目：抓字幕、下音频、把声音转成文字、守着队列，再把笔记写到你已经在用的那个架子上。
 
-笔记如果本来就是分开放的，就继续分开。YouTube 的长谈、X 上的片子、微信里的视频、一篇文档，各回各的地方。来源对不上的，就等一等，或者问你一声。别因为省事，掉进一个杂物文件夹。
+这个仓库只抓 YouTube 和 X 的视频。笔记如果本来就是分开放的，就继续分开。各回各的地方。来源对不上的，就等一等，或者问你一声。别因为省事，掉进一个杂物文件夹。
 
 收件箱的字段、笔记的路径、定时、另一台机器上的 `.env`，都留在原地。把别人的整桌搬过来，第二天就是一堆对不上的路径。这些活如果要定时跑，时刻表在你的项目里。这个仓库里没有 cron 文件，也没有另一台机器的服务配置。队列还是得有一个程序去领。那个程序什么时候醒，你来定。
 
-这个程序得记住视频是哪一条。今早网站发下来的下载地址会过期。B 站的音频链接就是这样，晚上再打开，回来的是 403。任务记成 `bilibili_BV…` 或 `youtube_<id>`。真正跑的时候，回到视频页要一个新地址。拿今早的链接再播一次，转写是空的，可视频并不是没有声音。
+这个程序得记住视频是哪一条。今早网站发下来的下载地址会过期，晚上再打开常常是 403。任务记成 `youtube_<id>` 或 `x_<状态 id>`。真正跑的时候，回到视频页要一个新地址。拿今早的链接再播一次，转写是空的，可视频并不是没有声音。
 
-cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `BILIBILI_SESSDATA`，不写出值。日志和笔记也一样。cookie 缺了，或者过期了，在状态里说一声。抓视频仍然走公开的那条路。cookie 是可选的。有些抓取它能帮上忙。没有它，这份 skill 也成立。
+cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP_COOKIES` 或 `OPENAI_API_KEY`，不写出值。日志和笔记也一样。cookie 缺了，或者过期了，在状态里说一声。抓视频仍然走公开的那条路。cookie 是可选的。有些抓取它能帮上忙。没有它，这份 skill 也成立。
 
 ## 仓库里有什么
 
@@ -228,7 +232,7 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `BILIB
 | [SKILL.md](SKILL.md) | 完整的规矩：字可以从哪来，什么时候该停，笔记必须点名什么，cookie 和密钥怎么只留名字。这页和那个文件要是说得不一样，以那个文件为准。 |
 | [references/pitfalls.md](references/pitfalls.md) | 十条真实翻过的车，私人信息已经去掉。笔记看着完成了、你又觉得不对，或者中文口播被听成英语胡话，先打开它。里面有没人去跑的队列、过期的下载地址，还有一份「大部分是汉字」却仍然是垃圾的文稿。 |
 | [evals/evals.json](evals/evals.json) | 三道练习。一条 YouTube 得从字幕或语音转文字来读。一条空的短视频得保持未完成。一条中文被听成英语打转的，不能把那篇整齐的失败作文当成视频发出去。它们用来抓住「又退回去读标题」。 |
-| [scripts/](scripts/) | 一个 YouTube 字幕抓取，和一道没有真实文稿就不许写笔记的门槛。队列和别的平台仍在你的项目里。见 [scripts/README.md](scripts/README.md)。 |
+| [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道不引用真实文稿就不许写笔记的门槛。队列仍在你的项目里。见 [scripts/README.md](scripts/README.md)。 |
 
 ## 许可
 

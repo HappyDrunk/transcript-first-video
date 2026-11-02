@@ -107,10 +107,15 @@ def parse_youtube_ref(value: str) -> tuple[str, str]:
     return video_id, f"https://www.youtube.com/watch?v={video_id}"
 
 
-def job_id_for(video_id: str) -> str:
+_PLATFORMS = {"youtube", "x"}
+
+
+def job_id_for(video_id: str, platform: str = "youtube") -> str:
+    if platform not in _PLATFORMS:
+        raise HostError(f"unsupported platform {platform}")
     if not _SAFE_ID.fullmatch(video_id):
         raise HostError("video id contains characters that are not safe in a path")
-    return f"youtube_{video_id}"
+    return f"{platform}_{video_id}"
 
 
 def cite_path(path: Path) -> str:
@@ -260,8 +265,14 @@ def fetch_ytdlp_captions(
     video_id: str,
     expected_lang: str | None,
     base_cmd: list[str],
+    accept_info=None,
 ) -> dict:
-    """Return caption text, or a dict with text None and an error string."""
+    """Return caption text, or a dict with text None and an error string.
+
+    accept_info(info) may allow a metadata id that is not video_id. YouTube
+    leaves it unset. The X host uses it when the media id differs from the
+    status id but the webpage URL is that status.
+    """
     meta_cmd = [
         *base_cmd,
         "-J",
@@ -285,7 +296,7 @@ def fetch_ytdlp_captions(
     except HostError as exc:
         return {"text": None, "error": redact(str(exc))}
     got_id = str(info.get("id") or "")
-    if got_id and got_id != video_id:
+    if got_id and got_id != video_id and not (accept_info is not None and accept_info(info)):
         return {"text": None, "error": "yt-dlp returned a different video id than requested"}
     picked = select_caption_language(info, expected_lang)
     if not picked:
@@ -697,8 +708,9 @@ def finalize_job(
     extra: dict | None = None,
     verify: bool = True,
     upgrade_attempted: bool = False,
+    platform: str = "youtube",
 ) -> dict:
-    job_id = job_id_for(video_id)
+    job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     clear_deposit(job_dir)
@@ -738,7 +750,8 @@ def finalize_job(
         return base
 
     transcript_path.write_text(result.text.rstrip() + "\n", encoding="utf-8")
-    excerpt = result.text.strip()
+    # One collapsed line so the note holds a real quotable window, not only a path.
+    excerpt = re.sub(r"\s+", " ", result.text).strip()
     if len(excerpt) > 700:
         excerpt = excerpt[:700].rstrip() + "…"
     cite = cite_path(transcript_path)
@@ -794,8 +807,9 @@ def write_refusal(
     reason: str,
     next_step: str,
     extra: dict | None = None,
+    platform: str = "youtube",
 ) -> dict:
-    job_id = job_id_for(video_id)
+    job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
     clear_deposit(job_dir)
@@ -820,26 +834,32 @@ def write_refusal(
     return payload
 
 
+def transcribe_file(audio: Path, backend: str, language: str | None) -> tuple[str, str, bool]:
+    """Return (text, model description, upgrade_attempted) for one audio file."""
+    if backend == "openai":
+        text = transcribe_openai(audio, language)
+        return text, os.environ.get("OPENAI_TRANSCRIBE_MODEL", "whisper-1"), False
+    model = os.environ.get("WHISPER_MODEL", "small").strip() or "small"
+    upgrade = os.environ.get("WHISPER_UPGRADE_MODEL", "").strip()
+    work = audio.parent
+    first_dir = work / "asr-first"
+    first_dir.mkdir(parents=True, exist_ok=True)
+    text = transcribe_whisper(audio, model, language, first_dir)
+    gate_lang = quality_gate.normalize_lang(language)
+    first = quality_gate.assess(text, expected_lang=gate_lang)
+    if first.passed or not upgrade or upgrade == model:
+        return text, model, False
+    second_dir = work / "asr-second"
+    second_dir.mkdir(parents=True, exist_ok=True)
+    second = transcribe_whisper(audio, upgrade, language, second_dir)
+    return second, upgrade, True
+
+
 def _run_asr(url: str, base_cmd: list[str], backend: str, language: str | None) -> tuple[str, str, bool]:
     """Return (text, model_description, upgrade_attempted)."""
     with tempfile.TemporaryDirectory(prefix="tfv-asr-") as tmp:
         audio = download_audio(url, base_cmd, Path(tmp))
-        if backend == "openai":
-            text = transcribe_openai(audio, language)
-            return text, os.environ.get("OPENAI_TRANSCRIBE_MODEL", "whisper-1"), False
-        model = os.environ.get("WHISPER_MODEL", "small").strip() or "small"
-        upgrade = os.environ.get("WHISPER_UPGRADE_MODEL", "").strip()
-        first_dir = Path(tmp) / "first"
-        first_dir.mkdir()
-        text = transcribe_whisper(audio, model, language, first_dir)
-        gate_lang = quality_gate.normalize_lang(language)
-        first = quality_gate.assess(text, expected_lang=gate_lang)
-        if first.passed or not upgrade or upgrade == model:
-            return text, model, False
-        second_dir = Path(tmp) / "second"
-        second_dir.mkdir()
-        second = transcribe_whisper(audio, upgrade, language, second_dir)
-        return second, upgrade, True
+        return transcribe_file(audio, backend, language)
 
 
 def run_host(

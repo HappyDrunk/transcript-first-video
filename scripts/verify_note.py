@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Fail-closed note gate.
 
-A note is allowed only when it cites an existing transcript file and that
-file passes the quality gate. Analyzer essays about a failed transcription
-are refused unless the transcript itself passed and the note quotes it.
+A note is allowed only when it cites an existing transcript file, that file
+passes the quality gate, and the note quotes a real window of the transcript
+(QUOTE_WINDOW characters). A pasted path or a rewritten title is not a quote.
+Analyzer essays about a failed transcription are refused unless the transcript
+itself passed and the note quotes it.
 
 Exit 0 allowed. Exit 2 refused. Exit 1 usage or read error.
 """
@@ -19,6 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import quality_gate  # noqa: E402
+
+QUOTE_WINDOW = 40
 
 _LAUNDER = re.compile(
     r"("
@@ -65,16 +69,46 @@ def note_cites(note: str, transcript: Path) -> bool:
     return False
 
 
-def quotes_transcript(note: str, transcript_text: str) -> bool:
-    compact_note = re.sub(r"\s+", " ", note).casefold()
-    compact = re.sub(r"\s+", " ", transcript_text).casefold()
-    if len(compact) < 40:
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", " ", text).casefold().strip()
+
+
+def quotes_transcript(note: str, transcript_text: str, window: int = QUOTE_WINDOW) -> bool:
+    """True when the note contains a contiguous transcript window.
+
+    Whitespace is collapsed and case is folded. The window may start at any
+    offset, so a real sentence quote counts. A path, a title, or a paraphrase
+    does not.
+    """
+    compact_note = _compact(note)
+    compact = _compact(transcript_text)
+    if window <= 0 or len(compact) < window or len(compact_note) < window:
         return False
-    step = 40
-    for index in range(0, len(compact) - 39, step):
-        if compact[index : index + 40] in compact_note:
+    # Slide the shorter side. A hit means the note holds a real snippet.
+    if len(compact_note) <= len(compact):
+        source, haystack = compact_note, compact
+    else:
+        source, haystack = compact, compact_note
+    last = len(source) - window + 1
+    for index in range(last):
+        if source[index : index + window] in haystack:
             return True
     return False
+
+
+def quote_refusal(transcript_text: str) -> str:
+    compact = _compact(transcript_text)
+    if len(compact) < QUOTE_WINDOW:
+        return (
+            "note does not quote a transcript window "
+            f"(transcript is shorter than {QUOTE_WINDOW} characters after cleanup, "
+            "so there is no quotable window)"
+        )
+    return (
+        "note does not quote a transcript window "
+        f"(need {QUOTE_WINDOW} contiguous characters from the transcript; "
+        "a path or a title is not a quote)"
+    )
 
 
 def verify(
@@ -96,15 +130,18 @@ def verify(
             for reason in gate.reasons:
                 reasons.append(f"quality gate failed: {reason}")
     cited = note_cites(note, transcript)
-    if exists and gate is not None and gate.passed and not cited:
-        display = transcript.as_posix() if not transcript.is_absolute() else str(transcript)
-        reasons.append(f"note does not cite transcript path {display}")
+    quoted = bool(exists and gate is not None and quotes_transcript(note, gate.text))
+    if exists and gate is not None and gate.passed:
+        if not cited:
+            display = transcript.as_posix() if not transcript.is_absolute() else str(transcript)
+            reasons.append(f"note does not cite transcript path {display}")
+        if not quoted:
+            reasons.append(quote_refusal(gate.text))
     elif not exists and not cited:
         reasons.append(f"note does not cite transcript path {transcript.as_posix()}")
     laundering = bool(_LAUNDER.search(note))
     if laundering:
         usable = gate is not None and gate.passed
-        quoted = usable and quotes_transcript(note, gate.text)
         if not usable:
             reasons.append(
                 "analyzer-laundering: the note is an essay about ASR or transcription "
@@ -121,6 +158,7 @@ def verify(
         "reasons": reasons,
         "transcript": transcript.as_posix(),
         "cited": cited,
+        "quoted": quoted,
         "gate": None if gate is None else gate.to_dict(),
     }
 
@@ -140,7 +178,10 @@ def _read_note(note_arg: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Allow a note only when it cites a transcript that passes the quality gate."
+        description=(
+            "Allow a note only when it cites a transcript that passes the quality gate "
+            "and quotes a real window of that transcript."
+        )
     )
     parser.add_argument("--transcript", required=True, type=Path)
     parser.add_argument(

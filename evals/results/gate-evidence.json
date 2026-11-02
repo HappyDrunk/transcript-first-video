@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-02T16:27:00Z",
+  "generated_at": "2026-11-02T17:11:51Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -133,7 +133,25 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "note does not cite transcript path evals/fixtures/usable_en_transcript.txt"
+        "note does not cite transcript path evals/fixtures/usable_en_transcript.txt",
+        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "path-only",
+      "eval_id": 1,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/path_only_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Usable transcript. The note pastes the path and a title, and does not quote the transcript.",
+      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/path_only_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -191,6 +209,22 @@
       "transcript_exists": false,
       "verifier": null,
       "expect": "expected Chinese plus English loop writes status only"
+    },
+    {
+      "id": "x-usable",
+      "video_id": "123456789012345678",
+      "exit_code": 0,
+      "status": "finished",
+      "finished": true,
+      "reason": null,
+      "next_step": "none",
+      "note_exists": true,
+      "transcript_exists": true,
+      "verifier": {
+        "allowed": true,
+        "reasons": []
+      },
+      "expect": "x_host settle uses the same gate and writes a quoting note"
     }
   ],
   "live": {

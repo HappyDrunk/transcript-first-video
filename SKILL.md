@@ -1,33 +1,36 @@
 ---
 name: transcript-first-video
-description: Read videos into usable knowledge without pretending a title counts as watched. Use whenever the user pastes a YouTube / Bilibili / X / short-video link, asks to 通读 / summarize / extract methods from a video, or asks an agent to build or run a caption→ASR→quality-gate pipeline. Also use when a prior run left needs-transcript / video-pending / ASR-quality-failed tags, or when a note claims the video was understood but no usable transcript exists.
+description: Read YouTube and Twitter/X videos into usable knowledge without pretending a title or a post counts as watched. Use when the user pastes a YouTube or X/Twitter video link, asks to 通读 / summarize / extract methods from one of those videos, or asks an agent to build or run a caption→ASR→quality-gate pipeline. Other platforms are not promised. Also use when a prior run left needs-transcript / video-pending / ASR-quality-failed tags, or when a note claims the video was understood but no usable transcript exists.
 ---
 
 # Transcript-first video reading
 
 ## What this skill does
 
-Turn a video URL into **usable text**, then analyze that text.
+Turn a **YouTube** or **Twitter/X video** URL into usable text, then analyze that text.
 
-Success = a usable transcript (captions or ASR that passes a quality gate) **and** analysis based on that text.
+Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
+
+Success = a usable transcript (captions or ASR that passes a quality gate) **and** a note that cites that file and quotes a real stretch of it.
 
 Failure that must be said out loud = no usable transcript. Do not deposit “finished” knowledge in that case.
 
 ## What this skill does not do
 
-- Treat title, description, UP metadata, tweet text, or thumbnails as a full watch.
+- Fetch Bilibili, Douyin, Xiaohongshu, or other platforms. A link from those sites is not a promise.
+- Treat title, description, post text, or thumbnails as a full watch.
 - Burn visual multi-turn by default (vision only when the picture itself is the information and the user asks).
 - Clone an entire host desk (systemd stack, foreign inbox schemas, personal vault paths).
-- Put cookies, SESSDATA, or API keys into the skill, logs, receipts, or git.
+- Put cookies or API keys into the skill, logs, receipts, or git.
 
 ## Quickstart success check
 
 After one link:
 
-1. A job exists with a **stable id** (platform + durable content id, e.g. `youtube_<id>` / `bilibili_BV…`).
+1. A job exists with a **stable id** (platform + durable content id, e.g. `youtube_<id>` / `x_<status id>`).
 2. Either captions were used, or ASR wrote a transcript file.
 3. Quality gate passed (or status is clearly `failed` / retry with reason).
-4. Any note / knowledge write cites the transcript path (or explicitly says “not finished”).
+4. Any note quotes a real ~40-character window of that transcript and cites its path (or explicitly says “not finished”). A pasted path under a rewritten title is not a quote.
 
 If step 3–4 are missing, the task is not done.
 
@@ -41,6 +44,12 @@ YouTube, captions first (optional ASR only when configured; otherwise it says no
 
 ```bash
 python3 scripts/youtube_host.py "<youtube url>"
+```
+
+Twitter/X video, same gate. Captions if a track exists, otherwise optional ASR. Post text is not a transcript:
+
+```bash
+python3 scripts/x_host.py "<x or twitter status url>"
 ```
 
 Commands and env var names: `scripts/README.md`.
@@ -80,11 +89,19 @@ Gate before analysis. Typical hard fails for expected Chinese speech:
 
 Gate fail ⇒ do **not** save as final knowledge. Retry with a stronger model into a **separate** transcript file, or stop and say what failed.
 
-Read `references/pitfalls.md` before shipping a production default for Bilibili Chinese ASR.
+Read `references/pitfalls.md` before treating a Chinese ASR default as production-ready.
+
+## CJK ratio and English jargon
+
+`--expected-lang zh` fails closed unless the transcript has at least 8 CJK characters and a CJK ratio of at least 0.35 among CJK plus Latin letters. The constants are `ZH_MIN_CJK` and `ZH_MIN_CJK_RATIO` in `scripts/quality_gate.py`. They are not command-line flags.
+
+A Chinese talk dense with English technical terms (model names, API identifiers, product names) can fall under 0.35 and be refused even when the universal checks would pass. That false reject is intentional. The same ratio check is what stops an English hallucination loop from being filed as a Chinese talk. Holding a jargon-heavy talk back is the tradeoff; a wrong note is worse.
+
+Tune by omitting `--expected-lang` when you know the talk mixes Chinese with English identifiers and you accept losing the script check. Loop, gibberish, length, and confidence checks still run. Do not omit it just to push a bad transcript through. There is no per-job flag to lower 0.35. The same idea applies to `--expected-lang en`, `ja`, or `ko`: pass it when you know the language, omit it when you do not.
 
 ## Stable identity and media URLs
 
-- Job id must come from a durable content id (video id / BV), never from a signed CDN playurl.  
+- Job id must come from a durable content id (YouTube video id or X status id), never from a signed CDN playurl.  
 - Signed audio URLs expire. At worker time, **refresh** from the source URL; do not replay the URL saved at enqueue.  
 - Short vs long video does not change the rule: no transcript ⇒ not finished. Inline ASR failure must enqueue a recoverable job, not a warning-only deposit.
 
@@ -92,12 +109,14 @@ Read `references/pitfalls.md` before shipping a production default for Bilibili 
 
 Environment variable **names** only in docs, for example:
 
-- `BILIBILI_SESSDATA` (optional; improves some fetches; never print the value)  
-- `YTDLP_COOKIES` (optional path to a cookies file; never commit the file)  
-- `ASR_BACKEND`, `OPENAI_API_KEY`, `WHISPER_MODEL`, `WHISPER_UPGRADE_MODEL` (optional ASR)  
-- `INVIDIOUS_INSTANCE` (optional public caption mirror, or `off`)  
+- `YTDLP_COOKIES` (optional path to a cookies file for YouTube or X; never commit the file)  
+- `YTDLP_EXTRACTOR_ARGS` (optional yt-dlp extractor args)  
+- `INVIDIOUS_INSTANCE` (optional YouTube caption mirror, or `off`)  
+- `FX_TWITTER_API` (public X status API origin, default `https://api.fxtwitter.com`, or `off`; no key)  
+- `ASR_BACKEND`, `OPENAI_API_KEY`, `WHISPER_MODEL`, `WHISPER_UPGRADE_MODEL`, `WHISPER_LANGUAGE` (optional ASR)  
+- `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_BASE_URL` (optional OpenAI ASR)  
 
-Missing or expired cookies ⇒ say so in the status / action hint. Do not abandon public API paths solely because SESSDATA is absent.
+Missing or expired cookies ⇒ say so in the status. Keep the public fetch path. The bundled hosts do not read a Bilibili session cookie.
 
 ## Knowledge sinks
 
@@ -117,17 +136,18 @@ This skill does not hardcode personal wiki tokens. Pass parent / sink config fro
 | Sinks | transcript → note / table / inbox fields |
 | Triggers | chat enqueue, cron drain, CI kick |
 
-Add platforms by implementing a fetcher; do not fork the whole pipeline.
+Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py`). They share the gate. Other platforms are a host-project choice, not a promise of this repo. Do not fork the pipeline to add one.
 
 ## Bundled resources
 
-- `scripts/verify_note.py` — fail-closed check: allow a note only when it cites a transcript file that passes the quality gate.  
-- `scripts/youtube_host.py` — YouTube only. Captions first, optional ASR, otherwise not finished. It does not write a note from the title.  
-- `scripts/README.md` — how to run them, and the env var names.  
+- `scripts/verify_note.py` — fail-closed check: allow a note only when it cites a transcript that passes the quality gate and quotes a 40-character window of it.  
+- `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. It does not write a note from the title.  
+- `scripts/x_host.py` — Twitter/X video. Same gate. Captions if present, otherwise optional ASR. Post text is not a transcript.  
+- `scripts/README.md` — how to run both hosts, the CJK false-reject tradeoff, and the env var names.  
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.  
 - `evals/evals.json` — starter prompts for Anthropic-style skill evals (with-skill vs without).  
 - `evals/results/` — checked-in pass/fail evidence from the gate and a live YouTube run.
 
 ## Packaging note
 
-This folder follows the Agent Skills shape (`SKILL.md` + optional `references/` / `scripts/` / `evals/`). `scripts/` is a YouTube host and a verifier, not a queue or a desk. Other platforms stay in the host project. It does not invent credentials.
+This folder follows the Agent Skills shape (`SKILL.md` + optional `references/` / `scripts/` / `evals/`). `scripts/` is a YouTube host, an X video host, and a verifier, not a queue or a desk. It does not invent credentials.
