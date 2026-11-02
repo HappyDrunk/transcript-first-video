@@ -1,171 +1,137 @@
 # transcript-first-video
 
-对照阅读：每一节先写中文，紧接着写英文。流程图只出现一次。
+[English](#english) · [中文](#中文)
 
-Read in parallel: each section is Chinese first, then English. The pipeline diagram appears once.
+# English
 
-从口播文本读视频。标题、简介、推文或封面都不算看过。
+## What this is
 
-Read a video from its spoken text. A title, a description, a tweet, or a thumbnail is not a watch.
+This folder teaches an AI agent to read a video from the words that were spoken, and to write notes only from those words.
 
-官方字幕，或通过质量门的 ASR，才算读过。没有可用文稿，就说未完成。
+In other words: a title, a description, a tweet, or a cover image is not a watch.
 
-Official captions, or ASR that passes the quality gate, are what count as having read the video. If there is no usable transcript, say the task is not finished.
+## Who it’s for
 
-## 为什么存在 / Why it exists
+Use it when you paste a YouTube, Bilibili, X, or short-video link and want notes about what was actually said.
 
-代理经常“看”一条 YouTube、Bilibili 或 X 链接，其实只读了标题、简介，或链接周围的推文，然后写出一篇看起来已经完成的笔记。视频本身从未被转写。
+You do not need to know “Agent Skills” already. An Agent Skill is a folder of written rules the agent loads so it behaves the same way each time. This repository is that folder.
 
-Agents often “watch” a YouTube, Bilibili, or X link by reading the title, the description, or the tweet around it, then write a note that looks finished. The video itself was never transcribed.
+## The problem it fixes
 
-糟糕的 ASR 会犯第二种、更安静的错。循环和胡话看起来仍像文本，于是分析器把它们写成一篇自信的文章，而这篇文章被存成知识。面对预期为中文的口播，英语识别器常常吐出拉丁字母幻觉；模型接着把这次失败本身写成讲稿内容。
+**The agent pretends it watched.** You send a link. It reads the title and the short description, writes a confident summary, and stops. The video was never turned into text. The note looks finished. The watching never happened.
 
-Bad ASR makes a second, quieter mistake. Loops and gibberish still look like text, so an analyzer turns them into a confident essay and that essay is saved as knowledge. On expected Chinese speech, an English recognizer commonly emits Latin hallucination; the model then writes about the failure as if it were the talk.
+**A short video gets skipped.** Speech-to-text on a 20-second clip comes back empty. The agent adds “video not transcribed” and files the item as done. A short video still has to be heard. Empty text means the job is still open.
 
-短视频会得到一种虚假豁免。一段 20 秒视频上的空 ASR，再加一行“视频未转写”，仍然是未完成。时长不能把任务关掉。
+**Bad speech-to-text becomes a fake note.** The talk is in Chinese. The recognizer is set to English and prints the same English nonsense again and again. ASR means automatic speech recognition: software that turns audio into text. The agent then writes a tidy essay about “the transcription failed” and saves that essay as the talk. A quality gate is the check that stops this. It asks whether the transcript (the written speech) is real speech, not garbage, before any note is saved.
 
-Short clips get a false exemption. Empty ASR on a 20-second video, plus a line that says “video not transcribed,” is still unfinished. Duration does not close the task.
+## How to use it
 
-## 成功与失败 / Success and failure
+1. **Clone the folder.**
 
-完成必须同时满足下面两件事。
+   ```bash
+   git clone https://github.com/HappyDrunk/transcript-first-video.git
+   ```
 
-Done means both:
+2. **Put it where your agent loads skills.** A common place is `skills/transcript-first-video/`, next to the program that downloads audio and runs speech-to-text. That program lives in your own project, not in this repo.
 
-1. **可用文稿存在：** 官方字幕、同一稳定任务 id 的缓存命中，或通过质量门的 ASR。
-   **A usable transcript exists:** official captions, a cache hit for the same stable job id, or ASR that passed the quality gate.
-2. **分析写自这段文本，** 并且笔记引用文稿路径。
-   **The analysis is written from that text,** and the note cites the transcript path.
+3. **Give the agent a video link.** Ask it to read or summarize the video from the spoken words, and to say it is not finished when it cannot get a real transcript.
 
-没有可用文稿，就是未完成。要说出来。不要落一份最终笔记。留下可恢复的状态（`needs-transcript`、`video-pending`，或具名的质量门失败），以及下一步（入队、重试一次，或停止）。
+4. **Done looks like this.** Usable text exists: official subtitles, a saved transcript for that same video, or speech-to-text that passed the quality gate. The note is written from that text, and it names the transcript file.
 
-No usable transcript means not finished. Say so. Do not deposit a final note. Leave a recoverable status (`needs-transcript`, `video-pending`, or a named quality-gate failure) and the next action (enqueue, retry once, or stop).
+5. **When it says “not finished,” that answer is correct.** Keep the final note unwritten until real speech text exists. Leave a status such as `needs-transcript`, `video-pending`, or a named quality-gate failure, plus a next step: queue the job, retry once with a stronger speech model, or stop. A note from the title and description is allowed only after you accept that weaker path and the note says so.
 
-只有用户接受这条降级路径，并且笔记自己写明这一点时，才允许只基于元数据的笔记。
+The agent tries sources in this order: official subtitles, then a saved transcript for that video, then speech-to-text, then an honest “not finished.” Run one speech job at a time. Long work belongs in a background worker (a small program that keeps processing jobs). The chat stays free for you.
 
-A metadata-only note is allowed only when the user accepts that degraded path and the note says so.
+## What’s inside
 
-## 流程 / Pipeline
-
-文稿获取顺序固定：官方字幕，然后同一任务的缓存，然后 ASR，然后明确说未完成。图中标识保持语言中立。
-
-Acquisition order is fixed: official captions, then the cache for that job, then ASR, then an explicit “not finished.” Identifiers in the diagram stay language-neutral.
-
-```text
-link
-  → stable job id (platform + durable content id)
-  → official captions?
-       yes → transcript
-       no  → cache for that job id?
-            hit  → transcript
-            miss → refresh media URL → audio → ASR
-  → quality gate
-       pass → analyze the transcript → write notes by channel
-       fail → upgrade the model once into a separate file, then stop
-  → no usable text → say not finished
-```
-
-一次只跑一个 ASR 任务（`--limit 1` 或宿主等价物）。长活留在 worker 里；对话保持空闲。定时器应该去叫醒那个 worker，而不是在一次 LLM 唤醒里重新推导文稿。
-
-Prefer one ASR job at a time (`--limit 1` or the host equivalent). Long work stays in a worker; chat stays free. A timer should kick that worker. It should not re-derive the transcript inside an LLM wake.
-
-任务 id 是 `youtube_<id>` 或 `bilibili_BV…`，绝不是带签名的 CDN 播放地址。签名音频 URL 会过期。worker 运行时，从规范源 URL 刷新媒体。
-
-The job id is `youtube_<id>` or `bilibili_BV…`, never a signed CDN play URL. Signed audio URLs expire. Refresh media from the canonical source URL when the worker runs.
-
-## 质量门 / Quality gate
-
-在分析器之前跑质量门。当口播预期为中文时，典型硬失败是：
-
-Run the gate before the analyzer. Typical hard fails when the speech is expected Chinese:
-
-- 汉字太少，或拉丁字母比例荒谬（语言不匹配）。
-  Too few CJK characters, or an absurd Latin ratio (language mismatch).
-- 循环重复、胡话，或跨语言幻觉。
-  Looping repeats, gibberish, or cross-language hallucination.
-- 置信度低于下限。“大部分是汉字”不算通过。
-  Confidence below the floor. “Mostly Chinese characters” is not a pass.
-
-失败时不要保存最终笔记。用更强的模型重试一次（例如 small → medium），结果写入单独的文稿文件，然后停止，并说明失败了什么。不要一直升级。如果草稿主要是一篇关于“ASR 失败”的文章，这仍然是质量门失败，不是视频的主题。
-
-On fail, do not save a final note. Retry once with a stronger model (for example small → medium) into a separate transcript file, then stop and say what failed. Do not keep upgrading. If the draft is mostly an essay about “ASR failed,” that is still a gate failure, not the video’s topic.
-
-策略细节在 [`SKILL.md`](SKILL.md)。中文 Bilibili 案例在 [`references/pitfalls.md`](references/pitfalls.md)。
-
-Policy detail is in [`SKILL.md`](SKILL.md). The Chinese Bilibili cases are in [`references/pitfalls.md`](references/pitfalls.md).
-
-## 安装 / Install
-
-克隆本仓库，把文件夹放到代理加载技能的位置。常见做法是放在宿主 worker 旁边的 `skills/transcript-first-video/`。
-
-Clone this repository and place the folder where the agent loads skills, often `skills/transcript-first-video/` next to the host worker.
-
-```bash
-git clone https://github.com/HappyDrunk/transcript-first-video.git
-```
-
-[`SKILL.md`](SKILL.md) 是流程、质量门、密钥规则和知识落点的依据。本 README 是地图。
-
-[`SKILL.md`](SKILL.md) is the source of truth for the pipeline, the quality gate, secrets, and knowledge sinks. This README is the map.
-
-## 目录 / Contents
-
-| 路径 / Path | 作用 / Role |
+| Path | What it is |
 | --- | --- |
-| [`SKILL.md`](SKILL.md) | 技能策略：流程、质量门、密钥规则。<br>Skill policy: pipeline, quality gate, secrets rules. |
-| [`references/pitfalls.md`](references/pitfalls.md) | 生产事故（已脱敏）。<br>Production mistakes (sanitized). |
-| [`evals/evals.json`](evals/evals.json) | 有技能 / 无技能对照的起步提示。<br>Starter prompts for with-skill vs without-skill evals. |
-| [`scripts/`](scripts/) | 宿主项目 worker CLI 的占位。<br>Placeholder for host-project worker CLIs. |
+| [SKILL.md](SKILL.md) | The detailed rulebook: the steps, the quality gate, and how secrets are handled. |
+| [references/pitfalls.md](references/pitfalls.md) | Lessons from real mistakes, with private details removed. Read it when a note looks done but is not, or when Chinese speech comes out as English garbage. |
+| [evals/evals.json](evals/evals.json) | Three practice quizzes. Each one checks that the agent follows this skill instead of slipping back into fake watching. |
+| [scripts/](scripts/) | An empty slot. The commands that queue and run jobs live in your project. See [scripts/README.md](scripts/README.md). |
 
-## 这个仓库是什么 / What this repo is
+## What this repo is not
 
-这是一个 Agent Skills 包：策略、脱敏后的坑，以及起步评测。入队和 ASR worker 住在宿主项目里。如果以后抽出独立 worker，把入口放在 [`scripts/`](scripts/)（见 [`scripts/README.md`](scripts/README.md)）。
+- **A magic app.** Cloning it does not watch videos by itself. The agent loads the skill. Your project downloads the audio and runs speech-to-text.
+- **A full desktop clone.** It does not copy someone else’s inbox layout, personal note folders, timers, or another machine’s `.env`.
+- **A place for passwords.** Docs may name an environment variable, such as `BILIBILI_SESSDATA`. They never include the value. Keep cookies and API keys out of the repo, logs, and notes.
 
-An Agent Skills package: policy, sanitized pitfalls, and starter evals. Enqueue and ASR workers live in the host project. If you later extract a standalone worker, put the entrypoints under [`scripts/`](scripts/) (see [`scripts/README.md`](scripts/README.md)).
+## You’re doing it right if…
 
-### 这个仓库不是 / What this repository is not
+- The note names a transcript file, or it clearly says the task is not finished.
+- The title, description, tweet, and cover were left out of the “I watched it” claim.
+- A short video with empty text is still open, not marked done.
+- Looping or nonsense speech-to-text was stopped before it became an article.
+- No cookie or API key appears in the repo, a log, or a note.
 
-- 整套桌面克隆（收件箱字段、个人知识库路径、另一台机器的 `.env`）。
-  A full desk clone (inbox schemas, personal vault paths, another machine’s `.env`).
-- systemd unit、cron 文件或 timer。技能需要一个 worker；怎么调度由宿主决定。
-  A systemd unit, a cron file, or a timer. The skill requires a worker; the host decides how it is scheduled.
-- 存放密钥的地方。文档只写环境变量名。
-  A place for secrets. Docs name environment variables only.
-
-## 常见坑 / Pitfalls
-
-六条规则。完整列表在 [`references/pitfalls.md`](references/pitfalls.md)。
-
-Six rules. The full list is [`references/pitfalls.md`](references/pitfalls.md).
-
-- **标题不是观看。 / Title is not a watch.** 标题、简介、推文和封面都不能完成任务。
-  Title, description, tweet text, and thumbnails do not finish the task.
-- **短不等于豁免。 / Short is not exempt.** 短片上的空 ASR 仍然需要一个可恢复的任务。
-  Empty ASR on a short clip still needs a recoverable job.
-- **CDN 地址不是任务 id。 / A CDN URL is not a job id.** 身份是平台加上持久内容 id。签名媒体在运行时刷新。
-  Identity is platform plus a durable content id. Refresh signed media at run time.
-- **任务需要消费者。 / Jobs need a consumer.** 没有定时 worker 的 `needs-transcript` 行会一直坐着，直到有人想起去排空它们。
-  `needs-transcript` rows without a scheduled worker sit until someone remembers to drain them.
-- **密钥只出现环境变量名。 / Secrets are env names only.** 例如 `BILIBILI_SESSDATA`（可选；绝不打印值）。不要提交 cookie 值或 API key，也不要把它们写进日志或回执。
-  Example: `BILIBILI_SESSDATA` (optional; never print the value). Do not commit cookie values or API keys, and do not write them into logs or receipts.
-- **落点保持分开。 / Keep sinks separate.** YouTube、X、微信和官方文档各自留在自己的频道。未知来源应失败关闭或先询问；不要掉进一个大杂烩文件夹。
-  YouTube, X, WeChat, and official docs stay in their own channels. An unknown source fails closed or asks; it does not drop into a catch-all folder.
-
-## 评测 / Evals
-
-[`evals/evals.json`](evals/evals.json) 带三条起步用例（有技能对照无技能）。
-
-[`evals/evals.json`](evals/evals.json) ships three starter cases (with-skill vs without-skill):
-
-1. `youtube-with-captions-or-asr` — 从字幕或 ASR 读一条 YouTube 链接；否则说未完成。
-   Read a YouTube link from captions or ASR; otherwise say not finished.
-2. `no-transcript-must-refuse-final-deposit` — 短视频上的空 ASR 不能变成最终知识库笔记。
-   Empty short-video ASR must not become a final vault note.
-3. `chinese-asr-hallucination-gate` — 预期中文讲稿上的英文循环，不能当成一篇打磨好的文章发出去。
-   English loops on an expected-Chinese talk must not ship as a polished essay.
-
-## 许可 / License
-
-以 [MIT](LICENSE) 许可发布。Copyright (c) 2026 HappyDrunk。
+## License
 
 Released under the [MIT](LICENSE) license. Copyright (c) 2026 HappyDrunk.
+
+# 中文
+
+## 这是什么
+
+这个文件夹教 AI 代理一件事：先读视频里真正说出口的话，再根据这些话写笔记。
+
+换句话说，标题、简介、推文、封面，都不算看过。
+
+## 适合谁
+
+你会把 YouTube、Bilibili、X 或短视频链接发给代理，并且希望笔记写的是视频里说了什么。这份说明就是给你的。
+
+不必事先懂「Agent Skill」。它就是一个文件夹，里面写着代理每次都要遵守的规则。本仓库就是那个文件夹。
+
+## 它解决的问题
+
+**代理用标题假装看过。** 你发来一个链接。它读了标题和简介，写出一篇很有把握的摘要就停了。视频没有被转成文字。笔记看起来写完了，观看并没有发生。
+
+**短视频被跳过。** 一段大约 20 秒的视频，语音识别返回空白。代理补上一句「视频未转写」，仍把它收成已完成。视频短，也得听见里面的话。文字是空的，这件事就还没做完。
+
+**糟糕的识别结果变成假笔记。** 口播是中文，识别器却按英语来听，把同一段英语胡话重复了很多遍。ASR 就是自动语音识别，也就是把声音转成文字的程序。代理接着写了一篇整齐的文章，主题是「转写失败了」，并把这篇文章当成讲稿存下来。质量门就是拦住这件事的检查：写笔记之前，先确认文稿（说出来的话写成的文字）是真人说话，不是一堆垃圾。
+
+## 怎么用
+
+1. **克隆这个文件夹。**
+
+   ```bash
+   git clone https://github.com/HappyDrunk/transcript-first-video.git
+   ```
+
+2. **放到代理加载技能的地方。** 常见位置是 `skills/transcript-first-video/`，跟负责下载音频、跑语音识别的程序放在一起。那个程序在你自己的项目里，不在本仓库里。
+
+3. **把视频链接交给代理。** 请它根据口播来读或总结。拿不到真实文稿时，让它直接说没做完。
+
+4. **做完是这样的。** 已经有能用的文字：官方字幕、这条视频保存过的文稿，或者通过质量门的语音识别。笔记根据这段文字写成，并且写明文稿文件在哪里。
+
+5. **它说「没做完」时，这个回答是对的。** 在拿到真实口播文字之前，最终笔记先别写。留下状态，例如 `needs-transcript`、`video-pending`，或写明哪一项质量门没过，再写下一步：把任务放进队列、换一个更强的语音模型重试一次，或者停止。只有你接受这条较弱的路，并且笔记自己写明「只根据标题和简介」，才可以那样写。
+
+代理按这个顺序尝试：先官方字幕，再这条视频已有的文稿，再语音识别，最后老实说没做完。语音任务一次做一个。费时间的活交给后台 worker（一个在旁边持续处理任务的小程序）。聊天窗口留给你。
+
+## 仓库里有什么
+
+| 路径 | 是什么 |
+| --- | --- |
+| [SKILL.md](SKILL.md) | 详细的规则手册：步骤、质量门，以及密钥怎么处理。 |
+| [references/pitfalls.md](references/pitfalls.md) | 从真实失误里整理的教训，私人信息已经去掉。笔记看起来完成了其实没有，或者中文口播被听成英语胡话时，先读它。 |
+| [evals/evals.json](evals/evals.json) | 三道练习题。用来检查代理是在遵守这套规则，还是又退回去假装看过。 |
+| [scripts/](scripts/) | 一个空位。真正排队、跑任务的命令在你自己的项目里。见 [scripts/README.md](scripts/README.md)。 |
+
+## 这个仓库不是什么
+
+- **不是一个点开就能用的应用。** 克隆下来不会自己看视频。代理加载这份技能，你的项目负责下载和语音识别。
+- **不是整台电脑的拷贝。** 它不带走别人的收件箱格式、个人笔记目录、定时任务，或另一台机器上的 `.env`。
+- **不是放密码的地方。** 文档最多写出环境变量的名字，例如 `BILIBILI_SESSDATA`，不会写出值。cookie 和 API key 不要放进仓库、日志或笔记。
+
+## 怎样算用对了
+
+- 笔记标明了文稿文件，或者明确说任务没做完。
+- 「我看过了」这句话里，没有用标题、简介、推文或封面来充数。
+- 文字是空的短视频仍然开着，没有被标成完成。
+- 循环或胡话的识别结果在变成文章之前就被拦住了。
+- 仓库、日志和笔记里都没有 cookie 或 API key。
+
+## 许可
+
+以 [MIT](LICENSE) 许可发布。Copyright (c) 2026 HappyDrunk。
