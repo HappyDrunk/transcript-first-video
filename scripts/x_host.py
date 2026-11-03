@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Minimal Twitter/X video host: captions first, optional ASR, otherwise not finished.
+"""Minimal Twitter/X video host: captions first, optional ASR, otherwise no transcript.
 
-Same quality gate and the same knowledge note as the YouTube host: four sections,
-each quoting the transcript. Post text is never a transcript. On failure the job
-directory keeps status.json and no note.
+Same quality gate as the YouTube host. A passing transcript writes
+note.scaffold.md (frontmatter, four empty section headings, fill instructions),
+not a finished knowledge note. Post text is never a transcript. On failure the
+job directory keeps status.json and no scaffold.
 
 Public media lookup uses the FxTwitter-style API at https://api.fxtwitter.com
 (no key). Set FX_TWITTER_API=off to skip it. YTDLP_COOKIES is an optional path
 when yt-dlp hits a sign-in wall. Never commit that file.
 
-Exit 0 finished. Exit 2 not finished or quality-gate failure. Exit 1 usage.
+Exit 0 when the transcript passes and a scaffold is written. That exit does not
+mean a finished knowledge note. Exit 2 when the transcript is not usable.
+Exit 1 usage.
 """
 
 from __future__ import annotations
@@ -597,7 +600,8 @@ def run_x_host(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Fetch a public Twitter/X video transcript and write an Obsidian Markdown note only if the quality gate passes."
+            "Fetch a public Twitter/X video transcript. When the quality gate passes, "
+            "write note.scaffold.md. Do not write a finished knowledge note."
         )
     )
     parser.add_argument("url", nargs="?", help="x.com or twitter.com status URL, or a numeric status id")
@@ -611,7 +615,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-lang", default=None)
     parser.add_argument("--asr", choices=["auto", "off", "whisper", "openai"], default="auto")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Accepted for compatibility. The host writes a scaffold, not a finished note, "
+            "so this flag does not run verify_note."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         if args.settle_transcript:

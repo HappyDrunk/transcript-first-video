@@ -2,8 +2,8 @@
   "skill_name": "transcript-first-video",
   "how_this_file_is_enforced": {
     "agent_or_human": "Each item in evals is a prompt and a list of assertions for an agent or a person. CI does not send these prompts to a model and does not score the assertions.",
-    "ci": "The GitHub Actions job gate runs python3 scripts/test_gate.py and python3 scripts/run_evidence.py --skip-live. Those commands check the fixture files and the offline settle path. A green check is that mechanical run. It is not a pass of the prompts below.",
-    "effect_spotcheck": "evals/results/spotcheck.md is an agent or human reading of committed notes. CI does not score it. A green gate check is not a pass of that file."
+    "ci": "The GitHub Actions job gate runs python3 scripts/test_gate.py, python3 scripts/test_no_overfit.py, and python3 scripts/run_evidence.py --skip-live. Those commands check the fixture files, the offline settle path, and that scripts/ has no retired template tokens. A green check is that mechanical run. It is not a pass of the prompts below.",
+    "effect_spotcheck": "evals/results/spotcheck.md records that the live template notes were withdrawn and still reads the fixture refusals. CI does not score it. A green gate check is not a pass of that file."
   },
   "evals": [
     {

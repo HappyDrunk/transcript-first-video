@@ -287,6 +287,7 @@ def host_settle(video_id: str, transcript: str, expected_lang: str, out: Path) -
         "reason": payload.get("reason"),
         "next_step": payload.get("next_step"),
         "note_exists": (job / "note.md").is_file(),
+        "scaffold_exists": (job / "note.scaffold.md").is_file(),
         "transcript_exists": (job / "transcript.txt").is_file(),
         "verifier": payload.get("verifier"),
     }
@@ -317,6 +318,7 @@ def x_host_settle(status_id: str, transcript: str, expected_lang: str, out: Path
         "reason": payload.get("reason"),
         "next_step": payload.get("next_step"),
         "note_exists": (job / "note.md").is_file(),
+        "scaffold_exists": (job / "note.scaffold.md").is_file(),
         "transcript_exists": (job / "transcript.txt").is_file(),
         "verifier": payload.get("verifier"),
     }
@@ -327,11 +329,11 @@ def host_cases() -> list[dict]:
     with tempfile.TemporaryDirectory(prefix="tfv-evidence-") as tmp:
         out = Path(tmp)
         usable = host_settle("usable-en", "evals/fixtures/usable_en_transcript.txt", "en", out)
-        usable["expect"] = "finished deposit, verifier allows"
+        usable["expect"] = "gate pass writes a scaffold, not a finished note"
         results.append(usable)
         stale = host_settle("usable-en", "evals/fixtures/empty_transcript.txt", "en", out)
         stale["id"] = "stale-deposit-removed"
-        stale["expect"] = "rerun with empty text deletes the previous note and transcript"
+        stale["expect"] = "rerun with empty text deletes the previous scaffold and transcript"
         results.append(stale)
         empty = host_settle("empty-asr", "evals/fixtures/empty_transcript.txt", "en", out)
         empty["expect"] = "empty transcript writes status only"
@@ -345,7 +347,7 @@ def host_cases() -> list[dict]:
             "en",
             out,
         )
-        x_usable["expect"] = "x_host settle uses the same gate and writes a knowledge note"
+        x_usable["expect"] = "x_host settle uses the same gate and writes a scaffold, not a finished note"
         results.append(x_usable)
     return results
 
@@ -388,6 +390,7 @@ def live_case() -> dict:
             "verifier": payload.get("verifier"),
             "transcript": payload.get("transcript"),
             "note": payload.get("note"),
+            "scaffold": payload.get("scaffold"),
         }
     )
     transcript = payload.get("transcript")
@@ -431,16 +434,17 @@ def markdown(report: dict) -> str:
             "",
             "## Host deposit behavior",
             "",
-            "YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row calls `x_host.py --settle-transcript`. No network. Both still run the gate and do not pretend a fetch happened.",
+            "YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row calls `x_host.py --settle-transcript`. No network. A passing transcript writes `note.scaffold.md` and does not write a finished `note.md`. Both still run the gate and do not pretend a fetch happened.",
             "",
-            "| video id | status | note written | transcript written | exit | expect |",
-            "| :--- | :--- | :--- | :--- | :--- | :--- |",
+            "| video id | status | finished note | scaffold | transcript | exit | expect |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
         ]
     )
     for case in report["host_settle"]:
         lines.append(
             f"| `{case.get('id') or case['video_id']}` | {case['status']} | {str(case['note_exists']).lower()} | "
-            f"{str(case['transcript_exists']).lower()} | {case['exit_code']} | {case.get('expect', '')} |"
+            f"{str(case.get('scaffold_exists')).lower()} | {str(case['transcript_exists']).lower()} | "
+            f"{case['exit_code']} | {case.get('expect', '')} |"
         )
     live = report["live"]
     lines.extend(["", "## Live YouTube", ""])
@@ -462,32 +466,39 @@ def markdown(report: dict) -> str:
     lines.append("")
     lines.append(f"Command: `{live['command']}`.")
     lines.append("")
-    if live.get("finished"):
+    if live.get("template_note_withdrawn") or live.get("gate_passed"):
         lines.append(
-            f"Result: finished via `{live.get('acquisition')}` "
+            f"Result: transcript acquired via `{live.get('acquisition')}` "
             f"({live.get('caption_language')} {live.get('caption_kind')}). "
-            f"Verifier allowed: {(live.get('verifier') or {}).get('allowed')}. "
             f"Transcript characters: {live.get('transcript_chars')}."
         )
+        lines.append("")
+        if live.get("template_note_withdrawn"):
+            lines.append(
+                "The template knowledge note previously stored beside this transcript was withdrawn. "
+                "It had been filled by video-specific templates, not written as analysis. "
+                "The host does not write a finished knowledge note."
+            )
+        else:
+            lines.append(
+                "The host wrote a scaffold, not a finished knowledge note. "
+                "The platform title and description are not stored."
+            )
         lines.append("")
         if live.get("acquisition") == "caption-mirror":
             lines.append(
                 "yt-dlp did not return captions. The text came from the public mirror fallback. "
-                "The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         elif live.get("acquisition") == "yt-dlp":
             lines.append(
-                "Captions came from yt-dlp. The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                "Captions came from yt-dlp. "
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         else:
             lines.append(
-                f"Acquisition was `{live.get('acquisition')}`. The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                f"Acquisition was `{live.get('acquisition')}`. "
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         lines.append("")
         if live.get("excerpt"):
@@ -516,11 +527,34 @@ def markdown(report: dict) -> str:
 def host_settle_ok(cases: list[dict]) -> bool:
     by_id = {case.get("id") or case["video_id"]: case for case in cases}
     checks = {
-        "usable-en": lambda case: case["finished"] is True and case["note_exists"] is True,
-        "stale-deposit-removed": lambda case: case["note_exists"] is False and case["transcript_exists"] is False,
-        "empty-asr": lambda case: case["finished"] is False and case["note_exists"] is False,
-        "zh-loop": lambda case: case["status"] == "quality_gate_failed" and case["note_exists"] is False,
-        "x-usable": lambda case: case["finished"] is True and case["note_exists"] is True and case["exit_code"] == 0,
+        "usable-en": lambda case: (
+            case["finished"] is False
+            and case["status"] == "transcript_ready"
+            and case["note_exists"] is False
+            and case["scaffold_exists"] is True
+            and case["transcript_exists"] is True
+            and case["exit_code"] == 0
+        ),
+        "stale-deposit-removed": lambda case: (
+            case["note_exists"] is False
+            and case["scaffold_exists"] is False
+            and case["transcript_exists"] is False
+        ),
+        "empty-asr": lambda case: (
+            case["finished"] is False and case["note_exists"] is False and case["scaffold_exists"] is False
+        ),
+        "zh-loop": lambda case: (
+            case["status"] == "quality_gate_failed"
+            and case["note_exists"] is False
+            and case["scaffold_exists"] is False
+        ),
+        "x-usable": lambda case: (
+            case["finished"] is False
+            and case["status"] == "transcript_ready"
+            and case["note_exists"] is False
+            and case["scaffold_exists"] is True
+            and case["exit_code"] == 0
+        ),
     }
     return all(key in by_id and check(by_id[key]) for key, check in checks.items())
 

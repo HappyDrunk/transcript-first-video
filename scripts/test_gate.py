@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import sys
@@ -207,7 +209,9 @@ class VerifierTests(unittest.TestCase):
         self.assertFalse(canned["allowed"], canned["reasons"])
         self.assertTrue(any("boilerplate" in reason for reason in canned["reasons"]))
 
-    def test_generic_transcript_still_forms_a_knowledge_note(self) -> None:
+    def test_scaffold_is_not_a_finished_note(self) -> None:
+        self.assertFalse(hasattr(knowledge_note, "compose"))
+        self.assertFalse(hasattr(knowledge_note, "render_note"))
         text = (
             "The warehouse team loses an hour every morning reconciling two spreadsheets. "
             "Export the overnight file before standup. "
@@ -218,23 +222,39 @@ class VerifierTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "transcript.txt"
             path.write_text(text + "\n", encoding="utf-8")
-            note = knowledge_note.render_note(
+            note = knowledge_note.render_scaffold(
                 job_id="job_generic",
                 video_id="generic",
                 source="settle-transcript:generic",
                 acquisition="settle-transcript",
                 transcript_cite=path.as_posix(),
-                transcript_text=text,
             )
+            self.assertTrue(note.startswith("---\n"))
+            self.assertIn("Scaffold only. This file is not a finished knowledge note.", note)
+            self.assertNotIn(text[:40], note)
+            bodies = dict(knowledge_note._section_bodies(note))
+            for heading in knowledge_note.SECTIONS:
+                self.assertIn(heading, bodies)
+                self.assertEqual(bodies[heading].strip(), "")
             result = verify_note.verify(path, note, expected_lang="en")
-            self.assertTrue(result["allowed"], result["reasons"])
-            for heading in (
-                "问题与做法",
-                "完整怎么做",
-                "翻车或别用",
-                "今天立刻动手一步",
-            ):
-                self.assertIn(f"## {heading}", note)
+            self.assertFalse(result["allowed"], result["reasons"])
+            self.assertTrue(
+                any("does not analyze" in reason or "quoted_window" in reason for reason in result["reasons"])
+            )
+
+    def test_keyword_salad_is_pending_r09(self) -> None:
+        """Shape check still allows the keyword salad. Phase 3 must refuse it under R09.
+
+        This assertion is the pending marker. It is not acceptance of the salad.
+        """
+        note_path = ROOT / "evals/adversarial/keyword_salad_en.md"
+        transcript = ROOT / "evals/adversarial/saas_pricing_transcript.txt"
+        text = note_path.read_text(encoding="utf-8")
+        self.assertIn("expect: FAIL R09", text)
+        self.assertIn("expected-fail-pending", text)
+        self.assertIn("Today, do only the first spoken move: Most, founders, set, price, too, low.", text)
+        result = verify_note.verify(transcript, text, expected_lang="en")
+        self.assertTrue(result["allowed"], result["reasons"])
 
 
 class HostTests(unittest.TestCase):
@@ -316,6 +336,14 @@ class HostTests(unittest.TestCase):
         self.assertEqual(all_lines, text.splitlines())
         self.assertEqual(whole, " ".join(all_lines))
 
+    def test_scaffold_exit_code_stays_zero(self) -> None:
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = youtube_host._emit(
+                {"status": "transcript_ready", "finished": False, "exit_code": 0},
+                as_json=True,
+            )
+        self.assertEqual(code, 0)
+
     def test_finalize_writes_citation_or_status_only(self) -> None:
         usable = (ROOT / "evals/fixtures/usable_en_transcript.txt").read_text(encoding="utf-8")
         empty = (ROOT / "evals/fixtures/empty_transcript.txt").read_text(encoding="utf-8")
@@ -331,12 +359,19 @@ class HostTests(unittest.TestCase):
                 acquisition="settle-transcript",
             )
             self.assertEqual(ok["exit_code"], 0)
+            self.assertEqual(ok["status"], "transcript_ready")
+            self.assertFalse(ok["finished"])
+            self.assertIsNone(ok["note"])
+            self.assertIsNone(ok["verifier"])
             note_path = out / "youtube_usable-en" / "note.md"
+            scaffold_path = out / "youtube_usable-en" / "note.scaffold.md"
             transcript_path = out / "youtube_usable-en" / "transcript.txt"
-            self.assertTrue(note_path.is_file())
+            self.assertFalse(note_path.exists())
+            self.assertTrue(scaffold_path.is_file())
             self.assertTrue(transcript_path.is_file())
-            note = note_path.read_text(encoding="utf-8")
+            note = scaffold_path.read_text(encoding="utf-8")
             cite = youtube_host.cite_path(transcript_path)
+            self.assertEqual(ok["scaffold"], youtube_host.cite_path(scaffold_path))
             self.assertIn(cite, note)
             self.assertTrue(note.startswith("---\n"))
             self.assertIn('title: "youtube_usable-en"', note)
@@ -346,16 +381,20 @@ class HostTests(unittest.TestCase):
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'transcript_path: "{cite}"', note)
             self.assertIn("quoted_window: |-", note)
+            self.assertIn("not a finished knowledge note", note)
             for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
                 self.assertIn(f"## {heading}", note)
             self.assertNotIn("## Quoted window", note)
             self.assertNotIn("The quoted window is copied", note)
-            self.assertIn("root-bound", note)
+            self.assertNotIn("root-bound", note)
             status = json.loads((out / "youtube_usable-en" / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "transcript_ready")
+            self.assertFalse(status["finished"])
+            self.assertIsNone(status["note"])
             self.assertNotIn("title", status)
             self.assertNotIn("description", status)
             checked = verify_note.verify(transcript_path, note, expected_lang="en")
-            self.assertTrue(checked["allowed"], checked["reasons"])
+            self.assertFalse(checked["allowed"], checked["reasons"])
 
             refused = youtube_host.finalize_job(
                 text=empty,
@@ -367,6 +406,7 @@ class HostTests(unittest.TestCase):
             )
             self.assertEqual(refused["exit_code"], 2)
             self.assertFalse(note_path.exists())
+            self.assertFalse(scaffold_path.exists())
             self.assertFalse(transcript_path.exists())
             self.assertTrue((out / "youtube_usable-en" / "status.json").is_file())
 
@@ -380,6 +420,7 @@ class HostTests(unittest.TestCase):
             )
             self.assertEqual(blocked["status"], "quality_gate_failed")
             self.assertFalse((out / "youtube_zh-loop" / "note.md").exists())
+            self.assertFalse((out / "youtube_zh-loop" / "note.scaffold.md").exists())
             self.assertNotIn("title", blocked)
 
 
@@ -574,27 +615,34 @@ class XHostTests(unittest.TestCase):
                 settle_text=usable,
             )
             self.assertEqual(ok["exit_code"], 0, ok.get("reason"))
+            self.assertEqual(ok["status"], "transcript_ready")
+            self.assertFalse(ok["finished"])
+            self.assertIsNone(ok["note"])
             job = out / f"x_{status_id}"
             note_path = job / "note.md"
+            scaffold_path = job / "note.scaffold.md"
             transcript_path = job / "transcript.txt"
-            self.assertTrue(note_path.is_file())
+            self.assertFalse(note_path.exists())
+            self.assertTrue(scaffold_path.is_file())
             self.assertTrue(transcript_path.is_file())
-            note = note_path.read_text(encoding="utf-8")
+            note = scaffold_path.read_text(encoding="utf-8")
             self.assertIn(f"x_{status_id}", note)
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'video_id: "{status_id}"', note)
+            self.assertIn("not a finished knowledge note", note)
             for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
                 self.assertIn(f"## {heading}", note)
             self.assertNotIn("## Quoted window", note)
             checked = verify_note.verify(transcript_path, note, expected_lang="en")
-            self.assertTrue(checked["allowed"], checked["reasons"])
-            self.assertTrue(checked["quoted"])
+            self.assertFalse(checked["allowed"], checked["reasons"])
             path_only = f"Title: done.\n\ntranscript: {youtube_host.cite_path(transcript_path)}\n"
             refused = verify_note.verify(transcript_path, path_only, expected_lang="en")
             self.assertFalse(refused["allowed"])
             self.assertTrue(refused["cited"])
             self.assertFalse(refused["quoted"])
             status = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertIsNone(status["note"])
+            self.assertFalse(status["finished"])
             self.assertNotIn("title", status)
             self.assertNotIn("text", status)
 
@@ -609,6 +657,7 @@ class XHostTests(unittest.TestCase):
             )
             self.assertEqual(blocked["exit_code"], 2)
             self.assertFalse(note_path.exists())
+            self.assertFalse(scaffold_path.exists())
             self.assertFalse(transcript_path.exists())
             self.assertTrue((job / "status.json").is_file())
             self.assertNotIn("title", blocked)

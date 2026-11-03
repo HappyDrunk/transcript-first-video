@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Gate tests
         run: python3 scripts/test_gate.py
+      - name: No video-specific tokens
+        run: python3 scripts/test_no_overfit.py
       - name: Evidence fixtures
         run: python3 scripts/run_evidence.py --skip-live
       - name: Evidence stays clean

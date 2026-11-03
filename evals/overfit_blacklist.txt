@@ -1,0 +1,9 @@
+# Retired template tokens. One pattern per line. Case-insensitive.
+# scripts/test_no_overfit.py is the only reader. Do not copy these into scripts/.
+pothos
+绿萝
+闷根
+elephant
+spaceport
+forward deployed
+FDE
