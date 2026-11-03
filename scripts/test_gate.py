@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import sys
@@ -321,10 +323,11 @@ class HostTests(unittest.TestCase):
         self.assertEqual(whole, " ".join(all_lines))
 
     def test_scaffold_exit_code_stays_zero(self) -> None:
-        code = youtube_host._emit(
-            {"status": "transcript_ready", "finished": False, "exit_code": 0},
-            as_json=True,
-        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = youtube_host._emit(
+                {"status": "transcript_ready", "finished": False, "exit_code": 0},
+                as_json=True,
+            )
         self.assertEqual(code, 0)
 
     def test_finalize_writes_citation_or_status_only(self) -> None:
