@@ -33,6 +33,7 @@ python scripts/youtube_host.py \
   --json >/dev/null
 
 python scripts/run_evidence.py --skip-live
+python scripts/verify_report.py
 
 echo "offline smoke passed (ASR left off; yt-dlp only)"
 

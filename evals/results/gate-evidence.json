@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-03T08:13:36Z",
+  "generated_at": "2026-11-03T08:44:12Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -29,7 +29,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "quality gate failed: empty or unusable transcript (no speech text after cleanup)"
+        "R01 FAIL: quality gate failed: empty or unusable transcript (no speech text after cleanup)"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -46,9 +46,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "quality gate failed: looping repeats: the same segment appears 6 times (43% of segments)",
-        "quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)",
-        "analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+        "R01 FAIL: quality gate failed: looping repeats: the same segment appears 6 times (43% of segments); quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35); analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -80,7 +78,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)"
+        "R01 FAIL: quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -97,7 +95,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech"
+        "R01 FAIL: quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -114,9 +112,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "missing transcript path: evals/fixtures/does_not_exist.txt does not exist",
-        "note does not cite transcript path evals/fixtures/does_not_exist.txt",
-        "analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+        "R01 FAIL: missing transcript path: evals/fixtures/does_not_exist.txt does not exist; analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -133,10 +129,9 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "note does not cite transcript path evals/fixtures/usable_en_transcript.txt",
-        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)",
-        "note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
-        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+        "R02 FAIL: note does not cite transcript path evals/fixtures/usable_en_transcript.txt; note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
+        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步",
+        "R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -153,9 +148,9 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)",
-        "note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
-        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+        "R02 FAIL: note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
+        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步",
+        "R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -172,7 +167,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -189,15 +184,9 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim",
-        "section 问题与做法 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
-        "boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim",
-        "section 完整怎么做 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
-        "boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim",
-        "section 翻车或别用 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
-        "boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim",
-        "section 今天立刻动手一步 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
-        "finished note repeats the same analysis in more than one knowledge section"
+        "R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi",
+        "R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim",
+        "R13 FAIL: 今天立刻动手一步 does not start with a verb"
       ],
       "naive_would_deposit": true,
       "matched": true

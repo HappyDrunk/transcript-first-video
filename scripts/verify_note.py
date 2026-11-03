@@ -31,23 +31,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import knowledge_note  # noqa: E402
-import quality_gate  # noqa: E402
+import verify_rules  # noqa: E402
 
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
-
-_LAUNDER = re.compile(
-    r"("
-    r"asr[\s-]*(quality|fail)"
-    r"|transcription fail"
-    r"|transcript (failed|failure|is garbage|is unusable|is nonsense)"
-    r"|quality[-\s]*gate failure"
-    r"|speech recognition failed"
-    r"|转写失败"
-    r"|识别失败"
-    r"|hallucinat"
-    r")",
-    re.IGNORECASE,
-)
 
 
 def citation_forms(transcript: Path) -> set[str]:
@@ -128,56 +114,29 @@ def verify(
     *,
     expected_lang: str | None = None,
     confidence: float | None = None,
+    job_status: str | None = None,
 ) -> dict:
-    reasons: list[str] = []
-    gate = None
-    exists = transcript.is_file()
-    if not exists:
-        reasons.append(f"missing transcript path: {transcript} does not exist")
-    else:
-        raw = transcript.read_text(encoding="utf-8", errors="replace")
-        gate = quality_gate.assess(raw, expected_lang=expected_lang, confidence=confidence)
-        if not gate.passed:
-            for reason in gate.reasons:
-                reasons.append(f"quality gate failed: {reason}")
-    cited = note_cites(note, transcript)
-    quoted = bool(exists and gate is not None and quotes_transcript(note, gate.text))
-    if exists and gate is not None and gate.passed:
-        if not cited:
-            display = transcript.as_posix() if not transcript.is_absolute() else str(transcript)
-            reasons.append(f"note does not cite transcript path {display}")
-        if not quoted:
-            reasons.append(quote_refusal(gate.text))
-        reasons.extend(knowledge_note.knowledge_reasons(note, gate.text))
-        fields = knowledge_note.parse_frontmatter(note) or {}
-        cited_path = str(fields.get("transcript_path") or "").replace("\\", "/")
-        forms = {form.replace("\\", "/") for form in citation_forms(transcript)}
-        if cited_path and cited_path not in forms:
-            reasons.append(
-                f"frontmatter transcript_path does not match the transcript file {transcript.as_posix()}"
-            )
-    elif not exists and not cited:
-        reasons.append(f"note does not cite transcript path {transcript.as_posix()}")
-    laundering = bool(_LAUNDER.search(note))
-    if laundering:
-        usable = gate is not None and gate.passed
-        if not usable:
-            reasons.append(
-                "analyzer-laundering: the note is an essay about ASR or transcription "
-                "failure without a usable transcript"
-            )
-        elif not quoted:
-            reasons.append(
-                "analyzer-laundering: the note discusses ASR or transcription failure "
-                "and does not quote the transcript"
-            )
-    allowed = not reasons
+    """Run R01–R15. ``reasons`` are ``Rxx FAIL: ...`` lines."""
+    ctx = verify_rules.build_context(
+        transcript,
+        note,
+        expected_lang=expected_lang,
+        confidence=confidence,
+        job_status=job_status,
+    )
+    results = verify_rules.run_rules(ctx)
+    reasons = verify_rules.failure_lines(results)
+    gate = ctx.gate
     return {
-        "allowed": allowed,
+        "allowed": not reasons,
         "reasons": reasons,
+        "rules": [
+            {"id": rule_id, "ok": ok, "message": message}
+            for rule_id, ok, message in results
+        ],
         "transcript": transcript.as_posix(),
-        "cited": cited,
-        "quoted": quoted,
+        "cited": ctx.cited,
+        "quoted": ctx.quoted,
         "gate": None if gate is None else gate.to_dict(),
     }
 
@@ -291,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 return _emit_verify(
                     {
                         "allowed": False,
-                        "reasons": [reason],
+                        "reasons": [f"R03 FAIL: {reason}"],
                         "status": NO_EXTRACTABLE,
                         "note_deleted": True,
                     },
@@ -305,12 +264,22 @@ def main(argv: list[str] | None = None) -> int:
         if note_arg is None:
             note_arg = str(note_path)
         expected = _job_expected_lang(job, args.expected_lang)
+        status_name = None
+        status_path = job / "status.json"
+        if status_path.is_file():
+            try:
+                loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                loaded = None
+            if isinstance(loaded, dict):
+                status_name = loaded.get("status")
     else:
         if transcript is None:
             parser.error("pass --transcript, or pass --job")
         if note_arg is None:
             note_arg = "-"
         expected = args.expected_lang
+        status_name = None
     try:
         note = _read_note(note_arg)
     except SystemExit as exc:
@@ -322,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         note,
         expected_lang=expected,
         confidence=args.confidence,
+        job_status=status_name,
     )
     return _emit_verify(result, as_json=args.json)
 

@@ -4,6 +4,9 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+- `verify_note.py` is a deterministic rule engine. Each failure is `Rxx FAIL: ...` for R01–R15. See `references/rules.md`.
+- CI runs `scripts/verify_report.py` on `evals/adversarial/` (at least 30) and `evals/good/` (at least 15) and fails when intercept is under 95% or the false-positive rate is over 10%. No language model is called. `evals/adversarial/keyword_salad_en.md` fails R09.
+- The whisper CLI path does not supply a confidence score. Docs no longer say that path has a confidence floor. `CONFIDENCE_FLOOR` still applies when a caller passes a number.
 - Caption cues keep their clock. A passing job writes `transcript.txt` as `[mm:ss] text` (or `[hh:mm:ss]` after one hour), `segments.json` (`start`, `end`, `text`), and `chunks/NN.txt` of about 8 minutes or about 6000 characters. Plain text with no clock stays unstamped.
 - `caption_kind` is recorded when known. Automatic captions whose language is not the expected language are marked `caption_trust: low` in `status.json` and the scaffold frontmatter.
 - A section may be `本节不适用：<reason>` plus one quote. If all four sections are that form, `verify_note.py --job` sets `no-extractable-content` and deletes `note.md`.

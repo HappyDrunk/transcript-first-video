@@ -34,13 +34,13 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Fix:** Set expected language for the content. Run a quality gate **before** analysis. Do not let the analyzer be the hallucination detector.
 
-**False reject:** `--expected-lang zh` also refuses a real Chinese talk when English technical terms pull the CJK ratio under 0.35, even if there are more than 8 CJK characters. That fail-closed is intentional. Omit `--expected-lang` only when you accept losing the script check; loop, gibberish, and confidence checks still run. `ZH_MIN_CJK` and `ZH_MIN_CJK_RATIO` live in `scripts/quality_gate.py`. They are not command-line flags. Do not lower them to force a bad transcript through.
+**False reject:** `--expected-lang zh` also refuses a real Chinese talk when English technical terms pull the CJK ratio under 0.35, even if there are more than 8 CJK characters. That fail-closed is intentional. Omit `--expected-lang` only when you accept losing the script check; loop, gibberish, and length checks still run. A confidence number is checked only when one is passed in. The whisper CLI path does not pass one, so that path has no confidence floor. `ZH_MIN_CJK` and `ZH_MIN_CJK_RATIO` live in `scripts/quality_gate.py`. They are not command-line flags. Do not lower them to force a bad transcript through.
 
 ## 6. “Has Chinese characters” is not quality
 
 **Mistake:** After forcing `language=zh`, accept any mostly-CJK transcript even when nouns / domain terms are garbage and confidence is low.
 
-**Fix:** Gate on confidence / repeat / semantic sanity, not character script alone. Prefer a production floor like `small` (or higher) for Chinese; use `tiny`/`base` only for diagnosis. On soft fail, auto-retry once at `medium` into a **separate** transcript file; then stop and escalate (cloud ASR / human) instead of looping forever.
+**Fix:** Gate on repeat, gibberish, and length, not character script alone. The bundled gate does not invent a confidence score for the whisper CLI. It applies `CONFIDENCE_FLOOR` only when the caller passes a number. Prefer a production model like `small` (or higher) for Chinese; use `tiny`/`base` only for diagnosis. On soft fail, auto-retry once at `medium` into a **separate** transcript file; then stop and escalate (cloud ASR / human) instead of looping forever.
 
 ## 7. Analyzer launders bad transcripts
 

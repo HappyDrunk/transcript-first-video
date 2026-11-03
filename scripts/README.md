@@ -12,7 +12,7 @@ Offline:
 bash scripts/smoke.sh
 ```
 
-This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles `evals/fixtures/usable_en_transcript.txt`, and regenerates fixture evidence with `run_evidence.py --skip-live`. ASR stays off.
+This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles `evals/fixtures/usable_en_transcript.txt`, regenerates fixture evidence with `run_evidence.py --skip-live`, and runs `scripts/verify_report.py`. ASR stays off. No language model is called.
 
 With a network, the same script also tries a short public captioned video ("Me at the zoo", `jNQXAC9IVRw`):
 
@@ -80,7 +80,7 @@ Names only. Do not commit values.
 
 `--expected-lang zh` fails closed when Chinese characters are fewer than 8, or when the CJK ratio among CJK plus Latin letters is under 0.35. Those floors are `ZH_MIN_CJK` and `ZH_MIN_CJK_RATIO` in `quality_gate.py`. They are not command-line flags.
 
-A real Chinese talk packed with English technical terms (API names, model names, `RAG`, `Kubernetes`) can sit under 0.35 and be refused even though a person was speaking, and even though the CJK count itself is above 8. The universal checks (length, loops, gibberish, confidence) can still pass on that same text. The false reject is intentional: this ratio check is what blocks an English hallucination loop when Chinese was expected. A wrong note is worse than holding the talk back.
+A real Chinese talk packed with English technical terms (API names, model names, `RAG`, `Kubernetes`) can sit under 0.35 and be refused even though a person was speaking, and even though the CJK count itself is above 8. The universal checks (length, loops, gibberish) can still pass on that same text. A confidence number is applied only when the caller passes one. The whisper CLI path does not. The false reject is intentional: this ratio check is what blocks an English hallucination loop when Chinese was expected. A wrong note is worse than holding the talk back.
 
 Tune by omitting `--expected-lang` when you know the talk mixes Chinese with English identifiers and you accept losing the script check. Do not omit it just to force a bad transcript through. There is no flag to lower 0.35 for one job. Omit `--expected-lang` when you do not actually know the language. Pass `en`, `ja`, or `ko` only when you do.
 
@@ -102,6 +102,7 @@ Regenerate the checked-in pass/fail record. `--skip-live` skips the YouTube fetc
 python3 scripts/test_gate.py
 python3 scripts/test_no_overfit.py
 python3 scripts/run_evidence.py
+python3 scripts/verify_report.py
 python3 scripts/run_evidence.py --skip-live
 ```
 

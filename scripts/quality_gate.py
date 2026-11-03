@@ -27,6 +27,8 @@ ZH_MIN_CJK_RATIO = 0.35
 JA_MAX_LATIN_RATIO = 0.75
 KO_MIN_HANGUL = 8
 LATIN_MAX_CJK_RATIO = 0.65
+# Used only when assess() is given a numeric confidence. The whisper CLI
+# path does not read a score, so an omitted confidence is not a floor.
 CONFIDENCE_FLOOR = 0.40
 MIN_VOWEL_RATIO = 0.22
 MIN_LATIN_FOR_VOWEL = 40

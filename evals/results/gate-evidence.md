@@ -1,6 +1,6 @@
 # Gate evidence
 
-Generated 2026-11-03T08:13:36Z by `python3 scripts/run_evidence.py`.
+Generated 2026-11-03T08:44:12Z by `python3 scripts/run_evidence.py`.
 
 Two bars, both required. (A) No note without a usable transcript: the file has to exist and pass the quality gate. (B) A finished note has to analyze that transcript into reusable knowledge. The four sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, and each one quotes a 40-character window of the transcript. A path, a status, or a quote with no analysis is refused.
 
@@ -25,16 +25,16 @@ This table is that mechanical check. It does not listen to the audio, so a fluen
 Reasons:
 
 - `usable-en`: cites a usable transcript, quotes it in each knowledge section, and the analysis is not a stub
-- `empty-asr`: quality gate failed: empty or unusable transcript (no speech text after cleanup)
-- `zh-en-loop-launder`: quality gate failed: looping repeats: the same segment appears 6 times (43% of segments); quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35); analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript
+- `empty-asr`: R01 FAIL: quality gate failed: empty or unusable transcript (no speech text after cleanup)
+- `zh-en-loop-launder`: R01 FAIL: quality gate failed: looping repeats: the same segment appears 6 times (43% of segments); quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35); analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript
 - `usable-zh`: cites a usable transcript, quotes it in each knowledge section, and the analysis is not a stub
-- `clean-en-expected-zh`: quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)
-- `gibberish`: quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech
-- `missing-path`: missing transcript path: evals/fixtures/does_not_exist.txt does not exist; note does not cite transcript path evals/fixtures/does_not_exist.txt; analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript
-- `missing-citation`: note does not cite transcript path evals/fixtures/usable_en_transcript.txt; note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote); note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步
-- `path-only`: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote); note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步
-- `quote-stub`: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步
-- `boilerplate-sections`: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; section 问题与做法 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words); boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; section 完整怎么做 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words); boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; section 翻车或别用 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words); boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim; section 今天立刻动手一步 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words); finished note repeats the same analysis in more than one knowledge section
+- `clean-en-expected-zh`: R01 FAIL: quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)
+- `gibberish`: R01 FAIL: quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech
+- `missing-path`: R01 FAIL: missing transcript path: evals/fixtures/does_not_exist.txt does not exist; analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript
+- `missing-citation`: R02 FAIL: note does not cite transcript path evals/fixtures/usable_en_transcript.txt; note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步; R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)
+- `path-only`: R02 FAIL: note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步; R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)
+- `quote-stub`: R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步
+- `boilerplate-sections`: R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi; R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim; R13 FAIL: 今天立刻动手一步 does not start with a verb
 
 ## Host deposit behavior
 

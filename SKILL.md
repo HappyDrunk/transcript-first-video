@@ -71,7 +71,7 @@ If all four sections are `本节不适用`, that is not a note. Delete `note.md`
 
 ## How to write
 
-These are instructions for the note you write. `verify_note.py` currently checks shape: the transcript passes the gate, the note cites it, each section quotes a contiguous window, the prose is not a quote stub, a `本节不适用：` section is allowed, and four such sections are refused. It does not yet score the numbered rules below. Follow them anyway.
+`verify_note.py` enforces R01–R15. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. These are the same checks:
 
 - After each claim, quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous stretch of that line's words.
 - Prose is your own sentences. Do not only rephrase the quote.
@@ -115,7 +115,6 @@ Gate before analysis. Typical hard fails for expected Chinese speech:
 
 - Too few CJK characters / absurd Latin ratio
 - Looping repeats, gibberish, or cross-language hallucination
-- Model confidence floor not met
 
 Gate fail ⇒ do **not** save as final knowledge. Retry with a stronger model into a **separate** transcript file, or stop and say what failed.
 
@@ -129,7 +128,7 @@ Read `references/pitfalls.md` before treating a Chinese ASR default as productio
 
 A Chinese talk dense with English technical terms (model names, API identifiers, product names) can fall under 0.35 and be refused even when the universal checks would pass. That false reject is intentional. The same ratio check is what stops an English hallucination loop from being filed as a Chinese talk. Holding a jargon-heavy talk back is the tradeoff; a wrong note is worse.
 
-Tune by omitting `--expected-lang` when you know the talk mixes Chinese with English identifiers and you accept losing the script check. Loop, gibberish, length, and confidence checks still run. Do not omit it just to push a bad transcript through. There is no per-job flag to lower 0.35. The same idea applies to `--expected-lang en`, `ja`, or `ko`: pass it when you know the language, omit it when you do not.
+Tune by omitting `--expected-lang` when you know the talk mixes Chinese with English identifiers and you accept losing the script check. Loop, gibberish, and length checks still run. A confidence number is checked only when the caller passes one. The whisper CLI path does not supply a score, so there is no confidence floor on that path. Do not omit `--expected-lang` just to push a bad transcript through. There is no per-job flag to lower 0.35. The same idea applies to `--expected-lang en`, `ja`, or `ko`: pass it when you know the language, omit it when you do not.
 
 ## Stable identity and media URLs
 
@@ -177,7 +176,8 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 ## Bundled resources
 
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
-- `scripts/verify_note.py` — fail-closed check. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`.
+- `scripts/verify_note.py` — R01–R15. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`.
+- `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.
 - `scripts/README.md` — how to run both hosts, the note shape, the CJK false-reject tradeoff, and the env var names.
@@ -185,7 +185,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.
 - `references/note-examples.md` — skeletons for two good notes and three bad notes. The author fills the bodies. Do not invent a video for them.
-- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, and `scripts/run_evidence.py --skip-live`.
+- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`.
 - `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.
 - `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X). The template notes were withdrawn.
 - `evals/results/spotcheck.md` — layer ③. It records that withdrawal and still reads the fixture refusals. CI does not score it. It is not an audio check.

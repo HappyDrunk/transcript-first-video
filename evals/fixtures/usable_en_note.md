@@ -33,6 +33,6 @@ Do not feed this plant this week. When leaves are yellow, treat the cause as soi
 
 ## 今天立刻动手一步
 
-Today, only get the plant out of the old pot and loosen the soil with your fingers. Save the trim, the bark, the watering, and the shade for after that move. Do not open with fertilizer. The speech says: Slide the plant out of the old pot and loosen the soil with your fingers.
+Water the pot until it runs out the bottom, then stop. Leave the shade and any feed until that watering is finished, because the speech treats wet soil as the failure mode.
 
-> Slide the plant out of the old pot and loosen the soil with your fingers.
+> Water until it runs out the bottom, then leave the pot in bright shade for three days.

@@ -1,6 +1,5 @@
 ---
 # expect: FAIL R09
-# expected-fail-pending until phase 3 lands R09. The shape check still allows this file.
 title: "adversarial_keyword_salad_en"
 source_url: "fixture"
 video_id: "keyword-salad-en"
