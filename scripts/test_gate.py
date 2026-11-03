@@ -320,6 +320,13 @@ class HostTests(unittest.TestCase):
         self.assertEqual(all_lines, text.splitlines())
         self.assertEqual(whole, " ".join(all_lines))
 
+    def test_scaffold_exit_code_stays_zero(self) -> None:
+        code = youtube_host._emit(
+            {"status": "transcript_ready", "finished": False, "exit_code": 0},
+            as_json=True,
+        )
+        self.assertEqual(code, 0)
+
     def test_finalize_writes_citation_or_status_only(self) -> None:
         usable = (ROOT / "evals/fixtures/usable_en_transcript.txt").read_text(encoding="utf-8")
         empty = (ROOT / "evals/fixtures/empty_transcript.txt").read_text(encoding="utf-8")

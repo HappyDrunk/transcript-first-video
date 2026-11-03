@@ -1019,7 +1019,12 @@ def run_host(
 
 
 def _emit(payload: dict, as_json: bool) -> int:
-    code = int(payload.get("exit_code") or (0 if payload.get("finished") else 2))
+    # ``exit_code`` 0 is a real success. A scaffold job is not ``finished``,
+    # so a truthiness check would turn that 0 into a refusal.
+    code = payload.get("exit_code")
+    if code is None:
+        code = 0 if payload.get("finished") else 2
+    code = int(code)
     public = {key: value for key, value in payload.items() if key != "exit_code"}
     if as_json:
         json.dump(public, sys.stdout, ensure_ascii=False, indent=2)
