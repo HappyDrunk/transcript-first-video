@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-02T17:11:51Z",
+  "generated_at": "2026-11-03T02:18:17Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -10,7 +10,7 @@
       "expected_lang": "en",
       "expect_allowed": true,
       "summary": "Usable English transcript, note cites the path.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
       "exit_code": 0,
       "allowed": true,
       "reasons": [],
@@ -25,7 +25,7 @@
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Empty / music-only transcript with a fluent finished note.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/empty_transcript.txt --note evals/fixtures/empty_finished_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/empty_transcript.txt --note evals/fixtures/empty_finished_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -42,7 +42,7 @@
       "expected_lang": "zh",
       "expect_allowed": false,
       "summary": "Expected Chinese, English loop transcript, laundered ASR essay cites the path.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/en_loop_transcript.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/en_loop_transcript.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -61,7 +61,7 @@
       "expected_lang": "zh",
       "expect_allowed": true,
       "summary": "Usable Chinese transcript passes the same language gate.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_zh_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_zh_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
       "exit_code": 0,
       "allowed": true,
       "reasons": [],
@@ -76,7 +76,7 @@
       "expected_lang": "zh",
       "expect_allowed": false,
       "summary": "Fluent English is still a ratio fail when Chinese is expected.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang zh --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -93,7 +93,7 @@
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Consonant gibberish with a fluent deposit note.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/gibberish_transcript.txt --note evals/fixtures/gibberish_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/gibberish_transcript.txt --note evals/fixtures/gibberish_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -110,7 +110,7 @@
       "expected_lang": "zh",
       "expect_allowed": false,
       "summary": "Essay cites a transcript path that is not on disk.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/does_not_exist.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/does_not_exist.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -129,7 +129,7 @@
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Usable transcript, note never names the file.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/uncited_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/uncited_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -147,7 +147,7 @@
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Usable transcript. The note pastes the path and a title, and does not quote the transcript.",
-      "command": "/workspace/scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/path_only_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/path_only_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
