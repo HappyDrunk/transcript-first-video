@@ -40,6 +40,8 @@ TOKEN_MIN_WORDS = 30
 TOKEN_DOMINANCE = 0.50
 UNIQUE_WORD_FLOOR = 0.12
 MICRO_CUE_SECONDS = 0.08
+CHUNK_MAX_SECONDS = 8 * 60
+CHUNK_MAX_CHARS = 6000
 
 LATIN_LANGS = {
     "en", "es", "fr", "de", "pt", "it", "nl", "pl", "sv", "id", "vi", "tr",
@@ -71,6 +73,25 @@ _HALLUCINATION = (
     "subtitles by the amara.org community",
     "amara.org",
 )
+
+
+@dataclass
+class Segment:
+    """One cue after caption cleanup. ``start`` and ``end`` are seconds.
+
+    Plain text and ASR output that has no clock leave both as None.
+    """
+
+    start: float | None
+    end: float | None
+    text: str
+
+    def to_dict(self) -> dict:
+        return {
+            "start": None if self.start is None else round(float(self.start), 3),
+            "end": None if self.end is None else round(float(self.end), 3),
+            "text": self.text,
+        }
 
 
 @dataclass
@@ -146,10 +167,10 @@ def _clean_cue(text: str) -> str:
     return text
 
 
-def _parse_caption_cues(raw: str) -> list[tuple[float, str]]:
-    """Return (duration, text) cues from VTT, SRT, or similar timed text."""
+def _parse_caption_cues(raw: str) -> list[Segment]:
+    """Return timed cues from VTT, SRT, or similar timed text."""
     raw = raw.replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
-    cues: list[tuple[float, str]] = []
+    cues: list[Segment] = []
     for block in re.split(r"\n\s*\n", raw):
         match = None
         lines = block.split("\n")
@@ -165,60 +186,95 @@ def _parse_caption_cues(raw: str) -> list[tuple[float, str]]:
         text = _clean_cue(" ".join(lines[text_at:]))
         if not text:
             continue
-        duration = _stamp_to_seconds(match.group("b")) - _stamp_to_seconds(match.group("a"))
-        cues.append((max(duration, 0.0), text))
+        start = _stamp_to_seconds(match.group("a"))
+        end = _stamp_to_seconds(match.group("b"))
+        if end < start:
+            end = start
+        cues.append(Segment(start, end, text))
     return cues
 
 
-def _parse_json3(raw: str) -> list[str]:
+def _parse_json3(raw: str) -> list[Segment]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return []
-    lines: list[str] = []
+    segments: list[Segment] = []
     for event in data.get("events") or []:
+        if not isinstance(event, dict):
+            continue
         parts = []
         for seg in event.get("segs") or []:
-            parts.append(str(seg.get("utf8") or ""))
+            if isinstance(seg, dict):
+                parts.append(str(seg.get("utf8") or ""))
         text = _clean_cue("".join(parts).replace("\n", " "))
-        if text:
-            lines.append(text)
-    return lines
+        if not text:
+            continue
+        start_ms = event.get("tStartMs")
+        dur_ms = event.get("dDurationMs")
+        start = float(start_ms) / 1000 if isinstance(start_ms, (int, float)) else None
+        end = None
+        if start is not None and isinstance(dur_ms, (int, float)):
+            end = start + float(dur_ms) / 1000
+        segments.append(Segment(start, end, text))
+    return segments
 
 
-def _parse_xml_captions(raw: str) -> list[str]:
-    lines = []
+def _xml_attr(attrs: str, name: str) -> float | None:
+    found = re.search(rf"\b{name}\s*=\s*['\"]([^'\"]+)['\"]", attrs)
+    if not found:
+        return None
+    try:
+        return float(found.group(1))
+    except ValueError:
+        return None
+
+
+def _parse_xml_captions(raw: str) -> list[Segment]:
+    tagged = list(re.finditer(r"<text\b([^>]*)>([^<]*)</text>", raw, re.IGNORECASE))
+    if tagged:
+        segments: list[Segment] = []
+        for match in tagged:
+            text = _clean_cue(match.group(2))
+            if not text or re.fullmatch(r"[\d:.,\s]+", text):
+                continue
+            start = _xml_attr(match.group(1), "start")
+            dur = _xml_attr(match.group(1), "dur")
+            end = start + dur if start is not None and dur is not None else None
+            segments.append(Segment(start, end, text))
+        return segments
+    segments = []
     for chunk in re.findall(r">([^<]+)<", raw):
         text = _clean_cue(chunk)
         if text and not re.fullmatch(r"[\d:.,\s]+", text):
-            lines.append(text)
-    return lines
+            segments.append(Segment(None, None, text))
+    return segments
 
 
-def _drop_prefix_lines(lines: list[str]) -> list[str]:
+def _drop_prefix_segments(segments: list[Segment]) -> list[Segment]:
     """YouTube rolling captions repeat a line, then the same line plus new words."""
-    kept: list[str] = []
+    kept: list[Segment] = []
     index = 0
-    while index < len(lines):
+    while index < len(segments):
         if (
-            index + 1 < len(lines)
-            and lines[index + 1].startswith(lines[index])
-            and len(lines[index + 1]) > len(lines[index]) + 2
+            index + 1 < len(segments)
+            and segments[index + 1].text.startswith(segments[index].text)
+            and len(segments[index + 1].text) > len(segments[index].text) + 2
         ):
             index += 1
             continue
-        kept.append(lines[index])
+        kept.append(segments[index])
         index += 1
     return kept
 
 
-def _merge_overlap(lines: list[str]) -> list[str]:
-    if not lines:
+def _merge_overlap_segments(segments: list[Segment]) -> list[Segment]:
+    if not segments:
         return []
-    merged = [lines[0]]
-    for line in lines[1:]:
-        previous = merged[-1].split()
-        current = line.split()
+    merged = [segments[0]]
+    for segment in segments[1:]:
+        previous = merged[-1].text.split()
+        current = segment.text.split()
         best = 0
         limit = min(len(previous), len(current))
         for size in range(limit, 3, -1):
@@ -229,27 +285,35 @@ def _merge_overlap(lines: list[str]) -> list[str]:
                 break
         shorter = min(len(previous), len(current))
         if best >= 4 and shorter > 0 and best >= 0.45 * shorter:
-            merged[-1] = " ".join(previous + current[best:])
+            merged[-1] = Segment(
+                merged[-1].start,
+                segment.end if segment.end is not None else merged[-1].end,
+                " ".join(previous + current[best:]),
+            )
         else:
-            merged.append(line)
+            merged.append(segment)
     return merged
 
 
-def _collapse_runs(lines: list[str]) -> list[str]:
+def _collapse_segment_runs(segments: list[Segment]) -> list[Segment]:
     """Collapse 2–3 identical caption repeats. Keep runs of 4 or more so a
     real ASR loop is still visible to the gate."""
-    output: list[str] = []
+    output: list[Segment] = []
     index = 0
-    while index < len(lines):
+    while index < len(segments):
         end = index + 1
-        key = lines[index].casefold()
-        while end < len(lines) and lines[end].casefold() == key:
+        key = segments[index].text.casefold()
+        while end < len(segments) and segments[end].text.casefold() == key:
             end += 1
         run = end - index
         if run >= 4:
-            output.extend(lines[index:end])
+            output.extend(segments[index:end])
         else:
-            output.append(lines[index])
+            kept = segments[index]
+            last = segments[end - 1]
+            if last is not kept and last.end is not None:
+                kept = Segment(kept.start, last.end, kept.text)
+            output.append(kept)
         index = end
     return output
 
@@ -268,36 +332,130 @@ def _looks_like_timed_text(raw: str) -> bool:
     return False
 
 
-def prepare_transcript(raw: str) -> str:
-    """Turn caption formats into plain speech lines. Plain text is only trimmed."""
+def prepare_segments(raw: str) -> list[Segment]:
+    """Caption cues with start/end kept. Plain text has no clock.
+
+    The joined ``text`` fields match ``prepare_transcript``. Timestamps are
+    not folded into the gate text.
+    """
     raw = raw.replace("\r\n", "\n").replace("\r", "\n").lstrip("\ufeff")
     if not raw.strip():
-        return ""
-    lines: list[str]
+        return []
+    timed: list[Segment] | None = None
     if raw.lstrip().startswith("{") and "events" in raw[:1500]:
-        lines = _parse_json3(raw)
+        timed = _parse_json3(raw)
     elif raw.lstrip().startswith("<") and ("<text" in raw[:1500].lower() or "<p " in raw[:1500].lower()):
-        lines = _parse_xml_captions(raw)
+        timed = _parse_xml_captions(raw)
     elif _looks_like_timed_text(raw):
         cues = _parse_caption_cues(raw)
-        micros = [text for duration, text in cues if duration <= MICRO_CUE_SECONDS]
+        micros = [cue for cue in cues if (cue.end - cue.start) <= MICRO_CUE_SECONDS]
         # YouTube auto-captions insert ~10ms cues that hold the stable line.
         if len(micros) >= 4 and len(cues) > 0 and len(micros) >= 0.3 * len(cues):
-            lines = micros
+            timed = micros
         else:
-            lines = [text for _duration, text in cues]
-    else:
-        lines = []
+            timed = cues
+    if timed is None:
+        plain: list[Segment] = []
         for line in raw.split("\n"):
             cleaned = _clean_cue(line)
             if cleaned:
-                lines.append(cleaned)
-        return "\n".join(_collapse_runs(lines)).strip()
+                plain.append(Segment(None, None, cleaned))
+        return _collapse_segment_runs(plain)
+    timed = _drop_prefix_segments(timed)
+    timed = _merge_overlap_segments(timed)
+    return _collapse_segment_runs(timed)
 
-    lines = _drop_prefix_lines(lines)
-    lines = _merge_overlap(lines)
-    lines = _collapse_runs(lines)
+
+def prepare_transcript(raw: str) -> str:
+    """Turn caption formats into plain speech lines. Plain text is only trimmed."""
+    return "\n".join(segment.text for segment in prepare_segments(raw)).strip()
+
+
+def format_stamp(seconds: float) -> str:
+    """``[mm:ss]`` until one hour, then ``[hh:mm:ss]``."""
+    whole = max(0, int(seconds))
+    if whole >= 3600:
+        hours, rem = divmod(whole, 3600)
+        minutes, secs = divmod(rem, 60)
+        return f"[{hours:02d}:{minutes:02d}:{secs:02d}]"
+    minutes, secs = divmod(whole, 60)
+    return f"[{minutes:02d}:{secs:02d}]"
+
+
+def format_transcript(segments: list[Segment]) -> str:
+    """One line per cue. Timed cues lead with the start stamp."""
+    lines: list[str] = []
+    for segment in segments:
+        if segment.start is None:
+            lines.append(segment.text)
+        else:
+            lines.append(f"{format_stamp(segment.start)} {segment.text}")
     return "\n".join(lines).strip()
+
+
+def duration_seconds(segments: list[Segment]) -> float | None:
+    ends = [segment.end for segment in segments if segment.end is not None]
+    if ends:
+        return round(max(ends), 3)
+    starts = [segment.start for segment in segments if segment.start is not None]
+    if starts:
+        return round(max(starts), 3)
+    return None
+
+
+def chunk_segments(segments: list[Segment]) -> list[list[Segment]]:
+    """Split on about 8 minutes or about 6000 characters, whichever comes first.
+
+    A single cue longer than the character budget stays intact. Untimed text
+    splits on characters only.
+    """
+    chunks: list[list[Segment]] = []
+    current: list[Segment] = []
+    chars = 0
+    origin: float | None = None
+
+    def flush() -> None:
+        nonlocal current, chars, origin
+        if current:
+            chunks.append(current)
+        current = []
+        chars = 0
+        origin = None
+
+    for segment in segments:
+        if current:
+            elapsed = None
+            if origin is not None and segment.start is not None:
+                elapsed = segment.start - origin
+            over_time = elapsed is not None and elapsed >= CHUNK_MAX_SECONDS
+            over_chars = chars >= CHUNK_MAX_CHARS
+            if over_time or over_chars:
+                flush()
+        if not current:
+            origin = segment.start
+        current.append(segment)
+        chars += len(segment.text) + (1 if len(current) > 1 else 0)
+    flush()
+    return chunks
+
+
+def caption_trust(
+    kind: str | None,
+    caption_language: str | None,
+    expected_lang: str | None,
+) -> str | None:
+    """``low`` when automatic captions are not in the expected language.
+
+    No expected language means there is nothing to mismatch. Manual captions
+    are not marked here.
+    """
+    if (kind or "").strip().casefold() != "auto":
+        return None
+    expected = normalize_lang(expected_lang)
+    got = normalize_lang(caption_language)
+    if expected and got and expected != got:
+        return "low"
+    return None
 
 
 def _counts(text: str) -> dict[str, int]:

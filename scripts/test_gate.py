@@ -101,6 +101,82 @@ class QualityGateTests(unittest.TestCase):
         self.assertTrue(result.passed, result.reasons)
         self.assertIn("repotting a plant today", result.text)
         self.assertLess(result.text.lower().count("hello there"), 3)
+        segments = quality_gate.prepare_segments(ROLLING_VTT)
+        self.assertTrue(segments)
+        self.assertTrue(all(segment.start is not None for segment in segments))
+        stamped = quality_gate.format_transcript(segments)
+        self.assertRegex(stamped.splitlines()[0], r"^\[\d{2}:\d{2}\] ")
+        self.assertNotIn("[", result.text)
+        restamped = quality_gate.assess(stamped, expected_lang="en")
+        self.assertTrue(restamped.passed, restamped.reasons)
+
+    def test_vtt_keeps_start_stamps_and_chunks_on_the_clock(self) -> None:
+        raw = (
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:04.000\n"
+            "Name the buyer outcome before a public number is chosen.\n\n"
+            "00:01:05.000 --> 00:01:09.000\n"
+            "Do not copy another page and call that research today.\n\n"
+            "01:00:05.000 --> 01:00:09.000\n"
+            "After an hour, write the one step that was actually spoken.\n"
+        )
+        segments = quality_gate.prepare_segments(raw)
+        self.assertEqual([segment.start for segment in segments], [1.0, 65.0, 3605.0])
+        lines = quality_gate.format_transcript(segments).splitlines()
+        self.assertTrue(lines[0].startswith("[00:01] "))
+        self.assertTrue(lines[1].startswith("[01:05] "))
+        self.assertTrue(lines[2].startswith("[01:00:05] "))
+        self.assertEqual(
+            quality_gate.prepare_transcript(raw),
+            "\n".join(segment.text for segment in segments),
+        )
+        chunks = quality_gate.chunk_segments(
+            [
+                quality_gate.Segment(0, 10, "early"),
+                quality_gate.Segment(400, 410, "still inside eight minutes"),
+                quality_gate.Segment(500, 510, "past eight minutes"),
+            ]
+        )
+        self.assertEqual([[item.text for item in group] for group in chunks], [
+            ["early", "still inside eight minutes"],
+            ["past eight minutes"],
+        ])
+        long_line = "Pricing talks should name the buyer outcome before a number is published."
+        plain = "\n".join([long_line] * 120)
+        self.assertGreater(len(plain), quality_gate.CHUNK_MAX_CHARS)
+        plain_chunks = quality_gate.chunk_segments(quality_gate.prepare_segments(plain))
+        self.assertGreaterEqual(len(plain_chunks), 2)
+        self.assertIsNone(plain_chunks[0][0].start)
+        with tempfile.TemporaryDirectory() as tmp:
+            deposited = youtube_host.finalize_job(
+                text=raw,
+                video_id="timed-vtt",
+                source="settle-transcript:timed-vtt",
+                out_dir=Path(tmp),
+                expected_lang="en",
+                acquisition="yt-dlp",
+                caption_language="en",
+                caption_kind="manual",
+            )
+            self.assertEqual(deposited["exit_code"], 0, deposited.get("reason"))
+            self.assertIsNone(deposited["caption_trust"])
+            self.assertEqual(deposited["duration_seconds"], 3609.0)
+            job = Path(tmp) / "youtube_timed-vtt"
+            stored = (job / "transcript.txt").read_text(encoding="utf-8")
+            self.assertTrue(stored.startswith("[00:01] "))
+            self.assertIn("[01:00:05] ", stored)
+            saved = json.loads((job / "segments.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved[0]["start"], 1.0)
+            self.assertEqual(saved[0]["end"], 4.0)
+            self.assertTrue((job / "chunks" / "01.txt").is_file())
+            self.assertIn('caption_kind: "manual"', (job / "note.scaffold.md").read_text(encoding="utf-8"))
+
+    def test_caption_trust_is_low_only_for_auto_mismatch(self) -> None:
+        self.assertEqual(quality_gate.caption_trust("auto", "zh", "en"), "low")
+        self.assertIsNone(quality_gate.caption_trust("auto", "en", "en"))
+        self.assertIsNone(quality_gate.caption_trust("auto", "zh", None))
+        self.assertIsNone(quality_gate.caption_trust("manual", "zh", "en"))
+        self.assertIsNone(quality_gate.caption_trust("api", "zh", "en"))
 
     def test_chinese_jargon_ratio_fails_closed_until_expected_lang_omitted(self) -> None:
         # More than ZH_MIN_CJK characters, but English identifiers pull the
@@ -369,6 +445,14 @@ class HostTests(unittest.TestCase):
             self.assertFalse(note_path.exists())
             self.assertTrue(scaffold_path.is_file())
             self.assertTrue(transcript_path.is_file())
+            segments_path = out / "youtube_usable-en" / "segments.json"
+            chunk_path = out / "youtube_usable-en" / "chunks" / "01.txt"
+            self.assertTrue(segments_path.is_file())
+            self.assertTrue(chunk_path.is_file())
+            self.assertEqual(ok["chunk_count"], 1)
+            self.assertIsNone(ok["caption_trust"])
+            self.assertIsNone(ok["duration_seconds"])
+            self.assertFalse(transcript_path.read_text(encoding="utf-8").lstrip().startswith("["))
             note = scaffold_path.read_text(encoding="utf-8")
             cite = youtube_host.cite_path(transcript_path)
             self.assertEqual(ok["scaffold"], youtube_host.cite_path(scaffold_path))
@@ -408,6 +492,8 @@ class HostTests(unittest.TestCase):
             self.assertFalse(note_path.exists())
             self.assertFalse(scaffold_path.exists())
             self.assertFalse(transcript_path.exists())
+            self.assertFalse(segments_path.exists())
+            self.assertFalse(chunk_path.exists())
             self.assertTrue((out / "youtube_usable-en" / "status.json").is_file())
 
             blocked = youtube_host.finalize_job(
@@ -418,9 +504,28 @@ class HostTests(unittest.TestCase):
                 expected_lang="zh",
                 acquisition="settle-transcript",
             )
+            trusted = youtube_host.finalize_job(
+                text=usable,
+                video_id="auto-mismatch",
+                source="settle-transcript:auto-mismatch",
+                out_dir=out,
+                expected_lang="en",
+                acquisition="yt-dlp",
+                caption_language="zh",
+                caption_kind="auto",
+            )
+            self.assertEqual(trusted["caption_trust"], "low")
+            self.assertEqual(trusted["exit_code"], 0)
+            mismatch_note = (out / "youtube_auto-mismatch" / "note.scaffold.md").read_text(encoding="utf-8")
+            self.assertIn('caption_kind: "auto"', mismatch_note)
+            self.assertIn('caption_trust: "low"', mismatch_note)
+            self.assertIn('caption_language: "zh"', mismatch_note)
+
             self.assertEqual(blocked["status"], "quality_gate_failed")
             self.assertFalse((out / "youtube_zh-loop" / "note.md").exists())
             self.assertFalse((out / "youtube_zh-loop" / "note.scaffold.md").exists())
+            self.assertFalse((out / "youtube_zh-loop" / "segments.json").exists())
+            self.assertFalse((out / "youtube_zh-loop" / "chunks").exists())
             self.assertNotIn("title", blocked)
 
 

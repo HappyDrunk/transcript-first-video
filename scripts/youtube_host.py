@@ -137,10 +137,13 @@ def write_json(path: Path, payload: dict) -> None:
 
 
 def clear_deposit(job_dir: Path) -> None:
-    for name in ("transcript.txt", "note.md", "note.scaffold.md"):
+    for name in ("transcript.txt", "note.md", "note.scaffold.md", "segments.json"):
         target = job_dir / name
-        if target.exists():
+        if target.is_file():
             target.unlink()
+    chunks = job_dir / "chunks"
+    if chunks.is_dir():
+        shutil.rmtree(chunks)
 
 
 def ytdlp_base() -> list[str] | None:
@@ -715,6 +718,7 @@ def render_scaffold(
     caption_language: str | None,
     caption_kind: str | None,
     transcript_cite: str,
+    caption_trust: str | None = None,
 ) -> str:
     """Blank Obsidian scaffold. Title is the job id, not the platform title.
 
@@ -729,6 +733,7 @@ def render_scaffold(
         transcript_cite=transcript_cite,
         caption_language=caption_language,
         caption_kind=caption_kind,
+        caption_trust=caption_trust,
     )
 
 
@@ -754,7 +759,10 @@ def finalize_job(
     clear_deposit(job_dir)
     gate_lang = quality_gate.normalize_lang(expected_lang) or quality_gate.normalize_lang(caption_language)
     result = quality_gate.assess(text, expected_lang=gate_lang, confidence=confidence)
+    trust = quality_gate.caption_trust(caption_kind, caption_language, expected_lang)
     transcript_path = job_dir / "transcript.txt"
+    segments_path = job_dir / "segments.json"
+    chunks_dir = job_dir / "chunks"
     note_path = job_dir / "note.md"
     scaffold_path = job_dir / "note.scaffold.md"
     status_path = job_dir / "status.json"
@@ -766,9 +774,14 @@ def finalize_job(
         "acquisition": acquisition,
         "caption_language": caption_language,
         "caption_kind": caption_kind,
+        "caption_trust": trust,
         "expected_lang": quality_gate.normalize_lang(expected_lang),
         "gate_lang": gate_lang,
         "transcript": None,
+        "segments": None,
+        "chunks": None,
+        "chunk_count": None,
+        "duration_seconds": None,
         "note": None,
         "scaffold": None,
         "gate": result.to_dict(),
@@ -789,7 +802,18 @@ def finalize_job(
         write_json(status_path, {key: value for key, value in base.items() if key != "exit_code"})
         return base
 
-    transcript_path.write_text(result.text.rstrip() + "\n", encoding="utf-8")
+    segments = quality_gate.prepare_segments(text)
+    transcript_body = quality_gate.format_transcript(segments) or result.text
+    transcript_path.write_text(transcript_body.rstrip() + "\n", encoding="utf-8")
+    segments_path.write_text(
+        json.dumps([segment.to_dict() for segment in segments], ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    groups = quality_gate.chunk_segments(segments)
+    chunks_dir.mkdir(parents=True, exist_ok=True)
+    for index, group in enumerate(groups, start=1):
+        chunk_body = quality_gate.format_transcript(group)
+        (chunks_dir / f"{index:02d}.txt").write_text(chunk_body.rstrip() + "\n", encoding="utf-8")
     cite = cite_path(transcript_path)
     # ``verify`` is accepted so existing callers keep working. The scaffold is
     # not a deposit, so the host does not run verify_note on it and does not
@@ -802,6 +826,7 @@ def finalize_job(
         acquisition=acquisition,
         caption_language=caption_language or gate_lang,
         caption_kind=caption_kind,
+        caption_trust=trust,
         transcript_cite=cite,
     )
     scaffold_path.write_text(scaffold_body, encoding="utf-8")
@@ -817,6 +842,10 @@ def finalize_job(
             ),
             "next_step": "write-note",
             "transcript": cite,
+            "segments": cite_path(segments_path),
+            "chunks": cite_path(chunks_dir),
+            "chunk_count": len(groups),
+            "duration_seconds": quality_gate.duration_seconds(segments),
             "note": None,
             "scaffold": cite_path(scaffold_path),
             "verifier": None,
@@ -851,7 +880,14 @@ def write_refusal(
         "reason": reason,
         "next_step": next_step,
         "acquisition": "none",
+        "caption_language": None,
+        "caption_kind": None,
+        "caption_trust": None,
         "transcript": None,
+        "segments": None,
+        "chunks": None,
+        "chunk_count": None,
+        "duration_seconds": None,
         "note": None,
         "scaffold": None,
         "gate": None,
@@ -1035,6 +1071,10 @@ def _emit(payload: dict, as_json: bool) -> int:
             print(public["reason"], file=sys.stderr)
         if public.get("transcript"):
             print(f"transcript: {public['transcript']}")
+        if public.get("segments"):
+            print(f"segments: {public['segments']}")
+        if public.get("chunks"):
+            print(f"chunks: {public['chunks']}")
         if public.get("scaffold"):
             print(f"scaffold: {public['scaffold']}")
         if public.get("note"):

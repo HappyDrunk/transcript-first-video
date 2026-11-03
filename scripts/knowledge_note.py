@@ -69,10 +69,13 @@ SCAFFOLD_QUOTED_WINDOW = (
 
 _SCAFFOLD_INSTRUCTIONS = (
     "Scaffold only. This file is not a finished knowledge note. "
-    "Read the transcript and write the analysis in note.md. "
+    "Read every file in chunks/ and write the analysis in note.md. "
     "Under each heading, state a claim in your own words and quote a contiguous "
     f"passage of the transcript, at least {QUOTE_WINDOW} characters. "
-    "Leave a section blank rather than inventing a step the transcript does not contain."
+    "When the transcript line has a clock, quote it as > [mm:ss] followed by the words. "
+    "A section with nothing to extract is one line, 本节不适用：<reason>, plus one quote. "
+    "Leave that section unused rather than inventing a step the transcript does not contain. "
+    "If every section is 本节不适用, do not keep note.md."
 )
 
 
@@ -103,6 +106,7 @@ def render_scaffold(
     transcript_cite: str,
     caption_language: str | None = None,
     caption_kind: str | None = None,
+    caption_trust: str | None = None,
 ) -> str:
     """Frontmatter, four empty section headings, and fill instructions.
 
@@ -123,6 +127,8 @@ def render_scaffold(
         lines.append(f"caption_language: {yaml_double(caption_language)}")
     if caption_kind:
         lines.append(f"caption_kind: {yaml_double(caption_kind)}")
+    if caption_trust:
+        lines.append(f"caption_trust: {yaml_double(caption_trust)}")
     lines.extend(
         [
             "---",
