@@ -318,6 +318,69 @@ class VerifierTests(unittest.TestCase):
                 any("does not analyze" in reason or "quoted_window" in reason for reason in result["reasons"])
             )
 
+    def _speech_quote(self, transcript: Path, size: int = 80) -> str:
+        speech = " ".join(transcript.read_text(encoding="utf-8").split())
+        return speech[:size]
+
+    def test_one_inapplicable_section_still_passes_shape(self) -> None:
+        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
+        quote = self._speech_quote(transcript)
+        note = (ROOT / "evals/fixtures/usable_en_note.md").read_text(encoding="utf-8")
+        heading = "## 今天立刻动手一步"
+        note = note[: note.index(heading)] + (
+            f"{heading}\n\n本节不适用：原文没有可以今天就做的一步。\n\n> {quote}\n"
+        )
+        result = verify_note.verify(transcript, note, expected_lang="en")
+        self.assertTrue(result["allowed"], result["reasons"])
+
+    def test_all_inapplicable_sections_are_not_a_deposit(self) -> None:
+        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
+        quote = self._speech_quote(transcript)
+        original = (ROOT / "evals/fixtures/usable_en_note.md").read_text(encoding="utf-8")
+        front = original[: original.index("\n---\n", 4) + len("\n---\n")]
+        reasons = (
+            "原文没有单独的问题陈述。",
+            "原文没有分步骤的做法。",
+            "原文没有写出不能用的情形。",
+            "原文没有可以今天就做的一步。",
+        )
+        body = ["# fixture", ""]
+        for heading, reason in zip(knowledge_note.SECTIONS, reasons):
+            body.extend([f"## {heading}", "", f"本节不适用：{reason}", "", f"> {quote}", ""])
+        note = front + "\n" + "\n".join(body)
+        refused = verify_note.verify(transcript, note, expected_lang="en")
+        self.assertFalse(refused["allowed"], refused["reasons"])
+        self.assertIn(knowledge_note.ALL_INAPPLICABLE_REASON, refused["reasons"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "job"
+            job.mkdir()
+            transcript_path = job / "transcript.txt"
+            transcript_path.write_text(transcript.read_text(encoding="utf-8"), encoding="utf-8")
+            (job / "note.md").write_text(note, encoding="utf-8")
+            (job / "note.scaffold.md").write_text("scaffold\n", encoding="utf-8")
+            (job / "status.json").write_text(
+                json.dumps({"status": "transcript_ready", "finished": False, "note": "note.md", "gate_lang": "en"})
+                + "\n",
+                encoding="utf-8",
+            )
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                code = verify_note.main(["--job", str(job), "--json"])
+            self.assertEqual(code, 2)
+            payload = json.loads(buf.getvalue())
+            self.assertFalse(payload["allowed"])
+            self.assertEqual(payload["status"], "no-extractable-content")
+            self.assertTrue(payload["note_deleted"])
+            self.assertFalse((job / "note.md").exists())
+            self.assertTrue((job / "note.scaffold.md").is_file())
+            self.assertTrue(transcript_path.is_file())
+            status = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "no-extractable-content")
+            self.assertFalse(status["finished"])
+            self.assertIsNone(status["note"])
+            self.assertEqual(status["gate_lang"], "en")
+
     def test_keyword_salad_is_pending_r09(self) -> None:
         """Shape check still allows the keyword salad. Phase 3 must refuse it under R09.
 

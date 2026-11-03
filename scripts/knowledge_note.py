@@ -255,11 +255,38 @@ def _truthy(value: str) -> bool:
     return value.strip().casefold() in {"true", "yes", "1"}
 
 
+_NA_PREFIX = "本节不适用："
+ALL_INAPPLICABLE_REASON = (
+    "all four sections are 本节不适用; delete note.md and set status no-extractable-content"
+)
+
+
+def inapplicable_reason(prose: str) -> str | None:
+    """The reason after ``本节不适用：`` when that line is the whole prose."""
+    lines = [line.strip() for line in (prose or "").splitlines() if line.strip()]
+    if len(lines) != 1 or not lines[0].startswith(_NA_PREFIX):
+        return None
+    reason = lines[0][len(_NA_PREFIX) :].strip()
+    return reason or None
+
+
+def all_sections_inapplicable(note: str) -> bool:
+    bodies = dict(_section_bodies(note))
+    if any(heading not in bodies for heading in SECTIONS):
+        return False
+    return all(
+        inapplicable_reason(_prose_outside_quotes(bodies[heading])) is not None
+        for heading in SECTIONS
+    )
+
+
 def knowledge_reasons(note: str, transcript_text: str) -> list[str]:
     """Reasons a passing transcript still must not be deposited as this note.
 
     Empty when the note has the frontmatter, the four sections, a real quote in
-    each section, and analysis that is not a stub. This is a shape check. It is
+    each section, and analysis that is not a stub. A section whose only prose is
+    ``本节不适用：`` plus a reason is allowed and is not scored as analysis. All four
+    sections in that form must not be deposited. This is a shape check. It is
     not a grade of summary quality and it is not an audio check.
     """
     reasons: list[str] = []
@@ -303,6 +330,8 @@ def knowledge_reasons(note: str, transcript_text: str) -> list[str]:
                 f"of at least {QUOTE_WINDOW} characters"
             )
         prose = _prose_outside_quotes(body)
+        if inapplicable_reason(prose) is not None:
+            continue
         if _STUB.search(prose):
             reasons.append(
                 f"boilerplate analysis in section {heading}: "
@@ -323,4 +352,6 @@ def knowledge_reasons(note: str, transcript_text: str) -> list[str]:
     nonempty = [item for item in remainders if item]
     if len(nonempty) >= 2 and len(set(nonempty)) < len(nonempty):
         reasons.append("finished note repeats the same analysis in more than one knowledge section")
+    if not missing_sections and all_sections_inapplicable(note):
+        reasons.append(ALL_INAPPLICABLE_REASON)
     return reasons
