@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 import verify_note  # noqa: E402
 import x_host  # noqa: E402
@@ -186,10 +187,54 @@ class VerifierTests(unittest.TestCase):
         snippet = compact[17 : 17 + verify_note.QUOTE_WINDOW]
         self.assertEqual(len(snippet), verify_note.QUOTE_WINDOW)
         self.assertNotIn(compact[: verify_note.QUOTE_WINDOW], snippet)
-        note = f"transcript: {transcript.as_posix()}\n\n{snippet}\n"
-        result = verify_note.verify(transcript, note, expected_lang="en")
-        self.assertTrue(result["allowed"], result["reasons"])
-        self.assertTrue(result["quoted"])
+        self.assertTrue(verify_note.quotes_transcript(snippet, compact))
+        # A mid-transcript snippet is a real quote, and it is still not a note.
+        bare = f"transcript: {transcript.as_posix()}\n\n{snippet}\n"
+        refused = verify_note.verify(transcript, bare, expected_lang="en")
+        self.assertFalse(refused["allowed"])
+        self.assertTrue(refused["quoted"])
+        self.assertTrue(any("knowledge section" in reason for reason in refused["reasons"]))
+
+    def test_refuse_quote_stub_and_boilerplate_analysis(self) -> None:
+        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
+        stub = (ROOT / "evals/fixtures/quote_stub_note.md").read_text(encoding="utf-8")
+        refused = verify_note.verify(transcript, stub, expected_lang="en")
+        self.assertFalse(refused["allowed"], refused["reasons"])
+        self.assertTrue(refused["quoted"])
+        self.assertTrue(any("knowledge section" in reason for reason in refused["reasons"]))
+        boilerplate = (ROOT / "evals/fixtures/boilerplate_note.md").read_text(encoding="utf-8")
+        canned = verify_note.verify(transcript, boilerplate, expected_lang="en")
+        self.assertFalse(canned["allowed"], canned["reasons"])
+        self.assertTrue(any("boilerplate" in reason for reason in canned["reasons"]))
+
+    def test_generic_transcript_still_forms_a_knowledge_note(self) -> None:
+        text = (
+            "The warehouse team loses an hour every morning reconciling two spreadsheets. "
+            "Export the overnight file before standup. "
+            "Paste it into the shared workbook and delete the duplicate tab. "
+            "Do not email the raw export to the whole company. "
+            "Ask the shift lead to confirm the row count today."
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "transcript.txt"
+            path.write_text(text + "\n", encoding="utf-8")
+            note = knowledge_note.render_note(
+                job_id="job_generic",
+                video_id="generic",
+                source="settle-transcript:generic",
+                acquisition="settle-transcript",
+                transcript_cite=path.as_posix(),
+                transcript_text=text,
+            )
+            result = verify_note.verify(path, note, expected_lang="en")
+            self.assertTrue(result["allowed"], result["reasons"])
+            for heading in (
+                "问题与做法",
+                "完整怎么做",
+                "翻车或别用",
+                "今天立刻动手一步",
+            ):
+                self.assertIn(f"## {heading}", note)
 
 
 class HostTests(unittest.TestCase):
@@ -301,13 +346,11 @@ class HostTests(unittest.TestCase):
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'transcript_path: "{cite}"', note)
             self.assertIn("quoted_window: |-", note)
-            self.assertIn("## Source", note)
-            self.assertIn("## Transcript", note)
-            self.assertIn("## Quoted window", note)
-            self.assertIn("[transcript.txt](transcript.txt)", note)
-            window = youtube_host.transcript_window(usable)
-            self.assertIn(window, note)
-            self.assertGreaterEqual(len(window), verify_note.QUOTE_WINDOW)
+            for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
+                self.assertIn(f"## {heading}", note)
+            self.assertNotIn("## Quoted window", note)
+            self.assertNotIn("The quoted window is copied", note)
+            self.assertIn("root-bound", note)
             status = json.loads((out / "youtube_usable-en" / "status.json").read_text(encoding="utf-8"))
             self.assertNotIn("title", status)
             self.assertNotIn("description", status)
@@ -540,7 +583,9 @@ class XHostTests(unittest.TestCase):
             self.assertIn(f"x_{status_id}", note)
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'video_id: "{status_id}"', note)
-            self.assertIn("## Quoted window", note)
+            for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
+                self.assertIn(f"## {heading}", note)
+            self.assertNotIn("## Quoted window", note)
             checked = verify_note.verify(transcript_path, note, expected_lang="en")
             self.assertTrue(checked["allowed"], checked["reasons"])
             self.assertTrue(checked["quoted"])

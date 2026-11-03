@@ -12,17 +12,21 @@
       "enforced_by": "agent-or-human",
       "ci_relationship": "Not executed by CI. scripts/run_evidence.py does check the fixture files named in files. That fixture check is not this prompt.",
       "prompt": "Please fully read this YouTube video and write a beginner-friendly method note once you actually have the spoken content: https://www.youtube.com/watch?v=KwhgfwOSToQ — if you cannot get a usable transcript, say you did not finish instead of summarizing from the title.",
-      "expected_output": "Either a note grounded in transcript/captions that cites the transcript path and quotes a real stretch of it, or an explicit not-finished statement. Must not claim completion from title/description alone. A pasted path without a quote is not finished.",
+      "expected_output": "Either a knowledge note grounded in transcript/captions, with the sections 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, each quoting the transcript, or an explicit not-finished statement. Must not claim completion from title/description alone. A pasted path without a quote is not finished. A quote without analysis is not finished.",
       "files": [
         "evals/fixtures/usable_en_transcript.txt",
         "evals/fixtures/usable_en_note.md",
-        "evals/fixtures/path_only_note.md"
+        "evals/fixtures/path_only_note.md",
+        "evals/fixtures/quote_stub_note.md",
+        "evals/fixtures/boilerplate_note.md"
       ],
       "assertions": [
         "Does not treat title or description as sufficient evidence of having watched the video",
-        "Either quotes a transcript/captions artifact or clearly states not finished",
+        "Either analyzes a transcript/captions artifact and quotes it, or clearly states not finished",
         "A note that only pastes a transcript path, without quoting the transcript, is not finished",
-        "Does not invent detailed spoken claims without text backing"
+        "A note that quotes the transcript and does not analyze it into reusable knowledge is not finished",
+        "Does not invent detailed spoken claims without text backing",
+        "Does not treat a passing citation check as proof that the captions match the audio"
       ]
     },
     {

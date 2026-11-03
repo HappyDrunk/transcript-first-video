@@ -4,13 +4,13 @@
 
 # English
 
-YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer: a note is allowed only after the spoken words are written down, the text passes a quality check, and the note quotes that transcript.
+YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer. A finished note needs both bars. (A) The spoken words are written down and pass a quality check. (B) The note analyzes that transcript into reusable knowledge, and each section quotes it. A quote by itself is not the knowledge. The gate does not listen to the audio.
 
 ## Three layers of evidence
 
 A green check is the first layer. Read these three before the rest of the page. They are different kinds of proof.
 
-**① Mechanical. CI scores this.** Actions runs `python3 scripts/test_gate.py` and `python3 scripts/run_evidence.py --skip-live`. The pass/fail table is [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Usable English and usable Chinese notes are allowed. Empty text, gibberish, an English loop when Chinese was expected, a pasted path with no quote, and an essay about a failed transcription are refused. Those rows use fixture files. A green check means that table matched. It does not mean a URL was watched.
+**① Mechanical. CI scores this.** Actions runs `python3 scripts/test_gate.py` and `python3 scripts/run_evidence.py --skip-live`. The pass/fail table is [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Usable English and usable Chinese knowledge notes are allowed. Empty text, gibberish, an English loop when Chinese was expected, a pasted path with no quote, a quote with no analysis, a four-section stub that repeats "the quote was copied," and an essay about a failed transcription are refused. Those rows use fixture files. A green check means that table matched. It does not mean a URL was watched, it does not mean the captions match the audio, and it does not mean a model scored the summary.
 
 **② Live public URLs. Committed receipts.** ASR stayed off. No private corpus. The index is [evals/results/live/README.md](evals/results/live/README.md).
 
@@ -21,11 +21,11 @@ A green check is the first layer. Read these three before the rest of the page. 
 
 No live receipt here is a gibberish transcript. Captions that came back either passed the gate or were missing. Gibberish and the English loop are refused in layer ①.
 
-**③ Effect. An agent or a person. CI does not score this.** [evals/results/spotcheck.md](evals/results/spotcheck.md) is a reading of those notes: the quote is in the transcript, and the note does not invent the rest. Actions does not open that file. A green check is not a pass of those rows. The prompts in [evals/evals.json](evals/evals.json) are the same kind of assertion.
+**③ Effect. An agent or a person. CI does not score this.** [evals/results/spotcheck.md](evals/results/spotcheck.md) is a reading of those notes: the four sections form reusable knowledge, and the quotes are in the transcript. Actions does not open that file. A green check is not a pass of those rows, and it is not a grade of summary quality. The prompts in [evals/evals.json](evals/evals.json) are the same kind of assertion. The reader did not listen to the audio.
 
 ## The finished file is Markdown
 
-When a job finishes, the host writes `note.md`. That is the note. Open it in Obsidian, or in any editor that reads Markdown. The frontmatter fields are `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The body sections are Source, Transcript, and Quoted window. The quote is copied from the transcript.
+When a job finishes, the host writes `note.md`. That is the note. Open it in Obsidian, or in any editor that reads Markdown. The frontmatter fields are `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The body has four sections: 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Each section quotes the transcript and says what to reuse: the problem and the move, the steps, where not to apply them, and one action for today. A path plus a blockquote is not this note.
 
 `status.json` in the same folder is a machine stub. When the job stops (`not_finished`, or the gate refuses the text), that stub is the whole directory. There is no `note.md`.
 
@@ -45,16 +45,34 @@ quoted_window: |-
 
 # youtube_<id>
 
-## Source
+Transcript: `artifacts/youtube_<id>/transcript.txt`.
 
-## Transcript
+## 问题与做法
 
-## Quoted window
+<what the speech is solving, and the move that addresses it>
 
-> <the same words>
+> <words copied from the transcript, at least 40 characters>
+
+## 完整怎么做
+
+<the steps, in the order the speech gives them>
+
+> <a different stretch, or the same file if that is all it contains>
+
+## 翻车或别用
+
+<where this method does not apply. Do not invent a caution the speech never states.>
+
+> <words copied from the transcript>
+
+## 今天立刻动手一步
+
+<one concrete action from the speech>
+
+> <words copied from the transcript>
 ````
 
-A filled note from a real caption track: [evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md).
+A short caption, analyzed rather than dumped: [evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md). A longer talk, with the method, the limit, and one next step: [evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md).
 
 ## Try it on one captioned video
 
@@ -102,7 +120,7 @@ This repository is a skill: a folder of rules the agent loads so the next note w
 
 You do not get an auto-summary button. After this is installed, a link does not immediately come back as a summary. You get a rule, and the rule is short: a note is allowed only after the spoken words have been written down.
 
-**When it goes well.** You paste a link. It looks for official captions first. If captions exist, that text is the transcript. If they do not, it looks for a transcript already saved for this same video, not a different video with a similar title. If that file is there and it still sounds like a person talking, it uses that file. If neither is there, it downloads the audio and turns the speech into text. A note is allowed only after one of those three has actually produced words. The note has to name the transcript file and quote a real stretch of it (about 40 characters), so you can open the file and match the sentences. A pasted path under a rewritten title is not a quote. A note that reads smoothly and cannot point at its file is not finished.
+**When it goes well.** You paste a link. It looks for official captions first. If captions exist, that text is the transcript. If they do not, it looks for a transcript already saved for this same video, not a different video with a similar title. If that file is there and it still sounds like a person talking, it uses that file. If neither is there, it downloads the audio and turns the speech into text. A note is allowed only after one of those three has actually produced words. The note has to name the transcript file, analyze it into the four knowledge sections, and quote a real stretch of it in each section (about 40 characters), so you can open the file and match the sentences. A pasted path under a rewritten title is not a quote. A quote with no analysis is not finished either. A note that reads smoothly and cannot point at its file is not finished.
 
 ```text
 link
@@ -131,7 +149,7 @@ speech-to-text came back nonsense
   → not finished; one stronger model, or stop
 ```
 
-**Success, in one line:** the note is written from the transcript, it names the transcript file, and it quotes that file.
+**Success, in one line:** the note analyzes the transcript into the four knowledge sections, names the transcript file, and quotes that file in each section.
 
 **Failure, in one line:** it says not finished, names the next step (queue it, try a stronger model once, or stop), and leaves no essay that pretends the video was watched.
 
@@ -204,8 +222,8 @@ Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES`
 | [evals/evals.json](evals/evals.json) | Three prompts for an agent or a person. CI does not run the prompts or score the assertions. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live` on the fixture files. |
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | Layer ①. The fixture pass/fail table CI regenerates. |
 | [evals/results/live/](evals/results/live/) | Layer ②. Public-URL receipts: a short captioned YouTube note, a no-caption stop, a captioned X note, and the longer YouTube sample. |
-| [evals/results/spotcheck.md](evals/results/spotcheck.md) | Layer ③. Agent reading that the notes quote the transcript and do not invent the rest. CI does not score it. |
-| [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless it quotes a real transcript. `bash scripts/smoke.sh` checks this copy offline. See [scripts/README.md](scripts/README.md). |
+| [evals/results/spotcheck.md](evals/results/spotcheck.md) | Layer ③. Agent reading that the notes contain reusable knowledge and that the quotes are in the transcript. CI does not score it. Not an audio check. |
+| [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless the transcript passed and the note analyzes it. `bash scripts/smoke.sh` checks this copy offline. See [scripts/README.md](scripts/README.md). |
 
 How to change this repo, and what shipped: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md).
 
@@ -215,13 +233,13 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
 
 # 中文
 
-YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器：嘴里的话先落成文字，文字过了质量检查，笔记还得引用这段文稿。
+YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器。写完的笔记要同时过两道。（A）嘴里的话落成文字，并且过了质量检查。（B）笔记把这段文稿分析成可以复用的知识，每一节都引用文稿。只有引用，还不是知识。门槛不听音频。
 
 ## 三层证据
 
 仓库上的绿色勾，只是第一层。先读这三层，再读下面的正文。三层不是同一种证明。
 
-**① 机械。CI 打分的是这一层。** Actions 跑 `python3 scripts/test_gate.py` 和 `python3 scripts/run_evidence.py --skip-live`。通过和拒绝的表在 [evals/results/gate-evidence.md](evals/results/gate-evidence.md)。能用的英文笔记、能用的中文笔记，允许。空文本、胡话、期望中文时的英语循环、只贴路径不引用、以及一篇讲「转写失败了」的作文，拒绝。这些行用的是夹具文件。绿色勾表示这张表对上了。它不表示有人去看了一条网址。
+**① 机械。CI 打分的是这一层。** Actions 跑 `python3 scripts/test_gate.py` 和 `python3 scripts/run_evidence.py --skip-live`。通过和拒绝的表在 [evals/results/gate-evidence.md](evals/results/gate-evidence.md)。能用的英文知识笔记、能用的中文知识笔记，允许。空文本、胡话、期望中文时的英语循环、只贴路径不引用、有引用却没有分析、四个标题下都是「引用已抄录」的空壳，以及一篇讲「转写失败了」的作文，拒绝。这些行用的是夹具文件。绿色勾表示这张表对上了。它不表示有人去看了一条网址，不表示字幕和声音一致，也不表示有模型给摘要打了分。
 
 **② 现场公开网址。提交进仓库的回执。** ASR 关着。没有私人语料。目录在 [evals/results/live/README.md](evals/results/live/README.md)。
 
@@ -232,11 +250,11 @@ YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平�
 
 这个仓库里没有一份现场抓回来的胡话文稿。字幕要么过了门槛，要么根本没有。胡话和英语循环的拒绝在第 ① 层。
 
-**③ 效果。人或者 Agent 看的。CI 不打分。** [evals/results/spotcheck.md](evals/results/spotcheck.md) 记的是一次阅读：引用在文稿里，笔记没有把没引用的部分编出来。Actions 不打开这个文件。绿色勾不是这些行通过了。[evals/evals.json](evals/evals.json) 里的题目是同一种断言。
+**③ 效果。人或者 Agent 看的。CI 不打分。** [evals/results/spotcheck.md](evals/results/spotcheck.md) 记的是一次阅读：四节写成了可以复用的知识，引用在文稿里。Actions 不打开这个文件。绿色勾不是这些行通过了，也不是给摘要质量打分。[evals/evals.json](evals/evals.json) 里的题目是同一种断言。读的人没有去听音频。
 
 ## 写完的文件是 Markdown
 
-一条任务做完，主机写下 `note.md`。这就是笔记。用 Obsidian 打开，或者用任何能读 Markdown 的编辑器。前置信息有 `title`、`source_url`、`video_id`、`acquisition`、`gate_passed`、`transcript_path`、`quoted_window`。`title` 是任务 id（`youtube_<id>` 或 `x_<id>`）。平台自己的标题和简介不抄进文件。正文是 Source、Transcript、Quoted window 三节。引用的字是从文稿里抄的。
+一条任务做完，主机写下 `note.md`。这就是笔记。用 Obsidian 打开，或者用任何能读 Markdown 的编辑器。前置信息有 `title`、`source_url`、`video_id`、`acquisition`、`gate_passed`、`transcript_path`、`quoted_window`。`title` 是任务 id（`youtube_<id>` 或 `x_<id>`）。平台自己的标题和简介不抄进文件。正文至少四节：问题与做法、完整怎么做、翻车或别用、今天立刻动手一步。每一节都引用文稿，并写出可以复用的判断：问题和做法、步骤、哪里别用、今天的一步。只有路径加一段引用，不是这份笔记。
 
 旁边的 `status.json` 是给程序看的短状态。任务停下的时候（`not_finished`，或者门槛拒绝了这段字），目录里只有这份状态。没有 `note.md`。
 
@@ -256,16 +274,34 @@ quoted_window: |-
 
 # youtube_<id>
 
-## Source
+Transcript: `artifacts/youtube_<id>/transcript.txt`。
 
-## Transcript
+## 问题与做法
 
-## Quoted window
+<这段话在解决什么，对应的做法是什么>
 
-> <同样的这些字>
+> <从文稿里抄来的字，至少 40 个字符>
+
+## 完整怎么做
+
+<按口播的顺序写下的步骤>
+
+> <文稿里的另一段；如果文稿只有这么短，就仍引用这份文件>
+
+## 翻车或别用
+
+<这套做法哪里不要用。文稿没说的警告，不要编。>
+
+> <从文稿里抄来的字>
+
+## 今天立刻动手一步
+
+<从文稿里取出的一个动作>
+
+> <从文稿里抄来的字>
 ````
 
-一条真实字幕写成的笔记：[evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)。
+一条短字幕，写成分析而不是摘录：[evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)。一场更长的谈话，里面有做法、边界和今天的一步：[evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md)。
 
 ## 先跑通一条有字幕的视频
 
@@ -313,7 +349,7 @@ bash scripts/smoke.sh --live
 
 你得到的不是一颗「自动总结」按钮。装上之后，链接一到，并不会马上吐出一篇摘要。你得到的是一条规矩，规矩很短：笔记只能写在嘴里的话已经落成文字之后。
 
-**顺的时候。** 你贴一个链接。它先找官方字幕。有字幕，这段字就是文稿。没有，就看这条视频是不是早就存过一份文稿。要同一条，标题碰巧像的另一条不算。有，而且读起来还像人在说话，就用那份。两样都没有，再去下音频，把声音转成文字。三条路里有一条真正拿出了字，才许写笔记。笔记得点名这份文稿在哪个文件里，还得从文稿里引用大约 40 个连续的字，你能打开文件，对上笔记里的句子。只贴一个路径，再配一个改写过的标题，不算引用。一篇读着很顺、却说不出文件在哪的笔记，不算写完。
+**顺的时候。** 你贴一个链接。它先找官方字幕。有字幕，这段字就是文稿。没有，就看这条视频是不是早就存过一份文稿。要同一条，标题碰巧像的另一条不算。有，而且读起来还像人在说话，就用那份。两样都没有，再去下音频，把声音转成文字。三条路里有一条真正拿出了字，才许写笔记。笔记得点名这份文稿在哪个文件里，把文稿分析成那四节，并且每一节都从文稿里引用大约 40 个连续的字，你能打开文件，对上笔记里的句子。只贴一个路径，再配一个改写过的标题，不算引用。只有引用、没有分析，也不算写完。一篇读着很顺、却说不出文件在哪的笔记，不算写完。
 
 ```text
 链接
@@ -342,7 +378,7 @@ bash scripts/smoke.sh --live
   → 没看完，更强的模型试一次，或停
 ```
 
-**成功就一句话：** 笔记按文稿写，写明了文稿文件，并且引用了其中一段。
+**成功就一句话：** 笔记把文稿分析成那四节知识，写明了文稿文件，并且每一节都引用了文稿。
 
 **失败就一句话：** 它说没看完，写下一步（排队、更强的模型试一次、或者停），不留一篇假装看过的作文。
 
@@ -415,8 +451,8 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP
 | [evals/evals.json](evals/evals.json) | 三道给 Agent 或人的题目。CI 不跑这些题目，也不给断言打分。CI 跑的是 `scripts/test_gate.py` 和 `scripts/run_evidence.py --skip-live`，核对的是夹具文件。 |
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | 第 ① 层。CI 会重新生成的夹具通过/拒绝表。 |
 | [evals/results/live/](evals/results/live/) | 第 ② 层。公开网址的回执：一条短的有字幕 YouTube 笔记、一次没有字幕的停下、一条有字幕的 X 笔记，以及更长的那份 YouTube 样本。 |
-| [evals/results/spotcheck.md](evals/results/spotcheck.md) | 第 ③ 层。Agent 读过笔记，确认引用在文稿里，并且没有把其余部分编出来。CI 不打分。 |
-| [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道不引用真实文稿就不许写笔记的门槛。`bash scripts/smoke.sh` 在离线时核对这一份拷贝。见 [scripts/README.md](scripts/README.md)。 |
+| [evals/results/spotcheck.md](evals/results/spotcheck.md) | 第 ③ 层。Agent 读过笔记，确认四节是可以复用的知识，并且引用在文稿里。CI 不打分。不是听音频。 |
+| [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道门槛：文稿没过，或者笔记没有把文稿分析成知识，就不许写入。`bash scripts/smoke.sh` 在离线时核对这一份拷贝。见 [scripts/README.md](scripts/README.md)。 |
 
 怎么改这个仓库、发过什么： [CONTRIBUTING.md](CONTRIBUTING.md)，[CHANGELOG.md](CHANGELOG.md)。
 

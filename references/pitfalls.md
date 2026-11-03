@@ -8,7 +8,7 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Mistake:** Deposit a final note from title, description, engagement stats, or surrounding tweet text while the video itself was never transcribed.
 
-**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status. The note also has to quote a contiguous stretch of the transcript (40 characters). A pasted path under a rewritten title is not a quote.
+**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status. The note also has to quote a contiguous stretch of the transcript (40 characters) inside each knowledge section: 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步. A pasted path under a rewritten title is not a quote. A quote with no analysis is not knowledge. The quote check does not listen to the audio. A fluent wrong caption can still pass it.
 
 ## 2. Short video ≠ exempt
 
@@ -46,7 +46,7 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Mistake:** Save a low-quality transcript, run the analyzer, get a polished wrong essay, mark as knowledge.
 
-**Fix:** No pass ⇒ no final note. If analysis still revolves around “ASR failed” instead of the video’s subject, treat as gate failure and upgrade / stop.
+**Fix:** No pass ⇒ no final note. If analysis still revolves around “ASR failed” instead of the video’s subject, treat as gate failure and upgrade / stop. The other direction holds too: a passing transcript plus a quote stub is not a finished note. Analysis has to say the problem, the method, the limit, and one next action, each grounded in the transcript. That requirement does not lower the gate, and it does not mean anyone listened to the audio.
 
 ## 8. Secrets in the trail
 

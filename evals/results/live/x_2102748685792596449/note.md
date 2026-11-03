@@ -13,25 +13,28 @@ caption_kind: "manual"
 
 # x_2102748685792596449
 
-This note is allowed because the transcript passed the quality gate. The quoted window is copied from that file.
+Transcript: `evals/results/live/x_2102748685792596449/transcript.txt`.
 
-## Source
+## 问题与做法
 
-- Source URL: https://x.com/i/status/2102748685792596449
-- Video id: `2102748685792596449`
-- Acquisition: `yt-dlp`
-- Caption language: `en`
-- Caption kind: `manual`
-- Gate passed: yes
-
-## Transcript
-
-[transcript.txt](transcript.txt)
-
-`evals/results/live/x_2102748685792596449/transcript.txt`
-
-## Quoted window
+This caption is a dated invitation, not a briefing. The offer is to explore a spaceport event named MAX POWER at Kennedy, on the November dates in the line, with a URL as the pointer. The approach is to use that named event. Do not infer a program from a post that sits beside the video. The speech says: Explore America's Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower
 
 > Explore America's Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower
 
-Match these lines to the transcript file. The file may be longer than the quote.
+## 完整怎么做
+
+One instruction is in the caption: explore the spaceport event it names. The place, the November dates, and the URL are the whole procedure. No ticket step, map step, or registration step is spoken, so do not add one. The speech says: Explore America's Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower
+
+> Explore America's Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower
+
+## 翻车或别用
+
+Do not use this line as a price, a map, or a technical tour. The dates in the caption are the only dates it gives. The URL is where the line stops. Anything past that URL is not this video's speech. The speech says: Space Center November 7-8 nasa.gov/maxpower
+
+> Space Center November 7-8 nasa.gov/maxpower
+
+## 今天立刻动手一步
+
+Today, open the URL named in the caption and check whether the November dates still match the event you need. If the page disagrees with the spaceport or those dates, stop. This caption gives no second step. The speech says: Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower
+
+> Premier Spaceport at MAX POWER NASA Kennedy Space Center November 7-8 nasa.gov/maxpower

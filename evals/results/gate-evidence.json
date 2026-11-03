@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-03T02:18:17Z",
+  "generated_at": "2026-11-03T05:11:02Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -9,7 +9,7 @@
       "note": "evals/fixtures/usable_en_note.md",
       "expected_lang": "en",
       "expect_allowed": true,
-      "summary": "Usable English transcript, note cites the path.",
+      "summary": "Usable English transcript. The note cites it and analyzes it in the four knowledge sections.",
       "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
       "exit_code": 0,
       "allowed": true,
@@ -60,7 +60,7 @@
       "note": "evals/fixtures/usable_zh_note.md",
       "expected_lang": "zh",
       "expect_allowed": true,
-      "summary": "Usable Chinese transcript passes the same language gate.",
+      "summary": "Usable Chinese transcript. The note cites it and analyzes the repotting method.",
       "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_zh_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
       "exit_code": 0,
       "allowed": true,
@@ -134,7 +134,9 @@
       "allowed": false,
       "reasons": [
         "note does not cite transcript path evals/fixtures/usable_en_transcript.txt",
-        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
+        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)",
+        "note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
+        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -151,7 +153,51 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
+        "note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)",
+        "note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
+        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "quote-stub",
+      "eval_id": 1,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/quote_stub_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Usable transcript. The note has frontmatter and a real quote, and no knowledge sections.",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/quote_stub_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+      ],
+      "naive_would_deposit": true,
+      "matched": true
+    },
+    {
+      "id": "boilerplate-sections",
+      "eval_id": 1,
+      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "note": "evals/fixtures/boilerplate_note.md",
+      "expected_lang": "en",
+      "expect_allowed": false,
+      "summary": "Four section headings and real quotes, with the same quote-stub sentence in each.",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/boilerplate_note.md --expected-lang en --json",
+      "exit_code": 2,
+      "allowed": false,
+      "reasons": [
+        "boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim",
+        "section 问题与做法 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
+        "boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim",
+        "section 完整怎么做 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
+        "boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim",
+        "section 翻车或别用 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
+        "boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim",
+        "section 今天立刻动手一步 is not grounded in the transcript (the analysis never uses a stretch of the transcript's words)",
+        "finished note repeats the same analysis in more than one knowledge section"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -224,7 +270,7 @@
         "allowed": true,
         "reasons": []
       },
-      "expect": "x_host settle uses the same gate and writes a quoting note"
+      "expect": "x_host settle uses the same gate and writes a knowledge note"
     }
   ],
   "live": {
