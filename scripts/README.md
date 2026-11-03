@@ -2,7 +2,7 @@
 
 YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms are not fetched here.
 
-Run from the repo root. A host writes `note.scaffold.md` when the gate passes. That file is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`), four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步), and fill instructions. `title` is the job id. The platform title and description are not stored. The scaffold is not a finished knowledge note, and the host does not ask `verify_note.py` to accept it. `verify_note.py` still refuses a quote stub and still refuses this scaffold. Feishu is not called. On failure the host writes `status.json` only and deletes a previous note and scaffold for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
+Run from the repo root. A host writes `transcript.txt`, `segments.json`, `chunks/NN.txt`, and `note.scaffold.md` when the gate passes. Caption lines in `transcript.txt` are `[mm:ss] text`, or `[hh:mm:ss] text` after one hour. `segments.json` stores `start`, `end`, and `text` in seconds. Chunks are about 8 minutes or about 6000 characters. Plain text with no clock stays unstamped, and those segment times are null. The scaffold is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`, and `caption_kind` / `caption_trust` when set), four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步), and fill instructions. `title` is the job id. The platform title and description are not stored. The scaffold is not a finished knowledge note. `caption_trust: low` means automatic captions were not in the expected language. Feishu is not called. On failure the host writes `status.json` only and deletes a previous transcript, segments, chunks, note, and scaffold for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
 
 ## Smoke
 
@@ -51,12 +51,10 @@ A public check of `https://x.com/NASA/status/2102748685792596449` kept a transcr
 ## Check a note
 
 ```bash
-python3 scripts/verify_note.py \
-  --transcript artifacts/youtube_KwhgfwOSToQ/transcript.txt \
-  --note artifacts/youtube_KwhgfwOSToQ/note.md
+python3 scripts/verify_note.py --job artifacts/youtube_KwhgfwOSToQ
 ```
 
-Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires the file to exist, the quality gate to pass, and a knowledge note: frontmatter plus the four sections, each quoting 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `knowledge_note.py`). Pasting the path under a rewritten title is refused. So is a quote with no analysis. This check does not play the audio and does not grade an LLM summary.
+Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires the transcript to pass the quality gate and a knowledge note: frontmatter plus the four sections, each quoting 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `knowledge_note.py`). A section may instead be one line, `本节不适用：<reason>`, plus one quote. If every section is that line, the command sets `status` to `no-extractable-content` and deletes `note.md`. Pasting the path under a rewritten title is refused. So is a quote with no analysis. This check does not play the audio and does not grade an LLM summary. `--transcript` and `--note` still work for a fixture pair.
 
 ## Environment variables
 

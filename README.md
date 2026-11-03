@@ -25,7 +25,7 @@ No live receipt here is a gibberish transcript. Captions that came back either p
 
 ## The host writes a scaffold
 
-When the transcript passes the quality gate, the host writes `transcript.txt`, `status.json`, and `note.scaffold.md`. `status` is `transcript_ready`. `finished` is false. `note` is null. The scaffold has the frontmatter fields `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`, then four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步) and fill instructions. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The scaffold is not a finished knowledge note. The host does not fill the sections.
+When the transcript passes the quality gate, the host writes `transcript.txt`, `segments.json`, `chunks/`, `status.json`, and `note.scaffold.md`. Caption lines are `[mm:ss] text`, or `[hh:mm:ss] text` after one hour. `segments.json` is `start`, `end`, and `text` in seconds. Chunks are about 8 minutes or about 6000 characters. `status` is `transcript_ready`. `finished` is false. `note` is null. The scaffold has the frontmatter fields `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`, then four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步) and fill instructions. `caption_kind` is `auto` or `manual` when known. `caption_trust: low` means automatic captions were not in the expected language. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The scaffold is not a finished knowledge note. The host does not fill the sections. You write `note.md`. A section with nothing to extract is `本节不适用：<reason>` plus one quote. If every section is that line, `verify_note.py --job` sets `no-extractable-content` and deletes `note.md`.
 
 A finished `note.md` is a later file. `verify_note.py` allows one only when each section quotes the transcript and adds a claim that is not the quote. A path plus a blockquote is not that note. The host does not write it.
 
@@ -256,7 +256,7 @@ YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平�
 
 ## 主机写下的是脚手架
 
-文稿过了质量门槛之后，主机写下 `transcript.txt`、`status.json` 和 `note.scaffold.md`。`status` 是 `transcript_ready`。`finished` 是 false。`note` 是 null。脚手架里有前置字段 `title`、`source_url`、`video_id`、`acquisition`、`gate_passed`、`transcript_path`、`quoted_window`，然后是四个空标题（问题与做法、完整怎么做、翻车或别用、今天立刻动手一步）和填写说明。`title` 是任务 id（`youtube_<id>` 或 `x_<id>`）。平台自己的标题和简介不抄进文件。脚手架不是写完的知识笔记。主机不填这四节。
+文稿过了质量门槛之后，主机写下 `transcript.txt`、`segments.json`、`chunks/`、`status.json` 和 `note.scaffold.md`。有时间轴的字幕，每一行是 `[mm:ss] 文本`，超过一小时写成 `[hh:mm:ss]`。`segments.json` 里是秒为单位的 `start`、`end`、`text`。切块大约 8 分钟，或大约 6000 字。`status` 是 `transcript_ready`。`finished` 是 false。`note` 是 null。脚手架里有前置字段 `title`、`source_url`、`video_id`、`acquisition`、`gate_passed`、`transcript_path`、`quoted_window`，然后是四个空标题（问题与做法、完整怎么做、翻车或别用、今天立刻动手一步）和填写说明。知道字幕来源时，`caption_kind` 是 `auto` 或 `manual`。`caption_trust: low` 表示自动字幕的语言和期望的不一样。`title` 是任务 id（`youtube_<id>` 或 `x_<id>`）。平台自己的标题和简介不抄进文件。脚手架不是写完的知识笔记。主机不填这四节。笔记由你来写。某一节没有可提取的内容，就写 `本节不适用：<原因>`，再加一处引文。四节都是这一行时，`verify_note.py --job` 把状态改成 `no-extractable-content`，并删掉 `note.md`。
 
 写完的 `note.md` 是后面另写的文件。`verify_note.py` 只在每一节都引用了文稿、并且写出的判断不是那段引用本身时，才允许它。只有路径加一段引用，不是这份笔记。主机不写它。
 

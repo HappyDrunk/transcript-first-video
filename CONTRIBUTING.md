@@ -34,7 +34,7 @@ Three layers, and they stay separate. The fixture table is what CI scores: gate,
 
 `python3 scripts/run_evidence.py` without `--skip-live` refetches `youtube_KwhgfwOSToQ` only. Leave the other live directories in place. Do not invent a private corpus, and do not commit a gibberish transcript you wrote yourself.
 
-Hosts write `note.scaffold.md` on a passing transcript: frontmatter, the four empty section headings, and fill instructions. They do not write a finished `note.md`. Keep `verify_note.py` able to reject a quote stub. A stop still writes `status.json` and deletes any previous note and scaffold.
+Hosts write a timestamped `transcript.txt`, `segments.json`, `chunks/`, and `note.scaffold.md` on a passing transcript. They do not write a finished `note.md`. A section may be `本节不适用：<reason>` plus one quote. All four sections in that form are `no-extractable-content`: `verify_note.py --job` deletes `note.md`. Keep `verify_note.py` able to reject a quote stub. A stop still writes `status.json` and deletes any previous transcript, chunks, note, and scaffold. The agent flow is `SKILL.md`. `references/note-examples.md` stays a skeleton until the author fills it.
 
 ## Release
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Minimal YouTube host: captions first, optional ASR, otherwise no transcript.
 
-A passing transcript writes transcript.txt, status.json, and note.scaffold.md.
-The scaffold is frontmatter, four empty section headings, and fill instructions.
-It is not a finished knowledge note. The host does not analyze the transcript.
+A passing transcript writes transcript.txt (caption lines keep [mm:ss]), segments.json,
+chunks/, status.json, and note.scaffold.md. The scaffold is frontmatter, four
+empty section headings, and fill instructions. It is not a finished knowledge
+note. The host does not analyze the transcript.
 The platform title and description are not stored. On failure the job directory
 keeps status.json and no scaffold.
 
