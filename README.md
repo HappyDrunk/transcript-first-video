@@ -10,7 +10,7 @@ YouTube and Twitter/X video. This skill fetches those two. Other platforms are n
 
 A green check is the first layer. Read these three before the rest of the page. They are different kinds of proof.
 
-**① Mechanical. CI scores this.** Actions runs `python3 scripts/test_gate.py` and `python3 scripts/run_evidence.py --skip-live`. The pass/fail table is [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Usable English and usable Chinese knowledge notes are allowed. Empty text, gibberish, an English loop when Chinese was expected, a pasted path with no quote, a quote with no analysis, a four-section stub that repeats "the quote was copied," and an essay about a failed transcription are refused. Those rows use fixture files. A green check means that table matched. It does not mean a URL was watched, it does not mean the captions match the audio, and it does not mean a model scored the summary. The hosts do not write those knowledge notes.
+**① Mechanical. CI scores this.** Actions runs `python3 scripts/test_gate.py`, `python3 scripts/test_no_overfit.py`, and `python3 scripts/run_evidence.py --skip-live`. The pass/fail table is [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Usable English and usable Chinese knowledge notes are allowed. Empty text, gibberish, an English loop when Chinese was expected, a pasted path with no quote, a quote with no analysis, a four-section stub that repeats "the quote was copied," and an essay about a failed transcription are refused. Those rows use fixture files. A green check means that table matched. It does not mean a URL was watched, it does not mean the captions match the audio, and it does not mean a model scored the summary. The hosts do not write those knowledge notes.
 
 **② Live public URLs. Committed receipts.** ASR stayed off. No private corpus. The index is [evals/results/live/README.md](evals/results/live/README.md).
 
@@ -221,7 +221,7 @@ Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES`
 | :--- | :--- |
 | [SKILL.md](SKILL.md) | The full rules: where words may come from, when to stop, what a note has to cite, how a cookie or a key stays a name. If this page and that file disagree, follow the file. |
 | [references/pitfalls.md](references/pitfalls.md) | Ten real mistakes, private details removed. Open it when a note looks done and you suspect it is not, or when a Chinese talk comes back as English junk. The stories include a queue nobody ran, a download link that expired, and a "mostly Chinese characters" transcript that was still garbage. |
-| [evals/evals.json](evals/evals.json) | Three prompts for an agent or a person. CI does not run the prompts or score the assertions. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live` on the fixture files. |
+| [evals/evals.json](evals/evals.json) | Three prompts for an agent or a person. CI does not run the prompts or score the assertions. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, and `scripts/run_evidence.py --skip-live` on the fixture files. |
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | Layer ①. The fixture pass/fail table CI regenerates. |
 | [evals/results/live/](evals/results/live/) | Layer ②. Public-URL receipts: a short captioned YouTube transcript, a no-caption stop, a captioned X transcript, and the longer YouTube sample. The template notes were withdrawn. |
 | [evals/results/spotcheck.md](evals/results/spotcheck.md) | Layer ③. Records that those template notes were withdrawn, and reads the fixture refusals. CI does not score it. Not an audio check. |
@@ -241,7 +241,7 @@ YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平�
 
 仓库上的绿色勾，只是第一层。先读这三层，再读下面的正文。三层不是同一种证明。
 
-**① 机械。CI 打分的是这一层。** Actions 跑 `python3 scripts/test_gate.py` 和 `python3 scripts/run_evidence.py --skip-live`。通过和拒绝的表在 [evals/results/gate-evidence.md](evals/results/gate-evidence.md)。能用的英文知识笔记、能用的中文知识笔记，允许。空文本、胡话、期望中文时的英语循环、只贴路径不引用、有引用却没有分析、四个标题下都是「引用已抄录」的空壳，以及一篇讲「转写失败了」的作文，拒绝。这些行用的是夹具文件。绿色勾表示这张表对上了。它不表示有人去看了一条网址，不表示字幕和声音一致，也不表示有模型给摘要打了分。主机不写这些知识笔记。
+**① 机械。CI 打分的是这一层。** Actions 跑 `python3 scripts/test_gate.py`、`python3 scripts/test_no_overfit.py` 和 `python3 scripts/run_evidence.py --skip-live`。通过和拒绝的表在 [evals/results/gate-evidence.md](evals/results/gate-evidence.md)。能用的英文知识笔记、能用的中文知识笔记，允许。空文本、胡话、期望中文时的英语循环、只贴路径不引用、有引用却没有分析、四个标题下都是「引用已抄录」的空壳，以及一篇讲「转写失败了」的作文，拒绝。这些行用的是夹具文件。绿色勾表示这张表对上了。它不表示有人去看了一条网址，不表示字幕和声音一致，也不表示有模型给摘要打了分。主机不写这些知识笔记。
 
 **② 现场公开网址。提交进仓库的回执。** ASR 关着。没有私人语料。目录在 [evals/results/live/README.md](evals/results/live/README.md)。
 
@@ -452,7 +452,7 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP
 | :--- | :--- |
 | [SKILL.md](SKILL.md) | 完整的规矩：字可以从哪来，什么时候该停，笔记必须点名什么，cookie 和密钥怎么只留名字。这页和那个文件要是说得不一样，以那个文件为准。 |
 | [references/pitfalls.md](references/pitfalls.md) | 十条真实翻过的车，私人信息已经去掉。笔记看着完成了、你又觉得不对，或者中文口播被听成英语胡话，先打开它。里面有没人去跑的队列、过期的下载地址，还有一份「大部分是汉字」却仍然是垃圾的文稿。 |
-| [evals/evals.json](evals/evals.json) | 三道给 Agent 或人的题目。CI 不跑这些题目，也不给断言打分。CI 跑的是 `scripts/test_gate.py` 和 `scripts/run_evidence.py --skip-live`，核对的是夹具文件。 |
+| [evals/evals.json](evals/evals.json) | 三道给 Agent 或人的题目。CI 不跑这些题目，也不给断言打分。CI 跑的是 `scripts/test_gate.py`、`scripts/test_no_overfit.py` 和 `scripts/run_evidence.py --skip-live`，核对的是夹具文件。 |
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | 第 ① 层。CI 会重新生成的夹具通过/拒绝表。 |
 | [evals/results/live/](evals/results/live/) | 第 ② 层。公开网址的回执：一条短的有字幕 YouTube 文稿、一次没有字幕的停下、一条有字幕的 X 文稿，以及更长的那份 YouTube 样本。模板笔记已撤回。 |
 | [evals/results/spotcheck.md](evals/results/spotcheck.md) | 第 ③ 层。记下那些模板笔记已撤回，并读夹具里被拒绝的文件。CI 不打分。不是听音频。 |

@@ -12,7 +12,7 @@ Offline:
 bash scripts/smoke.sh
 ```
 
-This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py`, settles `evals/fixtures/usable_en_transcript.txt`, and regenerates fixture evidence with `run_evidence.py --skip-live`. ASR stays off.
+This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles `evals/fixtures/usable_en_transcript.txt`, and regenerates fixture evidence with `run_evidence.py --skip-live`. ASR stays off.
 
 With a network, the same script also tries a short public captioned video ("Me at the zoo", `jNQXAC9IVRw`):
 
@@ -102,6 +102,7 @@ Regenerate the checked-in pass/fail record. `--skip-live` skips the YouTube fetc
 
 ```bash
 python3 scripts/test_gate.py
+python3 scripts/test_no_overfit.py
 python3 scripts/run_evidence.py
 python3 scripts/run_evidence.py --skip-live
 ```

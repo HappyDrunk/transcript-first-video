@@ -14,7 +14,7 @@ Offline, from the repo root:
 bash scripts/smoke.sh
 ```
 
-That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py`, settles a fixture, and regenerates fixture evidence.
+That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles a fixture, and regenerates fixture evidence.
 
 `bash scripts/smoke.sh --live` also tries `https://www.youtube.com/watch?v=jNQXAC9IVRw` ("Me at the zoo"). ASR stays off on that run.
 
@@ -26,11 +26,11 @@ pip install -r requirements-asr.txt
 
 ## Evidence
 
-`python3 scripts/run_evidence.py --skip-live` rewrites `evals/results/gate-evidence.json` and `gate-evidence.md` with repo-relative paths. It keeps the checked-in live sample. CI runs that command and fails if `evals/results` changes.
+`python3 scripts/run_evidence.py --skip-live` rewrites `evals/results/gate-evidence.json` and `gate-evidence.md` with repo-relative paths. It keeps the checked-in live sample. CI runs that command and fails if `evals/results` changes. CI also runs `scripts/test_no_overfit.py`.
 
 A path like `/workspace/...` or `/tmp/...` in those files is a bug. Record `scripts/...` and `evals/...`.
 
-Three layers, and they stay separate. The fixture table is what CI scores: gate, citation, quotes inside the four knowledge sections, and a refusal of empty or boilerplate analysis. That table is not an audio check and not a model grade. Directories under `evals/results/live/` are public-URL receipts. `evals/results/spotcheck.md` is an agent or human reading that the knowledge is present and grounded. CI does not score that file. Say so if you add another reading. A new mechanical check belongs in `scripts/test_gate.py` or `scripts/run_evidence.py`.
+Three layers, and they stay separate. The fixture table is what CI scores: gate, citation, quotes inside the four knowledge sections, and a refusal of empty or boilerplate analysis. That table is not an audio check and not a model grade. Directories under `evals/results/live/` are public-URL receipts. The template notes that used to sit there were withdrawn. `evals/results/spotcheck.md` records that withdrawal and still reads the fixture refusals. CI does not score that file. Say so if you add another reading. A new mechanical check belongs in `scripts/test_gate.py`, `scripts/test_no_overfit.py`, or `scripts/run_evidence.py`.
 
 `python3 scripts/run_evidence.py` without `--skip-live` refetches `youtube_KwhgfwOSToQ` only. Leave the other live directories in place. Do not invent a private corpus, and do not commit a gibberish transcript you wrote yourself.
 

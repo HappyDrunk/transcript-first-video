@@ -242,6 +242,20 @@ class VerifierTests(unittest.TestCase):
                 any("does not analyze" in reason or "quoted_window" in reason for reason in result["reasons"])
             )
 
+    def test_keyword_salad_is_pending_r09(self) -> None:
+        """Shape check still allows the keyword salad. Phase 3 must refuse it under R09.
+
+        This assertion is the pending marker. It is not acceptance of the salad.
+        """
+        note_path = ROOT / "evals/adversarial/keyword_salad_en.md"
+        transcript = ROOT / "evals/adversarial/saas_pricing_transcript.txt"
+        text = note_path.read_text(encoding="utf-8")
+        self.assertIn("expect: FAIL R09", text)
+        self.assertIn("expected-fail-pending", text)
+        self.assertIn("Today, do only the first spoken move: Most, founders, set, price, too, low.", text)
+        result = verify_note.verify(transcript, text, expected_lang="en")
+        self.assertTrue(result["allowed"], result["reasons"])
+
 
 class HostTests(unittest.TestCase):
     def test_parse_youtube_ref(self) -> None:
