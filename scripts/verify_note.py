@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Fail-closed note gate.
 
-A note is allowed only when it cites an existing transcript file, that file
-passes the quality gate, and the note quotes a real window of the transcript
-(QUOTE_WINDOW characters). A pasted path or a rewritten title is not a quote.
+A note is allowed only when all of these hold:
+
+- The transcript file exists and passes the quality gate.
+- The note cites that file and quotes a real window of it.
+- The note is Obsidian Markdown with the knowledge sections
+  问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步.
+- Each section quotes the transcript and adds analysis that is not a stub.
+
+A path, a status line, or a blockquote alone is not a finished note.
+The gate does not listen to audio. It does not grade an LLM summary.
 Analyzer essays about a failed transcription are refused unless the transcript
 itself passed and the note quotes it.
 
@@ -20,9 +27,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 
-QUOTE_WINDOW = 40
+QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 
 _LAUNDER = re.compile(
     r"("
@@ -137,6 +145,14 @@ def verify(
             reasons.append(f"note does not cite transcript path {display}")
         if not quoted:
             reasons.append(quote_refusal(gate.text))
+        reasons.extend(knowledge_note.knowledge_reasons(note, gate.text))
+        fields = knowledge_note.parse_frontmatter(note) or {}
+        cited_path = str(fields.get("transcript_path") or "").replace("\\", "/")
+        forms = {form.replace("\\", "/") for form in citation_forms(transcript)}
+        if cited_path and cited_path not in forms:
+            reasons.append(
+                f"frontmatter transcript_path does not match the transcript file {transcript.as_posix()}"
+            )
     elif not exists and not cited:
         reasons.append(f"note does not cite transcript path {transcript.as_posix()}")
     laundering = bool(_LAUNDER.search(note))
@@ -179,8 +195,9 @@ def _read_note(note_arg: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Allow a note only when it cites a transcript that passes the quality gate "
-            "and quotes a real window of that transcript."
+            "Allow a note only when it cites a transcript that passes the quality gate, "
+            "quotes that transcript in each knowledge section, and analyzes it. "
+            "A path plus a quote is not enough."
         )
     )
     parser.add_argument("--transcript", required=True, type=Path)

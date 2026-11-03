@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Minimal YouTube host: captions first, optional ASR, otherwise not finished.
 
-A finished job writes note.md, an Obsidian-friendly Markdown file with YAML
-frontmatter. The note cites the transcript path and quotes a real window of
-that file. The platform title and description are not stored. status.json is
-a machine stub. On failure the job directory keeps that stub and no note.
+A finished job writes note.md. That file is Obsidian Markdown: YAML frontmatter
+plus four knowledge sections (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步).
+Each section quotes the transcript and says what to reuse. The platform title
+and description are not stored. status.json is a machine stub. On failure the
+job directory keeps that stub and no note.
 
 Exit 0 finished. Exit 2 not finished or quality-gate failure. Exit 1 usage.
 """
@@ -27,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 import verify_note  # noqa: E402
 
@@ -644,17 +646,6 @@ def download_audio(url: str, base_cmd: list[str], dest_dir: Path) -> Path:
 _EXCERPT_LIMIT = 360
 
 
-def yaml_double(value: str) -> str:
-    """Quote a frontmatter scalar so colons and quotes stay inside the value."""
-    escaped = (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-    )
-    return f'"{escaped}"'
-
-
 def _cut_words(text: str, limit: int) -> str:
     cut = text[:limit].rstrip()
     if " " in cut:
@@ -724,65 +715,21 @@ def render_note(
     transcript_cite: str,
     excerpt: str,
 ) -> str:
-    """Obsidian Markdown. Frontmatter title is the job id, not the platform title.
+    """Obsidian knowledge note. Title is the job id, not the platform title.
 
-    The quoted window is copied from the transcript. The body does not retell it.
+    ``excerpt`` is the transcript text. The body analyzes it into the four
+    knowledge sections and quotes it. A path plus a blockquote is not a note.
     """
-    window, quote_lines = transcript_excerpt(excerpt)
-    lines = [
-        "---",
-        f"title: {yaml_double(job_id)}",
-        f"source_url: {yaml_double(source)}",
-        f"video_id: {yaml_double(video_id)}",
-        f"acquisition: {yaml_double(acquisition)}",
-        "gate_passed: true",
-        f"transcript_path: {yaml_double(transcript_cite)}",
-        "quoted_window: |-",
-        f"  {window}",
-    ]
-    if caption_language:
-        lines.append(f"caption_language: {yaml_double(caption_language)}")
-    if caption_kind:
-        lines.append(f"caption_kind: {yaml_double(caption_kind)}")
-    lines.extend(
-        [
-            "---",
-            "",
-            f"# {job_id}",
-            "",
-            "This note is allowed because the transcript passed the quality gate. "
-            "The quoted window is copied from that file.",
-            "",
-            "## Source",
-            "",
-            f"- Source URL: {source}",
-            f"- Video id: `{video_id}`",
-            f"- Acquisition: `{acquisition}`",
-        ]
+    return knowledge_note.render_note(
+        job_id=job_id,
+        video_id=video_id,
+        source=source,
+        acquisition=acquisition,
+        transcript_cite=transcript_cite,
+        transcript_text=excerpt,
+        caption_language=caption_language,
+        caption_kind=caption_kind,
     )
-    if caption_language:
-        lines.append(f"- Caption language: `{caption_language}`")
-    if caption_kind:
-        lines.append(f"- Caption kind: `{caption_kind}`")
-    lines.extend(
-        [
-            "- Gate passed: yes",
-            "",
-            "## Transcript",
-            "",
-            "[transcript.txt](transcript.txt)",
-            "",
-            f"`{transcript_cite}`",
-            "",
-            "## Quoted window",
-            "",
-            *[f"> {line}" for line in quote_lines],
-            "",
-            "Match these lines to the transcript file. The file may be longer than the quote.",
-            "",
-        ]
-    )
-    return "\n".join(lines)
 
 
 def finalize_job(

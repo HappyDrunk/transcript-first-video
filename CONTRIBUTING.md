@@ -4,7 +4,7 @@ This repository is the portable gate and the skill. A production host that drain
 
 Platforms here are YouTube and Twitter/X video. Do not add Bilibili, Douyin, or Xiaohongshu to this repo.
 
-`ASR_BACKEND` defaults to off. A video with no captions finishes as `not_finished`. Do not turn ASR on by default, and do not weaken `quality_gate.py` or `verify_note.py` so a fluent note can pass without a real quote.
+`ASR_BACKEND` defaults to off. A video with no captions finishes as `not_finished`. Do not turn ASR on by default, and do not weaken `quality_gate.py` or `verify_note.py` so a fluent note can pass without a real quote. Do not weaken the knowledge check so a quote stub can pass. Do not claim the gate hears the audio. Do not add a CI job that scores LLM summaries.
 
 ## Check
 
@@ -30,11 +30,11 @@ pip install -r requirements-asr.txt
 
 A path like `/workspace/...` or `/tmp/...` in those files is a bug. Record `scripts/...` and `evals/...`.
 
-Three layers, and they stay separate. The fixture table is what CI scores. Directories under `evals/results/live/` are public-URL receipts. `evals/results/spotcheck.md` is an agent or human reading. CI does not score that file. Say so if you add another reading. A new mechanical check belongs in `scripts/test_gate.py` or `scripts/run_evidence.py`.
+Three layers, and they stay separate. The fixture table is what CI scores: gate, citation, quotes inside the four knowledge sections, and a refusal of empty or boilerplate analysis. That table is not an audio check and not a model grade. Directories under `evals/results/live/` are public-URL receipts. `evals/results/spotcheck.md` is an agent or human reading that the knowledge is present and grounded. CI does not score that file. Say so if you add another reading. A new mechanical check belongs in `scripts/test_gate.py` or `scripts/run_evidence.py`.
 
 `python3 scripts/run_evidence.py` without `--skip-live` refetches `youtube_KwhgfwOSToQ` only. Leave the other live directories in place. Do not invent a private corpus, and do not commit a gibberish transcript you wrote yourself.
 
-Finished notes from the hosts are Obsidian Markdown. Keep that shape if you change `render_note`. A stop still writes `status.json` and no `note.md`.
+Finished notes from the hosts are Obsidian Markdown with the four knowledge sections. Keep that shape if you change `render_note`. A stop still writes `status.json` and no `note.md`.
 
 ## Release
 

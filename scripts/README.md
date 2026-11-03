@@ -2,7 +2,7 @@
 
 YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms are not fetched here.
 
-Run from the repo root. A host writes `note.md` only after the gate passes and `verify_note.py` accepts it. That file is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`) and three body sections (Source, Transcript, Quoted window). `title` is the job id. The platform title and description are not stored. The quote is copied from the transcript. Feishu is not called. On failure the host writes `status.json` only and deletes a previous note for that same job id.
+Run from the repo root. A host writes `note.md` only after the gate passes and `verify_note.py` accepts it. That file is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`) and four body sections (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步). `title` is the job id. The platform title and description are not stored. Each section quotes the transcript and states a reusable claim. A path plus a blockquote is refused. Feishu is not called. On failure the host writes `status.json` only and deletes a previous note for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
 
 ## Smoke
 
@@ -30,7 +30,7 @@ Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`,
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=KwhgfwOSToQ" --out artifacts
 ```
 
-Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. The note title is the job id. The platform title and description are not written into the note. A filled example is `evals/results/live/youtube_jNQXAC9IVRw/note.md`.
+Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. The note title is the job id. The platform title and description are not written into the note. A short analyzed example is `evals/results/live/youtube_jNQXAC9IVRw/note.md`. A longer one is `evals/results/live/youtube_KwhgfwOSToQ/note.md`.
 
 ## Twitter/X video
 
@@ -46,7 +46,7 @@ A public X video often has no caption track. Without `ASR_BACKEND=whisper` or `A
 
 yt-dlp may report a media id that is not the status id. Captions are kept only when the webpage URL is still that status.
 
-A public check of `https://x.com/NASA/status/2102748685792596449` finished from yt-dlp English captions. The committed receipt is `evals/results/live/x_2102748685792596449/`. The note quotes that short caption and does not expand it. With yt-dlp missing, the same URL still returned a video from the public API and stopped at not finished: no caption track, `ASR_BACKEND` unset, post text not used.
+A public check of `https://x.com/NASA/status/2102748685792596449` finished from yt-dlp English captions. The committed receipt is `evals/results/live/x_2102748685792596449/`. The note treats that one line as a dated invitation and does not invent a ticket price or a map. With yt-dlp missing, the same URL still returned a video from the public API and stopped at not finished: no caption track, `ASR_BACKEND` unset, post text not used.
 
 ## Check a note
 
@@ -56,7 +56,7 @@ python3 scripts/verify_note.py \
   --note artifacts/youtube_KwhgfwOSToQ/note.md
 ```
 
-Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires all three: the file exists, the quality gate passed, and the note quotes 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `verify_note.py`). Pasting the path under a rewritten title is refused.
+Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires the file to exist, the quality gate to pass, and a knowledge note: frontmatter plus the four sections, each quoting 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `knowledge_note.py`). Pasting the path under a rewritten title is refused. So is a quote with no analysis. This check does not play the audio and does not grade an LLM summary.
 
 ## Environment variables
 

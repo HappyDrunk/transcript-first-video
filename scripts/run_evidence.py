@@ -122,7 +122,7 @@ CASES = [
         "note": "evals/fixtures/usable_en_note.md",
         "expected_lang": "en",
         "expect_allowed": True,
-        "summary": "Usable English transcript, note cites the path.",
+        "summary": "Usable English transcript. The note cites it and analyzes it in the four knowledge sections.",
     },
     {
         "id": "empty-asr",
@@ -149,7 +149,7 @@ CASES = [
         "note": "evals/fixtures/usable_zh_note.md",
         "expected_lang": "zh",
         "expect_allowed": True,
-        "summary": "Usable Chinese transcript passes the same language gate.",
+        "summary": "Usable Chinese transcript. The note cites it and analyzes the repotting method.",
     },
     {
         "id": "clean-en-expected-zh",
@@ -195,6 +195,24 @@ CASES = [
         "expected_lang": "en",
         "expect_allowed": False,
         "summary": "Usable transcript. The note pastes the path and a title, and does not quote the transcript.",
+    },
+    {
+        "id": "quote-stub",
+        "eval_id": 1,
+        "transcript": "evals/fixtures/usable_en_transcript.txt",
+        "note": "evals/fixtures/quote_stub_note.md",
+        "expected_lang": "en",
+        "expect_allowed": False,
+        "summary": "Usable transcript. The note has frontmatter and a real quote, and no knowledge sections.",
+    },
+    {
+        "id": "boilerplate-sections",
+        "eval_id": 1,
+        "transcript": "evals/fixtures/usable_en_transcript.txt",
+        "note": "evals/fixtures/boilerplate_note.md",
+        "expected_lang": "en",
+        "expect_allowed": False,
+        "summary": "Four section headings and real quotes, with the same quote-stub sentence in each.",
     },
 ]
 
@@ -327,7 +345,7 @@ def host_cases() -> list[dict]:
             "en",
             out,
         )
-        x_usable["expect"] = "x_host settle uses the same gate and writes a quoting note"
+        x_usable["expect"] = "x_host settle uses the same gate and writes a knowledge note"
         results.append(x_usable)
     return results
 
@@ -386,7 +404,9 @@ def markdown(report: dict) -> str:
         "",
         f"Generated {report['generated_at']} by `python3 scripts/run_evidence.py`.",
         "",
-        "Without a gate, a fluent note looks depositable (40 or more letters). With the gate, a note is allowed only when it cites a transcript file that passes the quality gate and quotes a 40-character window of that transcript. A path alone is refused.",
+        "Two bars, both required. (A) No note without a usable transcript: the file has to exist and pass the quality gate. (B) A finished note has to analyze that transcript into reusable knowledge. The four sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, and each one quotes a 40-character window of the transcript. A path, a status, or a quote with no analysis is refused.",
+        "",
+        "This table is that mechanical check. It does not listen to the audio, so a fluent wrong caption can still pass. It does not send the note to a model, and it does not score how good a summary is. Those readings are evals/results/spotcheck.md, which CI does not score.",
         "",
         "## Verifier",
         "",
@@ -403,7 +423,7 @@ def markdown(report: dict) -> str:
         why = (
             "; ".join(case["reasons"])
             if case["reasons"]
-            else "cites a transcript that passed the gate and quotes a window"
+            else "cites a usable transcript, quotes it in each knowledge section, and the analysis is not a stub"
         )
         lines.append(f"- `{case['id']}`: {why}")
     lines.extend(
@@ -453,18 +473,21 @@ def markdown(report: dict) -> str:
         if live.get("acquisition") == "caption-mirror":
             lines.append(
                 "yt-dlp did not return captions. The text came from the public mirror fallback. "
-                "The note cites the transcript path and quotes it. The note title is the job id. "
-                "The platform title and description are not stored."
+                "The note analyzes the transcript into the four knowledge sections and quotes each one. "
+                "The note title is the job id. The platform title and description are not stored. "
+                "Passing this check is not a claim that the captions match the audio."
             )
         elif live.get("acquisition") == "yt-dlp":
             lines.append(
-                "Captions came from yt-dlp. The note cites the transcript path and quotes it. "
-                "The note title is the job id. The platform title and description are not stored."
+                "Captions came from yt-dlp. The note analyzes the transcript into the four knowledge sections and quotes each one. "
+                "The note title is the job id. The platform title and description are not stored. "
+                "Passing this check is not a claim that the captions match the audio."
             )
         else:
             lines.append(
-                f"Acquisition was `{live.get('acquisition')}`. The note cites the transcript path and quotes it. "
-                "The note title is the job id. The platform title and description are not stored."
+                f"Acquisition was `{live.get('acquisition')}`. The note analyzes the transcript into the four knowledge sections and quotes each one. "
+                "The note title is the job id. The platform title and description are not stored. "
+                "Passing this check is not a claim that the captions match the audio."
             )
         lines.append("")
         if live.get("excerpt"):

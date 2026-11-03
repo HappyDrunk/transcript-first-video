@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Minimal Twitter/X video host: captions first, optional ASR, otherwise not finished.
 
-Same quality gate and Obsidian Markdown note as the YouTube host. Post text is
-never a transcript. On failure the job directory keeps status.json and no note.
+Same quality gate and the same knowledge note as the YouTube host: four sections,
+each quoting the transcript. Post text is never a transcript. On failure the job
+directory keeps status.json and no note.
 
 Public media lookup uses the FxTwitter-style API at https://api.fxtwitter.com
 (no key). Set FX_TWITTER_API=off to skip it. YTDLP_COOKIES is an optional path
