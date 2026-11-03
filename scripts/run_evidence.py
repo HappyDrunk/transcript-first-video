@@ -333,9 +333,10 @@ def host_cases() -> list[dict]:
 
 
 def live_case() -> dict:
-    out = ROOT / "evals" / "results" / "live"
-    if out.exists():
-        for path in out.rglob("*"):
+    """Refetch the one URL this script records. Leave sibling receipts in place."""
+    job = ROOT / "evals" / "results" / "live" / f"youtube_{LIVE_ID}"
+    if job.exists():
+        for path in job.rglob("*"):
             if path.is_file():
                 path.unlink()
     cmd = [*HOST, LIVE_URL, "--out", "evals/results/live", "--json"]
@@ -423,12 +424,17 @@ def markdown(report: dict) -> str:
         )
     live = report["live"]
     lines.extend(["", "## Live YouTube", ""])
+    lines.append(
+        "Other committed public-URL receipts are listed in `evals/results/live/README.md`. "
+        "This section records only the one URL this script fetches."
+    )
+    lines.append("")
     if live.get("skipped"):
         lines.append("Skipped (`--skip-live`). Offline fixture checks do not use the network.")
         lines.append("")
         lines.append(
             "An X/Twitter live fetch is not part of this file. "
-            "`scripts/x_host.py` is covered by the offline settle row above."
+            "`scripts/x_host.py` is covered by the offline settle row above and by any receipt under `evals/results/live/`."
         )
         lines.append("")
         return "\n".join(lines)
@@ -447,13 +453,18 @@ def markdown(report: dict) -> str:
         if live.get("acquisition") == "caption-mirror":
             lines.append(
                 "yt-dlp did not return captions. The text came from the public mirror fallback. "
-                "The note cites the transcript path and quotes it. Title and description are not stored."
+                "The note cites the transcript path and quotes it. The note title is the job id. "
+                "The platform title and description are not stored."
             )
         elif live.get("acquisition") == "yt-dlp":
-            lines.append("Captions came from yt-dlp. The note cites the transcript path and quotes it.")
+            lines.append(
+                "Captions came from yt-dlp. The note cites the transcript path and quotes it. "
+                "The note title is the job id. The platform title and description are not stored."
+            )
         else:
             lines.append(
-                f"Acquisition was `{live.get('acquisition')}`. The note cites the transcript path and quotes it."
+                f"Acquisition was `{live.get('acquisition')}`. The note cites the transcript path and quotes it. "
+                "The note title is the job id. The platform title and description are not stored."
             )
         lines.append("")
         if live.get("excerpt"):

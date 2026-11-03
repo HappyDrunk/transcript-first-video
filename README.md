@@ -6,6 +6,56 @@
 
 YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer: a note is allowed only after the spoken words are written down, the text passes a quality check, and the note quotes that transcript.
 
+## Three layers of evidence
+
+A green check is the first layer. Read these three before the rest of the page. They are different kinds of proof.
+
+**① Mechanical. CI scores this.** Actions runs `python3 scripts/test_gate.py` and `python3 scripts/run_evidence.py --skip-live`. The pass/fail table is [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Usable English and usable Chinese notes are allowed. Empty text, gibberish, an English loop when Chinese was expected, a pasted path with no quote, and an essay about a failed transcription are refused. Those rows use fixture files. A green check means that table matched. It does not mean a URL was watched.
+
+**② Live public URLs. Committed receipts.** ASR stayed off. No private corpus. The index is [evals/results/live/README.md](evals/results/live/README.md).
+
+- Captioned, short, note written: [Me at the zoo](https://www.youtube.com/watch?v=jNQXAC9IVRw) → [note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)
+- No caption track, stopped, no note: [TEST VIDEO](https://www.youtube.com/watch?v=C0DPdy98e4c) → [status.json](evals/results/live/youtube_C0DPdy98e4c/status.json)
+- Captioned X video, note written: [NASA status 2102748685792596449](https://x.com/i/status/2102748685792596449) → [note.md](evals/results/live/x_2102748685792596449/note.md)
+- Longer captioned talk, the sample `run_evidence.py` records: [note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md)
+
+No live receipt here is a gibberish transcript. Captions that came back either passed the gate or were missing. Gibberish and the English loop are refused in layer ①.
+
+**③ Effect. An agent or a person. CI does not score this.** [evals/results/spotcheck.md](evals/results/spotcheck.md) is a reading of those notes: the quote is in the transcript, and the note does not invent the rest. Actions does not open that file. A green check is not a pass of those rows. The prompts in [evals/evals.json](evals/evals.json) are the same kind of assertion.
+
+## The finished file is Markdown
+
+When a job finishes, the host writes `note.md`. That is the note. Open it in Obsidian, or in any editor that reads Markdown. The frontmatter fields are `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The body sections are Source, Transcript, and Quoted window. The quote is copied from the transcript.
+
+`status.json` in the same folder is a machine stub. When the job stops (`not_finished`, or the gate refuses the text), that stub is the whole directory. There is no `note.md`.
+
+Feishu is optional, and it lives in your own project if you use it at all. This skill does not call Feishu, and it does not need a Feishu token. A folder of Markdown files is enough.
+
+````markdown
+---
+title: "youtube_<id>"
+source_url: "https://www.youtube.com/watch?v=<id>"
+video_id: "<id>"
+acquisition: "yt-dlp"
+gate_passed: true
+transcript_path: "artifacts/youtube_<id>/transcript.txt"
+quoted_window: |-
+  <words copied from the transcript, at least 40 characters>
+---
+
+# youtube_<id>
+
+## Source
+
+## Transcript
+
+## Quoted window
+
+> <the same words>
+````
+
+A filled note from a real caption track: [evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md).
+
 ## Try it on one captioned video
 
 Cloning this repository does not fetch a video and does not write a note. You have the rules. The smallest path that finishes is `yt-dlp`, then one command, on a short public video that already has captions.
@@ -15,7 +65,7 @@ pip install -r requirements.txt
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 ```
 
-That URL is "Me at the zoo" (`jNQXAC9IVRw`). It is short, public, and captioned. When the captions come back, the command writes `artifacts/youtube_jNQXAC9IVRw/transcript.txt` and a note that quotes that file. yt-dlp is the first try. If YouTube asks it to sign in, the host tries a public caption mirror and can still finish from that text.
+That URL is "Me at the zoo" (`jNQXAC9IVRw`). It is short, public, and captioned. When the captions come back, the command writes `artifacts/youtube_jNQXAC9IVRw/transcript.txt` and `note.md`, the Markdown note from [The finished file is Markdown](#the-finished-file-is-markdown). yt-dlp is the first try. If YouTube asks it to sign in, the host tries a public caption mirror and can still finish from that text. A copy of that run is already at [evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md).
 
 A video with no captions stops at `not_finished`. That stop is the design. `ASR_BACKEND` is unset by default, which means off, so speech-to-text does not run. The host does not fill the gap with the title.
 
@@ -28,7 +78,7 @@ ASR_BACKEND=whisper python3 scripts/youtube_host.py "<url-without-captions>" --o
 
 Until `ASR_BACKEND` is set, a video with no captions stays unfinished.
 
-No network right now? A finished job is already in the repo. Open [evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md). It names [the transcript](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt) and quotes it. [status.json](evals/results/live/youtube_KwhgfwOSToQ/status.json) is the same job.
+No network right now? The receipts linked in [Three layers of evidence](#three-layers-of-evidence) are already in the repo. Start with the short captioned note.
 
 To check this copy without fetching:
 
@@ -135,7 +185,7 @@ Four rules. Each one is a scene.
 
 ## Who does the work
 
-This repo is what the agent reads. Your project does the labor: fetch captions, download audio, turn speech into text, keep the queue, and write the note onto the shelf you already use.
+This repo is what the agent reads. Your project does the labor: fetch captions, download audio, turn speech into text, keep the queue, and write the note onto the shelf you already use. The hosts here write Markdown. They do not post to Feishu.
 
 This repo fetches YouTube and X video only. If your notes are already split, keep the split. Each source stays where that project already puts it. If you cannot tell where it came from, wait, or ask. A miscellaneous folder is how two sources end up in the same pile.
 
@@ -152,7 +202,9 @@ Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES`
 | [SKILL.md](SKILL.md) | The full rules: where words may come from, when to stop, what a note has to cite, how a cookie or a key stays a name. If this page and that file disagree, follow the file. |
 | [references/pitfalls.md](references/pitfalls.md) | Ten real mistakes, private details removed. Open it when a note looks done and you suspect it is not, or when a Chinese talk comes back as English junk. The stories include a queue nobody ran, a download link that expired, and a "mostly Chinese characters" transcript that was still garbage. |
 | [evals/evals.json](evals/evals.json) | Three prompts for an agent or a person. CI does not run the prompts or score the assertions. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live` on the fixture files. |
-| [evals/results/live/youtube_KwhgfwOSToQ/](evals/results/live/youtube_KwhgfwOSToQ/) | A finished YouTube job, already committed. The note quotes the transcript. Open it when you have no network. |
+| [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | Layer ①. The fixture pass/fail table CI regenerates. |
+| [evals/results/live/](evals/results/live/) | Layer ②. Public-URL receipts: a short captioned YouTube note, a no-caption stop, a captioned X note, and the longer YouTube sample. |
+| [evals/results/spotcheck.md](evals/results/spotcheck.md) | Layer ③. Agent reading that the notes quote the transcript and do not invent the rest. CI does not score it. |
 | [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless it quotes a real transcript. `bash scripts/smoke.sh` checks this copy offline. See [scripts/README.md](scripts/README.md). |
 
 How to change this repo, and what shipped: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md).
@@ -165,6 +217,56 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
 
 YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器：嘴里的话先落成文字，文字过了质量检查，笔记还得引用这段文稿。
 
+## 三层证据
+
+仓库上的绿色勾，只是第一层。先读这三层，再读下面的正文。三层不是同一种证明。
+
+**① 机械。CI 打分的是这一层。** Actions 跑 `python3 scripts/test_gate.py` 和 `python3 scripts/run_evidence.py --skip-live`。通过和拒绝的表在 [evals/results/gate-evidence.md](evals/results/gate-evidence.md)。能用的英文笔记、能用的中文笔记，允许。空文本、胡话、期望中文时的英语循环、只贴路径不引用、以及一篇讲「转写失败了」的作文，拒绝。这些行用的是夹具文件。绿色勾表示这张表对上了。它不表示有人去看了一条网址。
+
+**② 现场公开网址。提交进仓库的回执。** ASR 关着。没有私人语料。目录在 [evals/results/live/README.md](evals/results/live/README.md)。
+
+- 有字幕，短，写下了笔记：[Me at the zoo](https://www.youtube.com/watch?v=jNQXAC9IVRw) → [note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)
+- 没有字幕轨，停下，没有笔记：[TEST VIDEO](https://www.youtube.com/watch?v=C0DPdy98e4c) → [status.json](evals/results/live/youtube_C0DPdy98e4c/status.json)
+- X 上有字幕，写下了笔记：[NASA 这条状态](https://x.com/i/status/2102748685792596449) → [note.md](evals/results/live/x_2102748685792596449/note.md)
+- 更长的一场有字幕的谈话，`run_evidence.py` 记录的那一份：[note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md)
+
+这个仓库里没有一份现场抓回来的胡话文稿。字幕要么过了门槛，要么根本没有。胡话和英语循环的拒绝在第 ① 层。
+
+**③ 效果。人或者 Agent 看的。CI 不打分。** [evals/results/spotcheck.md](evals/results/spotcheck.md) 记的是一次阅读：引用在文稿里，笔记没有把没引用的部分编出来。Actions 不打开这个文件。绿色勾不是这些行通过了。[evals/evals.json](evals/evals.json) 里的题目是同一种断言。
+
+## 写完的文件是 Markdown
+
+一条任务做完，主机写下 `note.md`。这就是笔记。用 Obsidian 打开，或者用任何能读 Markdown 的编辑器。前置信息有 `title`、`source_url`、`video_id`、`acquisition`、`gate_passed`、`transcript_path`、`quoted_window`。`title` 是任务 id（`youtube_<id>` 或 `x_<id>`）。平台自己的标题和简介不抄进文件。正文是 Source、Transcript、Quoted window 三节。引用的字是从文稿里抄的。
+
+旁边的 `status.json` 是给程序看的短状态。任务停下的时候（`not_finished`，或者门槛拒绝了这段字），目录里只有这份状态。没有 `note.md`。
+
+飞书是可选的。你要用的话，它在你自己的项目里。这份 skill 不调用飞书，也不需要飞书令牌。一个放 Markdown 的文件夹就够了。
+
+````markdown
+---
+title: "youtube_<id>"
+source_url: "https://www.youtube.com/watch?v=<id>"
+video_id: "<id>"
+acquisition: "yt-dlp"
+gate_passed: true
+transcript_path: "artifacts/youtube_<id>/transcript.txt"
+quoted_window: |-
+  <从文稿里抄来的字，至少 40 个字符>
+---
+
+# youtube_<id>
+
+## Source
+
+## Transcript
+
+## Quoted window
+
+> <同样的这些字>
+````
+
+一条真实字幕写成的笔记：[evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)。
+
 ## 先跑通一条有字幕的视频
 
 克隆这个仓库，视频不会自己开始下，笔记也不会自己出现。你拿到的是规矩。最小的一条能走完的路是：装上 `yt-dlp`，然后对一条短的、公开的、已经有字幕的视频跑一个命令。
@@ -174,7 +276,7 @@ pip install -r requirements.txt
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 ```
 
-这个地址是 "Me at the zoo"（`jNQXAC9IVRw`）。短，公开，有字幕。字幕回来之后，命令会写下 `artifacts/youtube_jNQXAC9IVRw/transcript.txt`，以及一篇引用了这个文件的笔记。yt-dlp 是第一次尝试。如果 YouTube 要求登录，主机会再试一个公开字幕镜像，镜像上的字仍然可以把这条做完。
+这个地址是 "Me at the zoo"（`jNQXAC9IVRw`）。短，公开，有字幕。字幕回来之后，命令会写下 `artifacts/youtube_jNQXAC9IVRw/transcript.txt` 和 `note.md`，就是[写完的文件是 Markdown](#写完的文件是-markdown) 里的那种笔记。yt-dlp 是第一次尝试。如果 YouTube 要求登录，主机会再试一个公开字幕镜像，镜像上的字仍然可以把这条做完。同一次抓取已经提交在 [evals/results/live/youtube_jNQXAC9IVRw/note.md](evals/results/live/youtube_jNQXAC9IVRw/note.md)。
 
 没有字幕的视频会停在 `not_finished`。这是设计如此。`ASR_BACKEND` 默认不设置，就是关着的，语音转文字不会自己跑。缺文稿的空档，不会拿标题去补一篇笔记。
 
@@ -187,7 +289,7 @@ ASR_BACKEND=whisper python3 scripts/youtube_host.py "<没有字幕的链接>" --
 
 在你设置 `ASR_BACKEND` 之前，没有字幕的视频就停在没看完。
 
-现在没有网络，也可以看一份已经写完的样子。打开 [evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md)。它点名了[文稿](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt)，并引用了其中一段。同一条任务的状态在 [status.json](evals/results/live/youtube_KwhgfwOSToQ/status.json)。
+现在没有网络，也可以看已经提交的回执。[三层证据](#三层证据) 里的链接都在仓库里。先打开那篇短的、有字幕的笔记。
 
 不联网，先核对这一份拷贝：
 
@@ -294,7 +396,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 ## 活是谁干的
 
-这个仓库是 Agent 读的东西。干活的是你的项目：抓字幕、下音频、把声音转成文字、守着队列，再把笔记写到你已经在用的那个架子上。
+这个仓库是 Agent 读的东西。干活的是你的项目：抓字幕、下音频、把声音转成文字、守着队列，再把笔记写到你已经在用的那个架子上。这里的主机写下的是 Markdown。它们不往飞书发。
 
 这个仓库只抓 YouTube 和 X 的视频。笔记如果本来就是分开放的，就继续分开。各回各的地方。来源对不上的，就等一等，或者问你一声。别因为省事，掉进一个杂物文件夹。
 
@@ -311,7 +413,9 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP
 | [SKILL.md](SKILL.md) | 完整的规矩：字可以从哪来，什么时候该停，笔记必须点名什么，cookie 和密钥怎么只留名字。这页和那个文件要是说得不一样，以那个文件为准。 |
 | [references/pitfalls.md](references/pitfalls.md) | 十条真实翻过的车，私人信息已经去掉。笔记看着完成了、你又觉得不对，或者中文口播被听成英语胡话，先打开它。里面有没人去跑的队列、过期的下载地址，还有一份「大部分是汉字」却仍然是垃圾的文稿。 |
 | [evals/evals.json](evals/evals.json) | 三道给 Agent 或人的题目。CI 不跑这些题目，也不给断言打分。CI 跑的是 `scripts/test_gate.py` 和 `scripts/run_evidence.py --skip-live`，核对的是夹具文件。 |
-| [evals/results/live/youtube_KwhgfwOSToQ/](evals/results/live/youtube_KwhgfwOSToQ/) | 一条已经提交进仓库的、写完了的 YouTube 任务。笔记引用了文稿。没有网络时打开它看成品长什么样。 |
+| [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | 第 ① 层。CI 会重新生成的夹具通过/拒绝表。 |
+| [evals/results/live/](evals/results/live/) | 第 ② 层。公开网址的回执：一条短的有字幕 YouTube 笔记、一次没有字幕的停下、一条有字幕的 X 笔记，以及更长的那份 YouTube 样本。 |
+| [evals/results/spotcheck.md](evals/results/spotcheck.md) | 第 ③ 层。Agent 读过笔记，确认引用在文稿里，并且没有把其余部分编出来。CI 不打分。 |
 | [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道不引用真实文稿就不许写笔记的门槛。`bash scripts/smoke.sh` 在离线时核对这一份拷贝。见 [scripts/README.md](scripts/README.md)。 |
 
 怎么改这个仓库、发过什么： [CONTRIBUTING.md](CONTRIBUTING.md)，[CHANGELOG.md](CHANGELOG.md)。

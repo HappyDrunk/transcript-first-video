@@ -259,6 +259,18 @@ class HostTests(unittest.TestCase):
         self.assertEqual(backend, "off")
         self.assertIn("not finished", reason or "")
 
+    def test_excerpt_keeps_short_transcript_lines(self) -> None:
+        text = (
+            "Alpha line about repotting the plant today.\n"
+            "Beta line about the fresh mix and the water."
+        )
+        collapsed, lines = youtube_host.transcript_excerpt(text, limit=48)
+        self.assertEqual(lines, ["Alpha line about repotting the plant today."])
+        self.assertEqual(collapsed, "Alpha line about repotting the plant today.")
+        whole, all_lines = youtube_host.transcript_excerpt(text, limit=360)
+        self.assertEqual(all_lines, text.splitlines())
+        self.assertEqual(whole, " ".join(all_lines))
+
     def test_finalize_writes_citation_or_status_only(self) -> None:
         usable = (ROOT / "evals/fixtures/usable_en_transcript.txt").read_text(encoding="utf-8")
         empty = (ROOT / "evals/fixtures/empty_transcript.txt").read_text(encoding="utf-8")
@@ -279,7 +291,23 @@ class HostTests(unittest.TestCase):
             self.assertTrue(note_path.is_file())
             self.assertTrue(transcript_path.is_file())
             note = note_path.read_text(encoding="utf-8")
-            self.assertIn(youtube_host.cite_path(transcript_path), note)
+            cite = youtube_host.cite_path(transcript_path)
+            self.assertIn(cite, note)
+            self.assertTrue(note.startswith("---\n"))
+            self.assertIn('title: "youtube_usable-en"', note)
+            self.assertIn('source_url: "settle-transcript:usable-en"', note)
+            self.assertIn('video_id: "usable-en"', note)
+            self.assertIn('acquisition: "settle-transcript"', note)
+            self.assertIn("gate_passed: true", note)
+            self.assertIn(f'transcript_path: "{cite}"', note)
+            self.assertIn("quoted_window: |-", note)
+            self.assertIn("## Source", note)
+            self.assertIn("## Transcript", note)
+            self.assertIn("## Quoted window", note)
+            self.assertIn("[transcript.txt](transcript.txt)", note)
+            window = youtube_host.transcript_window(usable)
+            self.assertIn(window, note)
+            self.assertGreaterEqual(len(window), verify_note.QUOTE_WINDOW)
             status = json.loads((out / "youtube_usable-en" / "status.json").read_text(encoding="utf-8"))
             self.assertNotIn("title", status)
             self.assertNotIn("description", status)
@@ -510,6 +538,9 @@ class XHostTests(unittest.TestCase):
             self.assertTrue(transcript_path.is_file())
             note = note_path.read_text(encoding="utf-8")
             self.assertIn(f"x_{status_id}", note)
+            self.assertIn("gate_passed: true", note)
+            self.assertIn(f'video_id: "{status_id}"', note)
+            self.assertIn("## Quoted window", note)
             checked = verify_note.verify(transcript_path, note, expected_lang="en")
             self.assertTrue(checked["allowed"], checked["reasons"])
             self.assertTrue(checked["quoted"])

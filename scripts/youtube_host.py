@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Minimal YouTube host: captions first, optional ASR, otherwise not finished.
 
-The note is written only after the quality gate passes, and it cites the
-transcript path. Title and description are never stored. On failure the job
-directory keeps a status file and no finished note.
+A finished job writes note.md, an Obsidian-friendly Markdown file with YAML
+frontmatter. The note cites the transcript path and quotes a real window of
+that file. The platform title and description are not stored. status.json is
+a machine stub. On failure the job directory keeps that stub and no note.
 
 Exit 0 finished. Exit 2 not finished or quality-gate failure. Exit 1 usage.
 """
@@ -640,6 +641,59 @@ def download_audio(url: str, base_cmd: list[str], dest_dir: Path) -> Path:
     return audio[0]
 
 
+_EXCERPT_LIMIT = 360
+
+
+def yaml_double(value: str) -> str:
+    """Quote a frontmatter scalar so colons and quotes stay inside the value."""
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+    )
+    return f'"{escaped}"'
+
+
+def _cut_words(text: str, limit: int) -> str:
+    cut = text[:limit].rstrip()
+    if " " in cut:
+        trimmed = cut.rsplit(" ", 1)[0]
+        if len(trimmed) >= verify_note.QUOTE_WINDOW:
+            return trimmed
+    return cut
+
+
+def transcript_excerpt(text: str, limit: int = _EXCERPT_LIMIT) -> tuple[str, list[str]]:
+    """Return a collapsed quote and the same words split on the transcript's lines.
+
+    The collapsed line is what frontmatter stores. The lines are what the body
+    quotes, so a short caption stays readable. Both are copied, not rewritten.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        collapsed = re.sub(r"\s+", " ", text).strip()
+        return collapsed, ([collapsed] if collapsed else [])
+    chosen: list[str] = []
+    total = 0
+    for line in lines:
+        addition = len(line) if not chosen else len(line) + 1
+        if chosen and total + addition > limit:
+            break
+        if not chosen and len(line) > limit:
+            chosen.append(_cut_words(line, limit))
+            break
+        chosen.append(line)
+        total += addition
+    return " ".join(chosen), chosen
+
+
+def transcript_window(text: str, limit: int = _EXCERPT_LIMIT) -> str:
+    """A single collapsed line copied from the transcript, long enough to quote."""
+    collapsed, _lines = transcript_excerpt(text, limit)
+    return collapsed
+
+
 def _failure_status_name(reasons: list[str]) -> str:
     if reasons and all(
         reason.startswith("empty or unusable") or reason.startswith("transcript too short")
@@ -662,6 +716,7 @@ def _next_step(status_name: str, acquisition: str, upgrade_attempted: bool) -> s
 def render_note(
     *,
     job_id: str,
+    video_id: str,
     source: str,
     acquisition: str,
     caption_language: str | None,
@@ -669,25 +724,61 @@ def render_note(
     transcript_cite: str,
     excerpt: str,
 ) -> str:
+    """Obsidian Markdown. Frontmatter title is the job id, not the platform title.
+
+    The quoted window is copied from the transcript. The body does not retell it.
+    """
+    window, quote_lines = transcript_excerpt(excerpt)
     lines = [
-        f"# {job_id}",
-        "",
-        "status: finished",
-        f"source: {source}",
-        f"job_id: {job_id}",
-        f"acquisition: {acquisition}",
+        "---",
+        f"title: {yaml_double(job_id)}",
+        f"source_url: {yaml_double(source)}",
+        f"video_id: {yaml_double(video_id)}",
+        f"acquisition: {yaml_double(acquisition)}",
+        "gate_passed: true",
+        f"transcript_path: {yaml_double(transcript_cite)}",
+        "quoted_window: |-",
+        f"  {window}",
     ]
     if caption_language:
-        lines.append(f"caption_language: {caption_language}")
+        lines.append(f"caption_language: {yaml_double(caption_language)}")
     if caption_kind:
-        lines.append(f"caption_kind: {caption_kind}")
+        lines.append(f"caption_kind: {yaml_double(caption_kind)}")
     lines.extend(
         [
-            f"transcript: {transcript_cite}",
+            "---",
             "",
-            "Excerpt of the transcript:",
+            f"# {job_id}",
             "",
-            excerpt.strip(),
+            "This note is allowed because the transcript passed the quality gate. "
+            "The quoted window is copied from that file.",
+            "",
+            "## Source",
+            "",
+            f"- Source URL: {source}",
+            f"- Video id: `{video_id}`",
+            f"- Acquisition: `{acquisition}`",
+        ]
+    )
+    if caption_language:
+        lines.append(f"- Caption language: `{caption_language}`")
+    if caption_kind:
+        lines.append(f"- Caption kind: `{caption_kind}`")
+    lines.extend(
+        [
+            "- Gate passed: yes",
+            "",
+            "## Transcript",
+            "",
+            "[transcript.txt](transcript.txt)",
+            "",
+            f"`{transcript_cite}`",
+            "",
+            "## Quoted window",
+            "",
+            *[f"> {line}" for line in quote_lines],
+            "",
+            "Match these lines to the transcript file. The file may be longer than the quote.",
             "",
         ]
     )
@@ -750,13 +841,11 @@ def finalize_job(
         return base
 
     transcript_path.write_text(result.text.rstrip() + "\n", encoding="utf-8")
-    # One collapsed line so the note holds a real quotable window, not only a path.
-    excerpt = re.sub(r"\s+", " ", result.text).strip()
-    if len(excerpt) > 700:
-        excerpt = excerpt[:700].rstrip() + "…"
+    excerpt = result.text
     cite = cite_path(transcript_path)
     note_body = render_note(
         job_id=job_id,
+        video_id=video_id,
         source=source,
         acquisition=acquisition,
         caption_language=caption_language or gate_lang,
@@ -1007,7 +1096,7 @@ def _emit(payload: dict, as_json: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Fetch a public YouTube transcript and write a note only if the quality gate passes."
+        description="Fetch a public YouTube transcript and write an Obsidian Markdown note only if the quality gate passes."
     )
     parser.add_argument("url", nargs="?", help="YouTube URL or 11-character video id")
     parser.add_argument(

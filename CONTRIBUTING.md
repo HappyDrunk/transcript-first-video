@@ -30,7 +30,11 @@ pip install -r requirements-asr.txt
 
 A path like `/workspace/...` or `/tmp/...` in those files is a bug. Record `scripts/...` and `evals/...`.
 
-The prompts in `evals/evals.json` are for an agent or a person. CI does not run them. Say so if you add another prompt. A new mechanical check belongs in `scripts/test_gate.py` or `scripts/run_evidence.py`.
+Three layers, and they stay separate. The fixture table is what CI scores. Directories under `evals/results/live/` are public-URL receipts. `evals/results/spotcheck.md` is an agent or human reading. CI does not score that file. Say so if you add another reading. A new mechanical check belongs in `scripts/test_gate.py` or `scripts/run_evidence.py`.
+
+`python3 scripts/run_evidence.py` without `--skip-live` refetches `youtube_KwhgfwOSToQ` only. Leave the other live directories in place. Do not invent a private corpus, and do not commit a gibberish transcript you wrote yourself.
+
+Finished notes from the hosts are Obsidian Markdown. Keep that shape if you change `render_note`. A stop still writes `status.json` and no `note.md`.
 
 ## Release
 

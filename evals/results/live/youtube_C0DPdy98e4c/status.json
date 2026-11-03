@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "job_id": "youtube_C0DPdy98e4c",
+  "source_url": "https://www.youtube.com/watch?v=C0DPdy98e4c",
+  "status": "not_finished",
+  "finished": false,
+  "reason": "not finished: no usable captions and ASR is not configured. Set ASR_BACKEND=whisper (local whisper, optional WHISPER_UPGRADE_MODEL) or ASR_BACKEND=openai with OPENAI_API_KEY. No note was written. Caption attempts: yt-dlp: ERROR: [youtube] C0DPdy98e4c: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp for how to manually pass cookies. Also see https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies; caption-mirror: yt.chocolatemoo53.com: no caption track for a default",
+  "next_step": "configure-asr-or-retry-captions",
+  "acquisition": "none",
+  "transcript": null,
+  "note": null,
+  "gate": null,
+  "verifier": null,
+  "attempts": [
+    {
+      "source": "yt-dlp",
+      "ok": false,
+      "detail": "ERROR: [youtube] C0DPdy98e4c: Sign in to confirm you’re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication. See https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp for how to manually pass cookies. Also see https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies for tips on effectively exporting YouTube cookies"
+    },
+    {
+      "source": "caption-mirror",
+      "ok": false,
+      "detail": "yt.chocolatemoo53.com: no caption track for a default"
+    }
+  ],
+  "asr_backend": "off"
+}
