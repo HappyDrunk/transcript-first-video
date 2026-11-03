@@ -350,7 +350,10 @@ class VerifierTests(unittest.TestCase):
         note = front + "\n" + "\n".join(body)
         refused = verify_note.verify(transcript, note, expected_lang="en")
         self.assertFalse(refused["allowed"], refused["reasons"])
-        self.assertIn(knowledge_note.ALL_INAPPLICABLE_REASON, refused["reasons"])
+        self.assertTrue(
+            any(knowledge_note.ALL_INAPPLICABLE_REASON in reason for reason in refused["reasons"])
+        )
+        self.assertTrue(any(reason.startswith("R03 FAIL:") for reason in refused["reasons"]))
 
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job"
@@ -381,19 +384,16 @@ class VerifierTests(unittest.TestCase):
             self.assertIsNone(status["note"])
             self.assertEqual(status["gate_lang"], "en")
 
-    def test_keyword_salad_is_pending_r09(self) -> None:
-        """Shape check still allows the keyword salad. Phase 3 must refuse it under R09.
-
-        This assertion is the pending marker. It is not acceptance of the salad.
-        """
+    def test_keyword_salad_fails_r09(self) -> None:
         note_path = ROOT / "evals/adversarial/keyword_salad_en.md"
         transcript = ROOT / "evals/adversarial/saas_pricing_transcript.txt"
         text = note_path.read_text(encoding="utf-8")
         self.assertIn("expect: FAIL R09", text)
-        self.assertIn("expected-fail-pending", text)
+        self.assertNotIn("expected-fail-pending", text)
         self.assertIn("Today, do only the first spoken move: Most, founders, set, price, too, low.", text)
         result = verify_note.verify(transcript, text, expected_lang="en")
-        self.assertTrue(result["allowed"], result["reasons"])
+        self.assertFalse(result["allowed"], result["reasons"])
+        self.assertTrue(any(reason.startswith("R09 FAIL:") for reason in result["reasons"]))
 
 
 class HostTests(unittest.TestCase):
