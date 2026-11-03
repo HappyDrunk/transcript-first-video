@@ -8,6 +8,9 @@ A note is allowed only when all of these hold:
 - The note is Obsidian Markdown with the knowledge sections
   问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步.
 - Each section quotes the transcript and adds analysis that is not a stub.
+- A section may instead be one line, ``本节不适用：`` plus a reason, and one quote.
+- Four sections in that form are not a deposit. ``--job`` deletes note.md and
+  sets status ``no-extractable-content``.
 
 A path, a status line, or a blockquote alone is not a finished note.
 The gate does not listen to audio. It does not grade an LLM summary.
@@ -179,6 +182,34 @@ def verify(
     }
 
 
+NO_EXTRACTABLE = "no-extractable-content"
+
+
+def apply_no_extractable(job: Path, reason: str) -> dict:
+    """Record that the note must not be deposited, and delete note.md."""
+    status_path = job / "status.json"
+    data: dict = {}
+    if status_path.is_file():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, dict):
+            data = loaded
+    note_path = job / "note.md"
+    if note_path.is_file():
+        note_path.unlink()
+    data["status"] = NO_EXTRACTABLE
+    data["finished"] = False
+    data["note"] = None
+    data["reason"] = reason
+    data["next_step"] = "stop"
+    data["verifier"] = {"allowed": False, "reasons": [reason]}
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return data
+
+
 def _read_note(note_arg: str) -> str:
     if note_arg == "-":
         if sys.stdin.isatty():
@@ -192,48 +223,107 @@ def _read_note(note_arg: str) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _emit_verify(result: dict, *, as_json: bool) -> int:
+    if as_json:
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        sys.stdout.write("\n")
+    else:
+        print("allowed" if result.get("allowed") else "refused")
+        for reason in result.get("reasons") or []:
+            print(reason, file=sys.stderr)
+    return 0 if result.get("allowed") else 2
+
+
+def _job_expected_lang(job: Path, explicit: str | None) -> str | None:
+    if explicit:
+        return explicit
+    status_path = job / "status.json"
+    if not status_path.is_file():
+        return None
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data.get("gate_lang") or data.get("expected_lang")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Allow a note only when it cites a transcript that passes the quality gate, "
             "quotes that transcript in each knowledge section, and analyzes it. "
-            "A path plus a quote is not enough."
+            "A path plus a quote is not enough. "
+            "--job reads transcript.txt and note.md in a host directory."
         )
     )
-    parser.add_argument("--transcript", required=True, type=Path)
+    parser.add_argument(
+        "--job",
+        type=Path,
+        help="Job directory. Uses transcript.txt and note.md. All-N/A deletes note.md.",
+    )
+    parser.add_argument("--transcript", type=Path)
     parser.add_argument(
         "--note",
-        default="-",
-        help="Note file. Use - or omit to read stdin.",
+        default=None,
+        help="Note file. Use - to read stdin. Defaults to note.md inside --job, otherwise stdin.",
     )
     parser.add_argument("--expected-lang", default=None)
     parser.add_argument("--confidence", type=float, default=None)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    transcript = args.transcript
+    note_arg = args.note
+    if args.job is not None:
+        job = args.job
+        if not job.is_dir():
+            message = f"job directory does not exist: {job}"
+            _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
+            return 1
+        transcript = job / "transcript.txt"
+        note_path = job / "note.md" if note_arg is None else Path(note_arg)
+        if note_path.is_file():
+            note = note_path.read_text(encoding="utf-8", errors="replace")
+            if knowledge_note.all_sections_inapplicable(note):
+                reason = knowledge_note.ALL_INAPPLICABLE_REASON
+                apply_no_extractable(job, reason)
+                return _emit_verify(
+                    {
+                        "allowed": False,
+                        "reasons": [reason],
+                        "status": NO_EXTRACTABLE,
+                        "note_deleted": True,
+                    },
+                    as_json=args.json,
+                )
+        elif note_arg is None:
+            message = f"note.md is missing in {job}"
+            return _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
+        else:
+            note_arg = str(note_path)
+        if note_arg is None:
+            note_arg = str(note_path)
+        expected = _job_expected_lang(job, args.expected_lang)
+    else:
+        if transcript is None:
+            parser.error("pass --transcript, or pass --job")
+        if note_arg is None:
+            note_arg = "-"
+        expected = args.expected_lang
     try:
-        note = _read_note(args.note)
+        note = _read_note(note_arg)
     except SystemExit as exc:
         message = str(exc)
-        if args.json:
-            json.dump({"allowed": False, "reasons": [message]}, sys.stdout, ensure_ascii=False, indent=2)
-            sys.stdout.write("\n")
-        else:
-            print(message, file=sys.stderr)
+        _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
         return 1
     result = verify(
-        args.transcript,
+        transcript,
         note,
-        expected_lang=args.expected_lang,
+        expected_lang=expected,
         confidence=args.confidence,
     )
-    if args.json:
-        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
-        sys.stdout.write("\n")
-    else:
-        print("allowed" if result["allowed"] else "refused")
-        for reason in result["reasons"]:
-            print(reason, file=sys.stderr)
-    return 0 if result["allowed"] else 2
+    return _emit_verify(result, as_json=args.json)
 
 
 if __name__ == "__main__":

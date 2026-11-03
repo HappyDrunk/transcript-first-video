@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Minimal Twitter/X video host: captions first, optional ASR, otherwise no transcript.
 
-Same quality gate as the YouTube host. A passing transcript writes
-note.scaffold.md (frontmatter, four empty section headings, fill instructions),
+Same quality gate and the same deposit as the YouTube host: timestamped
+transcript.txt, segments.json, chunks/, and note.scaffold.md. The scaffold is
 not a finished knowledge note. Post text is never a transcript. On failure the
 job directory keeps status.json and no scaffold.
 
