@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "job_id": "x_2102748685792596449",
+  "source_url": "https://x.com/i/status/2102748685792596449",
+  "finished": true,
+  "acquisition": "yt-dlp",
+  "caption_language": "en",
+  "caption_kind": "manual",
+  "expected_lang": null,
+  "gate_lang": "en",
+  "transcript": "evals/results/live/x_2102748685792596449/transcript.txt",
+  "note": "evals/results/live/x_2102748685792596449/note.md",
+  "gate": {
+    "passed": true,
+    "reasons": [],
+    "metrics": {
+      "speech_chars": 86,
+      "cjk": 0,
+      "latin": 86,
+      "kana": 0,
+      "hangul": 0,
+      "cjk_ratio": 0.0,
+      "latin_ratio": 1.0,
+      "vowel_ratio": 0.3953,
+      "latin_words": 15,
+      "unique_word_ratio": 0.9333,
+      "expected_lang": "en",
+      "confidence": null
+    }
+  },
+  "verifier": {
+    "allowed": true,
+    "reasons": []
+  },
+  "attempts": [
+    {
+      "source": "yt-dlp",
+      "ok": true,
+      "detail": "en manual"
+    }
+  ],
+  "status": "finished",
+  "reason": null,
+  "next_step": "none"
+}

@@ -44,13 +44,15 @@ YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row call
 
 ## Live YouTube
 
+Other committed public-URL receipts are listed in `evals/results/live/README.md`. This section records only the one URL this script fetches.
+
 URL: `https://www.youtube.com/watch?v=KwhgfwOSToQ`. Substitute: none; this is eval id 1.
 
 Command: `python3 scripts/youtube_host.py https://www.youtube.com/watch?v=KwhgfwOSToQ --out evals/results/live --json`.
 
 Result: finished via `caption-mirror` (en auto). Verifier allowed: True. Transcript characters: 17015.
 
-yt-dlp did not return captions. The text came from the public mirror fallback. The note cites the transcript path and quotes it. Title and description are not stored.
+yt-dlp did not return captions. The text came from the public mirror fallback. The note cites the transcript path and quotes it. The note title is the job id. The platform title and description are not stored.
 
 Excerpt:
 

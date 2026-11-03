@@ -30,7 +30,7 @@ After one link:
 1. A job exists with a **stable id** (platform + durable content id, e.g. `youtube_<id>` / `x_<status id>`).
 2. Either captions were used, or ASR wrote a transcript file.
 3. Quality gate passed (or status is clearly `failed` / retry with reason).
-4. Any note quotes a real ~40-character window of that transcript and cites its path (or explicitly says “not finished”). A pasted path under a rewritten title is not a quote.
+4. Any finished note is Markdown with YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`) and quotes a real ~40-character window of that transcript. `title` is the job id. The platform title is not the note. A pasted path under a rewritten title is not a quote. On a stop, leave `status.json` and do not write `note.md`.
 
 If step 3–4 are missing, the task is not done.
 
@@ -40,13 +40,13 @@ Hard gate before a vault write. Exit 0 is allowed. Any other exit means do not d
 python3 scripts/verify_note.py --transcript <transcript.txt> --note <note.md>
 ```
 
-YouTube, captions first (optional ASR only when configured; otherwise it says not finished):
+YouTube, captions first (optional ASR only when configured; otherwise it says not finished). A finished run writes `note.md` for Obsidian:
 
 ```bash
 python3 scripts/youtube_host.py "<youtube url>"
 ```
 
-Twitter/X video, same gate. Captions if a track exists, otherwise optional ASR. Post text is not a transcript:
+Twitter/X video, same gate and the same Markdown note. Captions if a track exists, otherwise optional ASR. Post text is not a transcript:
 
 ```bash
 python3 scripts/x_host.py "<x or twitter status url>"
@@ -122,6 +122,10 @@ Missing or expired cookies ⇒ say so in the status. Keep the public fetch path.
 
 Write notes only after a usable transcript (or an explicitly labeled degraded path).
 
+The bundled hosts write one Obsidian-friendly Markdown file, `note.md`, in the job directory. Frontmatter: `title` (the job id, not the platform title), `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`. Body sections: Source, Transcript, Quoted window. The quote is copied from the transcript. The host does not retell the video in new sentences. `status.json` is the machine stub. A stop writes that stub only.
+
+Feishu is not required. This skill does not call Feishu and does not read a Feishu token. A Feishu wiki, a Notion database, or another sink can live in the user's own project and consume this Markdown. A folder of `.md` files is a complete sink.
+
 Keep sinks channel-separated when the user maintains partitions (e.g. YouTube vs X vs WeChat vs official docs). Do not dump every medium into one catch-all folder.
 
 This skill does not hardcode personal wiki tokens. Pass parent / sink config from the host project.
@@ -141,14 +145,17 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 ## Bundled resources
 
 - `scripts/verify_note.py` — fail-closed check: allow a note only when it cites a transcript that passes the quality gate and quotes a 40-character window of it.  
-- `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. It does not write a note from the title.  
-- `scripts/x_host.py` — Twitter/X video. Same gate. Captions if present, otherwise optional ASR. Post text is not a transcript.  
-- `scripts/README.md` — how to run both hosts, the CJK false-reject tradeoff, and the env var names.  
+- `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes an Obsidian Markdown note. It does not write a note from the title.  
+- `scripts/x_host.py` — Twitter/X video. Same gate and the same Markdown note. Captions if present, otherwise optional ASR. Post text is not a transcript.  
+- `scripts/README.md` — how to run both hosts, the note shape, the CJK false-reject tradeoff, and the env var names.  
 - `scripts/smoke.sh` — offline check: venv, yt-dlp, gate tests, fixture settle. `--live` adds one captioned YouTube URL. It does not turn ASR on.  
 - `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.  
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.  
 - `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live`.  
-- `evals/results/` — checked-in pass/fail evidence from the gate and a live YouTube run. Paths in that evidence are repo-relative.
+- `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.  
+- `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X).  
+- `evals/results/spotcheck.md` — layer ③, an agent reading that notes quote the transcript and do not invent the rest. CI does not score it.  
+- `evals/results/` — paths in the evidence files are repo-relative.
 
 ## Packaging note
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Minimal Twitter/X video host: captions first, optional ASR, otherwise not finished.
 
-Same quality gate and note verifier as the YouTube host. Post text is never a
-transcript. On failure the job directory keeps a status file and no finished note.
+Same quality gate and Obsidian Markdown note as the YouTube host. Post text is
+never a transcript. On failure the job directory keeps status.json and no note.
 
 Public media lookup uses the FxTwitter-style API at https://api.fxtwitter.com
 (no key). Set FX_TWITTER_API=off to skip it. YTDLP_COOKIES is an optional path
@@ -596,7 +596,7 @@ def run_x_host(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Fetch a public Twitter/X video transcript and write a note only if the quality gate passes."
+            "Fetch a public Twitter/X video transcript and write an Obsidian Markdown note only if the quality gate passes."
         )
     )
     parser.add_argument("url", nargs="?", help="x.com or twitter.com status URL, or a numeric status id")
