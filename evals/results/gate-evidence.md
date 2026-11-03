@@ -1,6 +1,6 @@
 # Gate evidence
 
-Generated 2026-11-03T05:11:02Z by `python3 scripts/run_evidence.py`.
+Generated 2026-11-03T08:13:36Z by `python3 scripts/run_evidence.py`.
 
 Two bars, both required. (A) No note without a usable transcript: the file has to exist and pass the quality gate. (B) A finished note has to analyze that transcript into reusable knowledge. The four sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, and each one quotes a 40-character window of the transcript. A path, a status, or a quote with no analysis is refused.
 
@@ -38,15 +38,15 @@ Reasons:
 
 ## Host deposit behavior
 
-YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row calls `x_host.py --settle-transcript`. No network. Both still run the gate and do not pretend a fetch happened.
+YouTube rows call `youtube_host.py --settle-transcript`. The `x-usable` row calls `x_host.py --settle-transcript`. No network. A passing transcript writes `note.scaffold.md` and does not write a finished `note.md`. Both still run the gate and do not pretend a fetch happened.
 
-| video id | status | note written | transcript written | exit | expect |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `usable-en` | finished | true | true | 0 | finished deposit, verifier allows |
-| `stale-deposit-removed` | not_finished | false | false | 2 | rerun with empty text deletes the previous note and transcript |
-| `empty-asr` | not_finished | false | false | 2 | empty transcript writes status only |
-| `zh-loop` | quality_gate_failed | false | false | 2 | expected Chinese plus English loop writes status only |
-| `x-usable` | finished | true | true | 0 | x_host settle uses the same gate and writes a knowledge note |
+| video id | status | finished note | scaffold | transcript | exit | expect |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `usable-en` | transcript_ready | false | true | true | 0 | gate pass writes a scaffold, not a finished note |
+| `stale-deposit-removed` | not_finished | false | false | false | 2 | rerun with empty text deletes the previous scaffold and transcript |
+| `empty-asr` | not_finished | false | false | false | 2 | empty transcript writes status only |
+| `zh-loop` | quality_gate_failed | false | false | false | 2 | expected Chinese plus English loop writes status only |
+| `x-usable` | transcript_ready | false | true | true | 0 | x_host settle uses the same gate and writes a scaffold, not a finished note |
 
 ## Live YouTube
 
