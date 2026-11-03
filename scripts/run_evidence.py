@@ -390,6 +390,7 @@ def live_case() -> dict:
             "verifier": payload.get("verifier"),
             "transcript": payload.get("transcript"),
             "note": payload.get("note"),
+            "scaffold": payload.get("scaffold"),
         }
     )
     transcript = payload.get("transcript")
@@ -465,32 +466,39 @@ def markdown(report: dict) -> str:
     lines.append("")
     lines.append(f"Command: `{live['command']}`.")
     lines.append("")
-    if live.get("finished"):
+    if live.get("template_note_withdrawn") or live.get("gate_passed"):
         lines.append(
-            f"Result: finished via `{live.get('acquisition')}` "
+            f"Result: transcript acquired via `{live.get('acquisition')}` "
             f"({live.get('caption_language')} {live.get('caption_kind')}). "
-            f"Verifier allowed: {(live.get('verifier') or {}).get('allowed')}. "
             f"Transcript characters: {live.get('transcript_chars')}."
         )
+        lines.append("")
+        if live.get("template_note_withdrawn"):
+            lines.append(
+                "The template knowledge note previously stored beside this transcript was withdrawn. "
+                "It had been filled by video-specific templates, not written as analysis. "
+                "The host does not write a finished knowledge note."
+            )
+        else:
+            lines.append(
+                "The host wrote a scaffold, not a finished knowledge note. "
+                "The platform title and description are not stored."
+            )
         lines.append("")
         if live.get("acquisition") == "caption-mirror":
             lines.append(
                 "yt-dlp did not return captions. The text came from the public mirror fallback. "
-                "The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         elif live.get("acquisition") == "yt-dlp":
             lines.append(
-                "Captions came from yt-dlp. The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                "Captions came from yt-dlp. "
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         else:
             lines.append(
-                f"Acquisition was `{live.get('acquisition')}`. The note analyzes the transcript into the four knowledge sections and quotes each one. "
-                "The note title is the job id. The platform title and description are not stored. "
-                "Passing this check is not a claim that the captions match the audio."
+                f"Acquisition was `{live.get('acquisition')}`. "
+                "Passing the quality gate is not a claim that the captions match the audio."
             )
         lines.append("")
         if live.get("excerpt"):

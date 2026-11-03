@@ -56,9 +56,11 @@ URL: `https://www.youtube.com/watch?v=KwhgfwOSToQ`. Substitute: none; this is ev
 
 Command: `python3 scripts/youtube_host.py https://www.youtube.com/watch?v=KwhgfwOSToQ --out evals/results/live --json`.
 
-Result: finished via `caption-mirror` (en auto). Verifier allowed: True. Transcript characters: 17015.
+Result: transcript acquired via `caption-mirror` (en auto). Transcript characters: 17015.
 
-yt-dlp did not return captions. The text came from the public mirror fallback. The note analyzes the transcript into the four knowledge sections and quotes each one. The note title is the job id. The platform title and description are not stored. Passing this check is not a claim that the captions match the audio.
+The template knowledge note previously stored beside this transcript was withdrawn. It had been filled by video-specific templates, not written as analysis. The host does not write a finished knowledge note.
+
+yt-dlp did not return captions. The text came from the public mirror fallback. Passing the quality gate is not a claim that the captions match the audio.
 
 Excerpt:
 

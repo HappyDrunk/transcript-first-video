@@ -278,10 +278,10 @@
     "substitute": null,
     "command": "python3 scripts/youtube_host.py https://www.youtube.com/watch?v=KwhgfwOSToQ --out evals/results/live --json",
     "exit_code": 0,
-    "status": "finished",
-    "finished": true,
-    "reason": null,
-    "next_step": "none",
+    "status": "transcript_ready",
+    "finished": false,
+    "reason": "template knowledge note withdrawn; it was generated from a video-specific template, not written as analysis",
+    "next_step": "write-note",
     "acquisition": "caption-mirror",
     "caption_language": "en",
     "caption_kind": "auto",
@@ -313,14 +313,12 @@
       "confidence": null
     },
     "gate_passed": true,
-    "verifier": {
-      "allowed": true,
-      "reasons": []
-    },
+    "verifier": null,
     "transcript": "evals/results/live/youtube_KwhgfwOSToQ/transcript.txt",
-    "note": "evals/results/live/youtube_KwhgfwOSToQ/note.md",
+    "note": null,
     "transcript_chars": 17015,
-    "excerpt": "All right. Thank you so much, Basil, for the introduction. Hello there. Those of you in the audience, thank you so much for joining us today. My name is Kevin. Uh, technically we don't really have titles. So I am member of technical staff a"
+    "excerpt": "All right. Thank you so much, Basil, for the introduction. Hello there. Those of you in the audience, thank you so much for joining us today. My name is Kevin. Uh, technically we don't really have titles. So I am member of technical staff a",
+    "template_note_withdrawn": true
   },
   "fixture_mismatches": [],
   "host_settle_ok": true

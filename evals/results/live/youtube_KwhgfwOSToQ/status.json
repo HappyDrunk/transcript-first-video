@@ -2,14 +2,14 @@
   "schema_version": 1,
   "job_id": "youtube_KwhgfwOSToQ",
   "source_url": "https://www.youtube.com/watch?v=KwhgfwOSToQ",
-  "finished": true,
+  "finished": false,
   "acquisition": "caption-mirror",
   "caption_language": "en",
   "caption_kind": "auto",
   "expected_lang": null,
   "gate_lang": "en",
   "transcript": "evals/results/live/youtube_KwhgfwOSToQ/transcript.txt",
-  "note": "evals/results/live/youtube_KwhgfwOSToQ/note.md",
+  "note": null,
   "gate": {
     "passed": true,
     "reasons": [],
@@ -28,10 +28,7 @@
       "confidence": null
     }
   },
-  "verifier": {
-    "allowed": true,
-    "reasons": []
-  },
+  "verifier": null,
   "attempts": [
     {
       "source": "yt-dlp",
@@ -45,7 +42,7 @@
     }
   ],
   "mirror_host": "yt.chocolatemoo53.com",
-  "status": "finished",
-  "reason": null,
-  "next_step": "none"
+  "status": "transcript_ready",
+  "reason": "template knowledge note withdrawn; it was generated from a video-specific template, not written as analysis",
+  "next_step": "write-note"
 }

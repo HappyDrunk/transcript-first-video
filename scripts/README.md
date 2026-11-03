@@ -2,7 +2,7 @@
 
 YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms are not fetched here.
 
-Run from the repo root. A host writes `note.md` only after the gate passes and `verify_note.py` accepts it. That file is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`) and four body sections (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步). `title` is the job id. The platform title and description are not stored. Each section quotes the transcript and states a reusable claim. A path plus a blockquote is refused. Feishu is not called. On failure the host writes `status.json` only and deletes a previous note for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
+Run from the repo root. A host writes `note.scaffold.md` when the gate passes. That file is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`), four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步), and fill instructions. `title` is the job id. The platform title and description are not stored. The scaffold is not a finished knowledge note, and the host does not ask `verify_note.py` to accept it. `verify_note.py` still refuses a quote stub and still refuses this scaffold. Feishu is not called. On failure the host writes `status.json` only and deletes a previous note and scaffold for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
 
 ## Smoke
 
@@ -30,7 +30,7 @@ Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`,
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=KwhgfwOSToQ" --out artifacts
 ```
 
-Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. The note title is the job id. The platform title and description are not written into the note. A short analyzed example is `evals/results/live/youtube_jNQXAC9IVRw/note.md`. A longer one is `evals/results/live/youtube_KwhgfwOSToQ/note.md`.
+Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. The scaffold title is the job id. The platform title and description are not written into the scaffold. The host does not analyze the caption. Transcripts from two public runs, with the old template notes removed, are `evals/results/live/youtube_jNQXAC9IVRw/transcript.txt` and `evals/results/live/youtube_KwhgfwOSToQ/transcript.txt`.
 
 ## Twitter/X video
 
@@ -46,7 +46,7 @@ A public X video often has no caption track. Without `ASR_BACKEND=whisper` or `A
 
 yt-dlp may report a media id that is not the status id. Captions are kept only when the webpage URL is still that status.
 
-A public check of `https://x.com/NASA/status/2102748685792596449` finished from yt-dlp English captions. The committed receipt is `evals/results/live/x_2102748685792596449/`. The note treats that one line as a dated invitation and does not invent a ticket price or a map. With yt-dlp missing, the same URL still returned a video from the public API and stopped at not finished: no caption track, `ASR_BACKEND` unset, post text not used.
+A public check of `https://x.com/NASA/status/2102748685792596449` kept a transcript from yt-dlp English captions. The committed receipt is `evals/results/live/x_2102748685792596449/`. The template note that used to sit there was withdrawn. With yt-dlp missing, the same URL still returned a video from the public API and stopped at not finished: no caption track, `ASR_BACKEND` unset, post text not used.
 
 ## Check a note
 

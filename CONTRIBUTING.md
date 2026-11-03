@@ -34,7 +34,7 @@ Three layers, and they stay separate. The fixture table is what CI scores: gate,
 
 `python3 scripts/run_evidence.py` without `--skip-live` refetches `youtube_KwhgfwOSToQ` only. Leave the other live directories in place. Do not invent a private corpus, and do not commit a gibberish transcript you wrote yourself.
 
-Finished notes from the hosts are Obsidian Markdown with the four knowledge sections. Keep that shape if you change `render_note`. A stop still writes `status.json` and no `note.md`.
+Hosts write `note.scaffold.md` on a passing transcript: frontmatter, the four empty section headings, and fill instructions. They do not write a finished `note.md`. Keep `verify_note.py` able to reject a quote stub. A stop still writes `status.json` and deletes any previous note and scaffold.
 
 ## Release
 
