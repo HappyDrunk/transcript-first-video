@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Minimal YouTube host: captions first, optional ASR, otherwise not finished.
+"""Minimal YouTube host: captions first, optional ASR, otherwise no transcript.
 
-A finished job writes note.md. That file is Obsidian Markdown: YAML frontmatter
-plus four knowledge sections (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步).
-Each section quotes the transcript and says what to reuse. The platform title
-and description are not stored. status.json is a machine stub. On failure the
-job directory keeps that stub and no note.
+A passing transcript writes transcript.txt, status.json, and note.scaffold.md.
+The scaffold is frontmatter, four empty section headings, and fill instructions.
+It is not a finished knowledge note. The host does not analyze the transcript.
+The platform title and description are not stored. On failure the job directory
+keeps status.json and no scaffold.
 
-Exit 0 finished. Exit 2 not finished or quality-gate failure. Exit 1 usage.
+Exit 0 when the transcript passes and a scaffold is written. That exit does not
+mean a finished knowledge note. Exit 2 when the transcript is not usable.
+Exit 1 usage.
 """
 
 from __future__ import annotations
@@ -135,7 +137,7 @@ def write_json(path: Path, payload: dict) -> None:
 
 
 def clear_deposit(job_dir: Path) -> None:
-    for name in ("transcript.txt", "note.md"):
+    for name in ("transcript.txt", "note.md", "note.scaffold.md"):
         target = job_dir / name
         if target.exists():
             target.unlink()
@@ -704,7 +706,7 @@ def _next_step(status_name: str, acquisition: str, upgrade_attempted: bool) -> s
     return "stop"
 
 
-def render_note(
+def render_scaffold(
     *,
     job_id: str,
     video_id: str,
@@ -713,20 +715,18 @@ def render_note(
     caption_language: str | None,
     caption_kind: str | None,
     transcript_cite: str,
-    excerpt: str,
 ) -> str:
-    """Obsidian knowledge note. Title is the job id, not the platform title.
+    """Blank Obsidian scaffold. Title is the job id, not the platform title.
 
-    ``excerpt`` is the transcript text. The body analyzes it into the four
-    knowledge sections and quotes it. A path plus a blockquote is not a note.
+    The body is four empty headings and fill instructions. It does not analyze
+    the transcript. A finished note.md is not this file.
     """
-    return knowledge_note.render_note(
+    return knowledge_note.render_scaffold(
         job_id=job_id,
         video_id=video_id,
         source=source,
         acquisition=acquisition,
         transcript_cite=transcript_cite,
-        transcript_text=excerpt,
         caption_language=caption_language,
         caption_kind=caption_kind,
     )
@@ -756,6 +756,7 @@ def finalize_job(
     result = quality_gate.assess(text, expected_lang=gate_lang, confidence=confidence)
     transcript_path = job_dir / "transcript.txt"
     note_path = job_dir / "note.md"
+    scaffold_path = job_dir / "note.scaffold.md"
     status_path = job_dir / "status.json"
     base = {
         "schema_version": 1,
@@ -769,6 +770,7 @@ def finalize_job(
         "gate_lang": gate_lang,
         "transcript": None,
         "note": None,
+        "scaffold": None,
         "gate": result.to_dict(),
         "verifier": None,
     }
@@ -788,9 +790,12 @@ def finalize_job(
         return base
 
     transcript_path.write_text(result.text.rstrip() + "\n", encoding="utf-8")
-    excerpt = result.text
     cite = cite_path(transcript_path)
-    note_body = render_note(
+    # ``verify`` is accepted so existing callers keep working. The scaffold is
+    # not a deposit, so the host does not run verify_note on it and does not
+    # treat a passing gate as a finished knowledge note.
+    del verify
+    scaffold_body = render_scaffold(
         job_id=job_id,
         video_id=video_id,
         source=source,
@@ -798,35 +803,23 @@ def finalize_job(
         caption_language=caption_language or gate_lang,
         caption_kind=caption_kind,
         transcript_cite=cite,
-        excerpt=excerpt,
     )
-    note_path.write_text(note_body, encoding="utf-8")
-    verifier = None
-    if verify:
-        verifier = verify_note.verify(transcript_path, note_body, expected_lang=gate_lang, confidence=confidence)
-        if not verifier["allowed"]:
-            clear_deposit(job_dir)
-            base.update(
-                {
-                    "status": "not_finished",
-                    "finished": False,
-                    "reason": "internal verifier refused the note: " + "; ".join(verifier["reasons"]),
-                    "next_step": "stop",
-                    "verifier": {"allowed": False, "reasons": verifier["reasons"]},
-                    "exit_code": 2,
-                }
-            )
-            write_json(status_path, {key: value for key, value in base.items() if key != "exit_code"})
-            return base
+    scaffold_path.write_text(scaffold_body, encoding="utf-8")
+    if note_path.exists():
+        note_path.unlink()
     base.update(
         {
-            "status": "finished",
-            "finished": True,
-            "reason": None,
-            "next_step": "none",
+            "status": "transcript_ready",
+            "finished": False,
+            "reason": (
+                "transcript passed the quality gate; "
+                "note.scaffold.md is a blank form, not a finished knowledge note"
+            ),
+            "next_step": "write-note",
             "transcript": cite,
-            "note": cite_path(note_path),
-            "verifier": None if verifier is None else {"allowed": True, "reasons": []},
+            "note": None,
+            "scaffold": cite_path(scaffold_path),
+            "verifier": None,
             "exit_code": 0,
         }
     )
@@ -860,6 +853,7 @@ def write_refusal(
         "acquisition": "none",
         "transcript": None,
         "note": None,
+        "scaffold": None,
         "gate": None,
         "verifier": None,
     }
@@ -1036,6 +1030,8 @@ def _emit(payload: dict, as_json: bool) -> int:
             print(public["reason"], file=sys.stderr)
         if public.get("transcript"):
             print(f"transcript: {public['transcript']}")
+        if public.get("scaffold"):
+            print(f"scaffold: {public['scaffold']}")
         if public.get("note"):
             print(f"note: {public['note']}")
     return code
@@ -1043,7 +1039,10 @@ def _emit(payload: dict, as_json: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Fetch a public YouTube transcript and write an Obsidian Markdown note only if the quality gate passes."
+        description=(
+            "Fetch a public YouTube transcript. When the quality gate passes, "
+            "write note.scaffold.md. Do not write a finished knowledge note."
+        )
     )
     parser.add_argument("url", nargs="?", help="YouTube URL or 11-character video id")
     parser.add_argument(
@@ -1056,7 +1055,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-lang", default=None)
     parser.add_argument("--asr", choices=["auto", "off", "whisper", "openai"], default="auto")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Accepted for compatibility. The host writes a scaffold, not a finished note, "
+            "so this flag does not run verify_note."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         if args.settle_transcript:
