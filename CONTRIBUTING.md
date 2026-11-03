@@ -14,7 +14,7 @@ Offline, from the repo root:
 bash scripts/smoke.sh
 ```
 
-That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles a fixture, and regenerates fixture evidence.
+That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles a fixture, regenerates fixture evidence, and runs `scripts/verify_report.py`.
 
 `bash scripts/smoke.sh --live` also tries `https://www.youtube.com/watch?v=jNQXAC9IVRw` ("Me at the zoo"). ASR stays off on that run.
 
@@ -26,7 +26,7 @@ pip install -r requirements-asr.txt
 
 ## Evidence
 
-`python3 scripts/run_evidence.py --skip-live` rewrites `evals/results/gate-evidence.json` and `gate-evidence.md` with repo-relative paths. It keeps the checked-in live sample. CI runs that command and fails if `evals/results` changes. CI also runs `scripts/test_no_overfit.py`.
+`python3 scripts/run_evidence.py --skip-live` rewrites `evals/results/gate-evidence.json` and `gate-evidence.md` with repo-relative paths. It keeps the checked-in live sample. CI runs that command and fails if `evals/results` changes. CI also runs `scripts/test_no_overfit.py` and `scripts/verify_report.py`. The verify report must stay at or above 95% intercept and at or below 10% false positives.
 
 A path like `/workspace/...` or `/tmp/...` in those files is a bug. Record `scripts/...` and `evals/...`.
 

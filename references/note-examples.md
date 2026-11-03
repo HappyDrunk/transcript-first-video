@@ -4,7 +4,7 @@ Skeletons only. The author fills each body later with a real transcript and a re
 
 Do not invent a video to stand in for one. Do not use a private held-out video. The sample and the held-out set must not be the same video.
 
-`verify_note.py` checks shape (citation, a real quote, not a quote stub, `本节不适用：` allowed, all four sections in that form refused). It does not yet score the writing rules named below. Those rules are in `SKILL.md`.
+`verify_note.py` enforces R01–R15 (`references/rules.md`). The skeletons below are still empty. The author fills them later.
 
 ## Good — four sections filled
 
@@ -21,7 +21,7 @@ Do not invent a video to stand in for one. Do not use a private held-out video. 
 ## Bad — keyword salad
 
 - Source: (author)
-- What it shows: prose that stacks transcript words with commas instead of stating a claim. The pending check is R09. An existing specimen, not a held-out video, is `evals/adversarial/keyword_salad_en.md`.
+- What it shows: prose that stacks transcript words with commas instead of stating a claim. R09 refuses that pattern. An existing specimen, not a held-out video, is `evals/adversarial/keyword_salad_en.md`.
 - Note: (author)
 
 ## Bad — invented number
