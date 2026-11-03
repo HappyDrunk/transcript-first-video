@@ -4,6 +4,26 @@ YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms 
 
 Run from the repo root. A host writes a note only after the gate passes and `verify_note.py` accepts it. The note has to cite the transcript path and quote a real 40-character window of that file. On failure the host writes `status.json` only and deletes a previous note for that same job id.
 
+## Smoke
+
+Offline:
+
+```bash
+bash scripts/smoke.sh
+```
+
+This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py`, settles `evals/fixtures/usable_en_transcript.txt`, and regenerates fixture evidence with `run_evidence.py --skip-live`. ASR stays off.
+
+With a network, the same script also tries a short public captioned video ("Me at the zoo", `jNQXAC9IVRw`):
+
+```bash
+bash scripts/smoke.sh --live
+```
+
+`--live` still does not set `ASR_BACKEND`. No captions means `not_finished`. Whisper is a separate install: `pip install -r requirements-asr.txt`, then `ASR_BACKEND=whisper`. `ffmpeg` has to be on `PATH` for local whisper.
+
+Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`, `evals/fixtures/...`). A machine path such as `/workspace/...` fails the evidence script. `--skip-live` keeps the checked-in live sample and does not delete `evals/results/live/`. CI runs that command and fails if `evals/results` changes.
+
 ## YouTube
 
 ```bash

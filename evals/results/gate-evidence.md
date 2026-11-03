@@ -1,6 +1,6 @@
 # Gate evidence
 
-Generated 2026-11-02T17:11:51Z by `python3 scripts/run_evidence.py`.
+Generated 2026-11-03T02:18:17Z by `python3 scripts/run_evidence.py`.
 
 Without a gate, a fluent note looks depositable (40 or more letters). With the gate, a note is allowed only when it cites a transcript file that passes the quality gate and quotes a 40-character window of that transcript. A path alone is refused.
 

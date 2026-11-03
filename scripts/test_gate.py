@@ -538,5 +538,57 @@ class XHostTests(unittest.TestCase):
             self.assertNotIn("title", blocked)
 
 
+class EvidencePathTests(unittest.TestCase):
+    def test_recorded_command_strips_checkout_and_interpreter(self) -> None:
+        import run_evidence
+
+        command = run_evidence.recorded_command(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "verify_note.py"),
+                "--transcript",
+                "evals/fixtures/usable_en_transcript.txt",
+                "--note",
+                "evals/fixtures/usable_en_note.md",
+            ]
+        )
+        self.assertEqual(
+            command,
+            "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt "
+            "--note evals/fixtures/usable_en_note.md",
+        )
+        self.assertNotIn(str(ROOT), command)
+        self.assertNotIn("/workspace", command)
+
+    def test_relativize_tree_rewrites_nested_checkout_paths(self) -> None:
+        import run_evidence
+
+        rewritten = run_evidence.relativize_tree(
+            {"command": str(ROOT / "scripts" / "verify_note.py"), "nested": [str(ROOT)]}
+        )
+        self.assertEqual(rewritten["command"], "scripts/verify_note.py")
+        self.assertEqual(rewritten["nested"], ["."])
+
+    def test_machine_paths_are_refused(self) -> None:
+        import run_evidence
+
+        for sample in (
+            "/workspace/scripts/verify_note.py",
+            "/tmp/tfv-evidence/note.md",
+            "/home/someone/transcript.txt",
+            r"C:\Users\someone\note.md",
+        ):
+            with self.assertRaises(SystemExit):
+                run_evidence.assert_relative_evidence(sample, "sample")
+
+    def test_repo_relative_evidence_text_is_accepted(self) -> None:
+        import run_evidence
+
+        run_evidence.assert_relative_evidence(
+            "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt",
+            "sample",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

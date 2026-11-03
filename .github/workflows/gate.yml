@@ -21,3 +21,10 @@ jobs:
         run: python3 scripts/test_gate.py
       - name: Evidence fixtures
         run: python3 scripts/run_evidence.py --skip-live
+      - name: Evidence stays clean
+        run: |
+          git diff --exit-code -- evals/results
+          if [ -n "$(git status --porcelain -- evals/results)" ]; then
+            git status --porcelain -- evals/results
+            exit 1
+          fi

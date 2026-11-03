@@ -6,6 +6,44 @@
 
 YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer: a note is allowed only after the spoken words are written down, the text passes a quality check, and the note quotes that transcript.
 
+## Try it on one captioned video
+
+Cloning this repository does not fetch a video and does not write a note. You have the rules. The smallest path that finishes is `yt-dlp`, then one command, on a short public video that already has captions.
+
+```bash
+pip install -r requirements.txt
+python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
+```
+
+That URL is "Me at the zoo" (`jNQXAC9IVRw`). It is short, public, and captioned. When the captions come back, the command writes `artifacts/youtube_jNQXAC9IVRw/transcript.txt` and a note that quotes that file. yt-dlp is the first try. If YouTube asks it to sign in, the host tries a public caption mirror and can still finish from that text.
+
+A video with no captions stops at `not_finished`. That stop is the design. `ASR_BACKEND` is unset by default, which means off, so speech-to-text does not run. The host does not fill the gap with the title.
+
+Speech-to-text is a second rung. Install it only when you want that rung. Local whisper also needs `ffmpeg` on the machine.
+
+```bash
+pip install -r requirements-asr.txt
+ASR_BACKEND=whisper python3 scripts/youtube_host.py "<url-without-captions>" --out artifacts
+```
+
+Until `ASR_BACKEND` is set, a video with no captions stays unfinished.
+
+No network right now? A finished job is already in the repo. Open [evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md). It names [the transcript](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt) and quotes it. [status.json](evals/results/live/youtube_KwhgfwOSToQ/status.json) is the same job.
+
+To check this copy without fetching:
+
+```bash
+bash scripts/smoke.sh
+```
+
+That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs the gate tests, and settles a fixture transcript. When the network is up and you also want the short captioned URL:
+
+```bash
+bash scripts/smoke.sh --live
+```
+
+`--live` still leaves ASR off. Offline is `bash scripts/smoke.sh`. Live is the same script with `--live`.
+
 You have seen the failure this gate is for. A YouTube or X video link lands in the chat. The agent reads the title and the short blurb, sometimes the post beside the link, and writes a note that sounds like it watched. The words that were spoken never get written down. The note looks finished. Nobody heard the video.
 
 This repository is a skill: a folder of rules the agent loads so the next note waits for those words. The title, the blurb, and the post can help it find the right video. Finding it still leaves the listening to do.
@@ -67,7 +105,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` is a common place. Yours might be `skills/transcript-first-video/` beside the project that actually downloads audio. Either works, as long as that agent reads skills from there.
 
-When the clone finishes, nothing plays by itself. You have the rules. `scripts/` has a YouTube fetcher, an X/Twitter video fetcher, and a gate you can run before a note is allowed into a vault. The queue and the shelf where notes live stay in your project. Other video sites are not fetched here.
+When the clone finishes, nothing plays by itself. You have the rules. The command that finishes a captioned link is in [Try it on one captioned video](#try-it-on-one-captioned-video). `scripts/` has a YouTube fetcher, an X/Twitter video fetcher, and a gate you can run before a note is allowed into a vault. The queue and the shelf where notes live stay in your project. Other video sites are not fetched here.
 
 ## How to use
 
@@ -113,8 +151,11 @@ Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES`
 | :--- | :--- |
 | [SKILL.md](SKILL.md) | The full rules: where words may come from, when to stop, what a note has to cite, how a cookie or a key stays a name. If this page and that file disagree, follow the file. |
 | [references/pitfalls.md](references/pitfalls.md) | Ten real mistakes, private details removed. Open it when a note looks done and you suspect it is not, or when a Chinese talk comes back as English junk. The stories include a queue nobody ran, a download link that expired, and a "mostly Chinese characters" transcript that was still garbage. |
-| [evals/evals.json](evals/evals.json) | Three practice cases. One YouTube link has to be read from captions or speech-to-text. One empty short clip has to stay unfinished. One Chinese talk heard as English loops must not ship the tidy failure essay as the video. They catch a slide back to "I read the title." |
-| [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless it quotes a real transcript. Queues stay in your project. See [scripts/README.md](scripts/README.md). |
+| [evals/evals.json](evals/evals.json) | Three prompts for an agent or a person. CI does not run the prompts or score the assertions. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live` on the fixture files. |
+| [evals/results/live/youtube_KwhgfwOSToQ/](evals/results/live/youtube_KwhgfwOSToQ/) | A finished YouTube job, already committed. The note quotes the transcript. Open it when you have no network. |
+| [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless it quotes a real transcript. `bash scripts/smoke.sh` checks this copy offline. See [scripts/README.md](scripts/README.md). |
+
+How to change this repo, and what shipped: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
@@ -123,6 +164,44 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
 # 中文
 
 YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器：嘴里的话先落成文字，文字过了质量检查，笔记还得引用这段文稿。
+
+## 先跑通一条有字幕的视频
+
+克隆这个仓库，视频不会自己开始下，笔记也不会自己出现。你拿到的是规矩。最小的一条能走完的路是：装上 `yt-dlp`，然后对一条短的、公开的、已经有字幕的视频跑一个命令。
+
+```bash
+pip install -r requirements.txt
+python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
+```
+
+这个地址是 "Me at the zoo"（`jNQXAC9IVRw`）。短，公开，有字幕。字幕回来之后，命令会写下 `artifacts/youtube_jNQXAC9IVRw/transcript.txt`，以及一篇引用了这个文件的笔记。yt-dlp 是第一次尝试。如果 YouTube 要求登录，主机会再试一个公开字幕镜像，镜像上的字仍然可以把这条做完。
+
+没有字幕的视频会停在 `not_finished`。这是设计如此。`ASR_BACKEND` 默认不设置，就是关着的，语音转文字不会自己跑。缺文稿的空档，不会拿标题去补一篇笔记。
+
+语音转文字是第二级，不在默认安装里。你要这一级的时候再装。本地 whisper 还要机器上有 `ffmpeg`。
+
+```bash
+pip install -r requirements-asr.txt
+ASR_BACKEND=whisper python3 scripts/youtube_host.py "<没有字幕的链接>" --out artifacts
+```
+
+在你设置 `ASR_BACKEND` 之前，没有字幕的视频就停在没看完。
+
+现在没有网络，也可以看一份已经写完的样子。打开 [evals/results/live/youtube_KwhgfwOSToQ/note.md](evals/results/live/youtube_KwhgfwOSToQ/note.md)。它点名了[文稿](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt)，并引用了其中一段。同一条任务的状态在 [status.json](evals/results/live/youtube_KwhgfwOSToQ/status.json)。
+
+不联网，先核对这一份拷贝：
+
+```bash
+bash scripts/smoke.sh
+```
+
+它会在缺少 `.venv` 时建一个，安装 `requirements.txt`（只有 yt-dlp），跑门槛测试，再用一份现成文稿走一遍 settle。网络可用、还想试那条短字幕视频时：
+
+```bash
+bash scripts/smoke.sh --live
+```
+
+`--live` 同样不会把 ASR 打开。只跑离线是 `bash scripts/smoke.sh`。要连那条短视频，是同一个脚本加上 `--live`。
 
 你见过这个失败。一个 YouTube 或 X 视频的链接丢进聊天。它读了标题和简介，有时还读了链接旁边那条帖子，写出一篇听着像看过的笔记。嘴里说的话，一个字没落下来。笔记像写完了。视频没人听。
 
@@ -185,7 +264,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` 是常见的一个位置。你的也可能是项目旁边的 `skills/transcript-first-video/`，跟真正下载音频的那个程序放一起。只要这个 Agent 会从那儿读 skill，就行。
 
-克隆完，什么也不会自己播。你拿到的是规矩。`scripts/` 里有 YouTube 抓取、X / Twitter 视频抓取，和一道入库前的门槛。队列和笔记放哪，仍在你自己的项目里。别的视频网站，这里不抓。
+克隆完，什么也不会自己播。你拿到的是规矩。真正能把一条有字幕的链接做完的命令，在[先跑通一条有字幕的视频](#先跑通一条有字幕的视频)。`scripts/` 里有 YouTube 抓取、X / Twitter 视频抓取，和一道入库前的门槛。队列和笔记放哪，仍在你自己的项目里。别的视频网站，这里不抓。
 
 ## 怎么用
 
@@ -231,8 +310,11 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP
 | :--- | :--- |
 | [SKILL.md](SKILL.md) | 完整的规矩：字可以从哪来，什么时候该停，笔记必须点名什么，cookie 和密钥怎么只留名字。这页和那个文件要是说得不一样，以那个文件为准。 |
 | [references/pitfalls.md](references/pitfalls.md) | 十条真实翻过的车，私人信息已经去掉。笔记看着完成了、你又觉得不对，或者中文口播被听成英语胡话，先打开它。里面有没人去跑的队列、过期的下载地址，还有一份「大部分是汉字」却仍然是垃圾的文稿。 |
-| [evals/evals.json](evals/evals.json) | 三道练习。一条 YouTube 得从字幕或语音转文字来读。一条空的短视频得保持未完成。一条中文被听成英语打转的，不能把那篇整齐的失败作文当成视频发出去。它们用来抓住「又退回去读标题」。 |
-| [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道不引用真实文稿就不许写笔记的门槛。队列仍在你的项目里。见 [scripts/README.md](scripts/README.md)。 |
+| [evals/evals.json](evals/evals.json) | 三道给 Agent 或人的题目。CI 不跑这些题目，也不给断言打分。CI 跑的是 `scripts/test_gate.py` 和 `scripts/run_evidence.py --skip-live`，核对的是夹具文件。 |
+| [evals/results/live/youtube_KwhgfwOSToQ/](evals/results/live/youtube_KwhgfwOSToQ/) | 一条已经提交进仓库的、写完了的 YouTube 任务。笔记引用了文稿。没有网络时打开它看成品长什么样。 |
+| [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道不引用真实文稿就不许写笔记的门槛。`bash scripts/smoke.sh` 在离线时核对这一份拷贝。见 [scripts/README.md](scripts/README.md)。 |
+
+怎么改这个仓库、发过什么： [CONTRIBUTING.md](CONTRIBUTING.md)，[CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

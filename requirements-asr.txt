@@ -1,0 +1,4 @@
+# Second rung. Not installed by scripts/smoke.sh or by `pip install -r requirements.txt`.
+# ASR_BACKEND stays off until you set it. Local whisper also needs ffmpeg on PATH.
+# This install is large: openai-whisper pulls in PyTorch.
+openai-whisper>=20231117

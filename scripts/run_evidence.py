@@ -2,13 +2,20 @@
 """Run the verifier and host against fixtures, plus a live YouTube attempt.
 
 Writes evals/results/gate-evidence.json and gate-evidence.md.
-Fixture mismatches exit 1. A live fetch that fails is recorded, not fatal.
+Paths in those files are repo-relative. A machine path such as /workspace/...
+is a failure. Fixture mismatches exit 1. A live fetch that fails is recorded,
+not fatal.
+
+--skip-live does not fetch, and it keeps the checked-in live sample when one
+is already in gate-evidence.json. The generated_at stamp stays put when the
+rest of the report is unchanged, so a second offline run does not dirty git.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -22,6 +29,90 @@ HOST = [PY, str(ROOT / "scripts" / "youtube_host.py")]
 XHOST = [PY, str(ROOT / "scripts" / "x_host.py")]
 LIVE_URL = "https://www.youtube.com/watch?v=KwhgfwOSToQ"
 LIVE_ID = "KwhgfwOSToQ"
+EVIDENCE_JSON = ROOT / "evals" / "results" / "gate-evidence.json"
+EVIDENCE_MD = ROOT / "evals" / "results" / "gate-evidence.md"
+_MACHINE_PATH = re.compile(
+    r"(?<![A-Za-z0-9_])(?:"
+    r"/(?:workspace|home|Users|tmp|private|var|opt|agent|root)(?:/[^\s\"'`<>|]*)?"
+    r"|[A-Za-z]:\\[^\s\"'`<>|]*"
+    r")"
+)
+
+
+def relativize_text(text: str) -> str:
+    """Rewrite this checkout's absolute prefix to a repo-relative path."""
+    root = ROOT.as_posix()
+    if root and root in text:
+        text = text.replace(root + "/", "")
+        text = text.replace(root, ".")
+    return text
+
+
+def relativize_tree(value):
+    if isinstance(value, str):
+        return relativize_text(value)
+    if isinstance(value, list):
+        return [relativize_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {key: relativize_tree(item) for key, item in value.items()}
+    return value
+
+
+def recorded_command(argv: list[str]) -> str:
+    """Command line as a reader would type it. No checkout path, no venv path."""
+    shown: list[str] = []
+    for index, part in enumerate(argv):
+        if index == 0:
+            name = Path(part).name
+            shown.append("python3" if name.startswith("python") else name)
+            continue
+        shown.append(relativize_text(part) if Path(part).is_absolute() else part)
+    return " ".join(shown)
+
+
+def assert_relative_evidence(text: str, label: str) -> None:
+    root = ROOT.as_posix()
+    if root and root in text:
+        raise SystemExit(f"{label} contains this checkout's path ({root})")
+    match = _MACHINE_PATH.search(text)
+    if match:
+        raise SystemExit(f"{label} contains a machine path ({match.group(0)})")
+
+
+def load_evidence() -> dict | None:
+    if not EVIDENCE_JSON.is_file():
+        return None
+    try:
+        data = json.loads(EVIDENCE_JSON.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def load_checked_in_live() -> dict | None:
+    """Keep a real live sample across --skip-live. A skipped block is not a sample."""
+    data = load_evidence()
+    if not data:
+        return None
+    live = data.get("live")
+    if not isinstance(live, dict):
+        return None
+    if live.get("skipped") or live.get("status") == "skipped":
+        return None
+    return live
+
+
+def with_stable_stamp(report: dict) -> dict:
+    """Reuse generated_at when the report body is unchanged, so CI can git-diff."""
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    previous = load_evidence()
+    if previous:
+        prev_body = {key: value for key, value in previous.items() if key != "generated_at"}
+        new_body = {key: value for key, value in report.items() if key != "generated_at"}
+        if prev_body == new_body and isinstance(previous.get("generated_at"), str):
+            stamp = previous["generated_at"]
+    report["generated_at"] = stamp
+    return report
 
 CASES = [
     {
@@ -145,7 +236,7 @@ def verifier_case(case: dict) -> dict:
     allowed = bool(payload.get("allowed"))
     return {
         **case,
-        "command": " ".join(cmd[1:]),
+        "command": recorded_command(cmd),
         "exit_code": completed.returncode,
         "allowed": allowed,
         "reasons": payload.get("reasons") or [],
@@ -405,45 +496,59 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--skip-live",
         action="store_true",
-        help="Do not fetch YouTube. Fixture and settle checks still run and still fail the process on mismatch.",
+        help=(
+            "Do not fetch YouTube. Fixture and settle checks still run and still fail the "
+            "process on mismatch. A checked-in live sample in gate-evidence.json is kept."
+        ),
     )
     args = parser.parse_args(argv)
     verifier = [verifier_case(case) for case in CASES]
     host = host_cases()
     if args.skip_live:
-        live = {
-            "skipped": True,
-            "url": LIVE_URL,
-            "video_id": LIVE_ID,
-            "substitute": None,
-            "status": "skipped",
-            "finished": False,
-            "reason": "live fetch skipped (--skip-live)",
-            "command": "python3 scripts/run_evidence.py --skip-live",
-            "exit_code": None,
-            "attempts": [],
-        }
+        # Preserve the committed live sample so offline CI can git-diff the file.
+        # A checkout with no real sample records an explicit skip.
+        live = load_checked_in_live()
+        if live is None:
+            live = {
+                "skipped": True,
+                "url": LIVE_URL,
+                "video_id": LIVE_ID,
+                "substitute": None,
+                "status": "skipped",
+                "finished": False,
+                "reason": "live fetch skipped (--skip-live)",
+                "command": "python3 scripts/run_evidence.py --skip-live",
+                "exit_code": None,
+                "attempts": [],
+            }
     else:
         live = live_case()
     mismatches = [case["id"] for case in verifier if not case["matched"]]
     host_ok = host_settle_ok(host)
-    report = {
-        "schema_version": 1,
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "verifier": verifier,
-        "host_settle": host,
-        "live": live,
-        "fixture_mismatches": mismatches,
-        "host_settle_ok": host_ok,
-    }
+    report = with_stable_stamp(
+        relativize_tree(
+            {
+                "schema_version": 1,
+                "generated_at": "",
+                "verifier": verifier,
+                "host_settle": host,
+                "live": live,
+                "fixture_mismatches": mismatches,
+                "host_settle_ok": host_ok,
+            }
+        )
+    )
     out_dir = ROOT / "evals" / "results"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "gate-evidence.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (out_dir / "gate-evidence.md").write_text(markdown(report), encoding="utf-8")
-    print(f"wrote {out_dir / 'gate-evidence.md'}")
+    json_text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    md_text = markdown(report)
+    if not md_text.endswith("\n"):
+        md_text += "\n"
+    assert_relative_evidence(json_text, "evals/results/gate-evidence.json")
+    assert_relative_evidence(md_text, "evals/results/gate-evidence.md")
+    EVIDENCE_JSON.write_text(json_text, encoding="utf-8")
+    EVIDENCE_MD.write_text(md_text, encoding="utf-8")
+    print("wrote evals/results/gate-evidence.md")
     print(f"fixture mismatches: {mismatches or 'none'}")
     print(f"host settle ok: {host_ok}")
     print(f"live status: {live.get('status')} acquisition={live.get('acquisition')}")

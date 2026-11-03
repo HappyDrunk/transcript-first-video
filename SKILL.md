@@ -144,9 +144,11 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. It does not write a note from the title.  
 - `scripts/x_host.py` — Twitter/X video. Same gate. Captions if present, otherwise optional ASR. Post text is not a transcript.  
 - `scripts/README.md` — how to run both hosts, the CJK false-reject tradeoff, and the env var names.  
+- `scripts/smoke.sh` — offline check: venv, yt-dlp, gate tests, fixture settle. `--live` adds one captioned YouTube URL. It does not turn ASR on.  
+- `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.  
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.  
-- `evals/evals.json` — starter prompts for Anthropic-style skill evals (with-skill vs without).  
-- `evals/results/` — checked-in pass/fail evidence from the gate and a live YouTube run.
+- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py` and `scripts/run_evidence.py --skip-live`.  
+- `evals/results/` — checked-in pass/fail evidence from the gate and a live YouTube run. Paths in that evidence are repo-relative.
 
 ## Packaging note
 
