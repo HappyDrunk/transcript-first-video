@@ -4,6 +4,12 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+No changes yet.
+
+## 0.2.0 — 2026-11-03
+
+Knowledge-note contract.
+
 - A finished note has to clear both bars. The transcript still has to pass the quality gate, and the note has to analyze it. The body sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Each section quotes the transcript. A path, a status, or a quote with no analysis is refused. A stop still writes `status.json` and no `note.md`.
 - The mechanical check does not listen to the audio, and CI does not score summary quality. `evals/results/spotcheck.md` is still a human or agent reading. CI does not score that file.
 - A finished job writes an Obsidian Markdown note (`note.md`) with YAML frontmatter. `status.json` stays the machine stub. A stop still writes no note.
