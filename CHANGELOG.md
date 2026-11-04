@@ -4,6 +4,15 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+- Claude v2 grounded-prose pass (eval step1): delete “Prose is your own sentences / Do not only rephrase”; allow compress/merge of in-section quotes with facts grounded in those quotes.
+- Inventory-first threshold lowered from 1800s to >5 minutes (`chunks/NN.notes.md` with timestamp + excerpt + one-line restatement).
+- Sections 3–4 may be `本节不适用` without a proof quote; sections 1–2 must not be whole-section N/A (R03/R04).
+- R10/R11 softened for Chinese notes on Latin transcripts so lexical “own words” pressure cannot force unsupported prose; same-script still blocks paste and empty analysis.
+- R13 cross-lingual path: ZH action steps need a supporting quote instead of 30% English-imperative token overlap.
+- Optional R16: mid-sentence proper nouns in prose must appear in that section's quotes (tol=0).
+- Eval intake: failing `verify_note.py` means 未交, not a scored deposit.
+
+
 - `verify_note.py` is a deterministic rule engine. Each failure is `Rxx FAIL: ...` for R01–R15. See `references/rules.md`.
 - CI runs `scripts/verify_report.py` on `evals/adversarial/` (at least 30) and `evals/good/` (at least 15) and fails when intercept is under 95% or the false-positive rate is over 10%. No language model is called. `evals/adversarial/keyword_salad_en.md` fails R09.
 - The whisper CLI path does not supply a confidence score. Docs no longer say that path has a confidence floor. `CONFIDENCE_FLOOR` still applies when a caller passes a number.

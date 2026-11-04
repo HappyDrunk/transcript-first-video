@@ -259,6 +259,39 @@ def _section_map(ctx: RuleContext) -> dict[str, SectionView]:
     return {section.heading: section for section in ctx.sections}
 
 
+
+OPTIONAL_NA_NO_QUOTE = frozenset({"翻车或别用", "今天立刻动手一步"})
+REQUIRED_CONTENT_SECTIONS = frozenset({"问题与做法", "完整怎么做"})
+
+
+def _cjk_ratio(text: str) -> float:
+    cjk = sum(1 for ch in text if "一" <= ch <= "鿿")
+    latin = sum(1 for ch in text if ("A" <= ch <= "Z") or ("a" <= ch <= "z"))
+    denom = cjk + latin
+    return (cjk / denom) if denom else 0.0
+
+
+def _latin_ratio(text: str) -> float:
+    cjk = sum(1 for ch in text if "一" <= ch <= "鿿")
+    latin = sum(1 for ch in text if ("A" <= ch <= "Z") or ("a" <= ch <= "z"))
+    denom = cjk + latin
+    return (latin / denom) if denom else 0.0
+
+
+def _cross_lingual_zh_on_en(ctx: "RuleContext") -> bool:
+    """Chinese-majority note prose against Latin-majority transcript speech."""
+    speech = _speech(ctx)
+    if _latin_ratio(speech) < 0.70:
+        return False
+    prose_parts = []
+    for section in ctx.sections:
+        if section.inapplicable:
+            continue
+        prose_parts.append(section.prose or "")
+    prose = chr(10).join(prose_parts)
+    return _cjk_ratio(prose) >= 0.30
+
+
 def r01_gate(ctx: RuleContext) -> tuple[str, bool, str]:
     """Transcript exists and passes the quality gate."""
     parts: list[str] = []
@@ -347,7 +380,16 @@ def r03_sections(ctx: RuleContext) -> tuple[str, bool, str]:
                 f"section {heading} uses 本节不适用 but is not a single line "
                 "本节不适用：<reason>"
             )
-        elif section.inapplicable is not None and not section.quotes:
+        elif section.inapplicable is not None and heading in REQUIRED_CONTENT_SECTIONS:
+            parts.append(
+                f"section {heading} must not be whole-section 本节不适用; "
+                "write grounded claims from quotes instead"
+            )
+        elif (
+            section.inapplicable is not None
+            and heading not in OPTIONAL_NA_NO_QUOTE
+            and not section.quotes
+        ):
             parts.append(f"section {heading} is 本节不适用 and does not include one quote")
     if not missing and knowledge_note.all_sections_inapplicable(ctx.note):
         parts.append(knowledge_note.ALL_INAPPLICABLE_REASON)
@@ -386,6 +428,12 @@ def r04_quotes_verbatim(ctx: RuleContext) -> tuple[str, bool, str]:
     for heading in knowledge_note.SECTIONS:
         section = present.get(heading)
         if section is None:
+            continue
+        if (
+            section.inapplicable is not None
+            and heading in OPTIONAL_NA_NO_QUOTE
+            and not section.quotes
+        ):
             continue
         if not section.quotes:
             parts.append(
@@ -600,10 +648,11 @@ def _sentences(text: str) -> list[str]:
 
 
 def r10_original_prose(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Non-N/A prose keeps 60 characters and two sentences after transcript overlap is removed."""
+    """Grounded prose: ZH-on-EN skips 60-char own-words pressure; same-script allows short quote compression."""
     if ctx.gate is None or not ctx.gate.passed:
         return ("R10", True, "skipped because the transcript is not usable")
     speech = _speech(ctx)
+    cross = _cross_lingual_zh_on_en(ctx)
     parts: list[str] = []
     remainders: list[str] = []
     for section in ctx.sections:
@@ -615,21 +664,39 @@ def r10_original_prose(ctx: RuleContext) -> tuple[str, bool, str]:
                 "the section is a quote stub rather than a reusable claim"
             )
             continue
+        sentences = _sentences(section.prose)
+        if cross:
+            if not section.quotes:
+                parts.append(
+                    f"section {section.heading} needs at least one transcript quote "
+                    "before Chinese prose can stand"
+                )
+            elif len(sentences) < 1:
+                parts.append(
+                    f"section {section.heading} has no prose sentence beside its quotes"
+                )
+            remainders.append(_fold(section.prose))
+            continue
+        quote = " ".join(item.text for item in section.quotes)
+        coverage = _coverage(section.prose, quote) if quote else 0.0
         remainder = knowledge_note._mask_transcript_spans(section.prose, speech, span=12)
         remainders.append(_fold(remainder))
-        letters = sum(1 for char in remainder if char.isalpha() or "\u4e00" <= char <= "\u9fff")
+        letters = sum(1 for char in remainder if char.isalpha() or "一" <= char <= "鿿")
+        if coverage >= 0.50 and 1 <= len(sentences) <= 3:
+            continue
         if letters < 60 or len(_sentences(remainder)) < 2:
             parts.append(
                 f"section {section.heading} does not analyze the transcript "
                 f"(after removing transcript overlap, {letters} characters and "
-                f"{len(_sentences(remainder))} sentences remain; need 60 and 2)"
+                f"{len(_sentences(remainder))} sentences remain; need 60 and 2, "
+                "or a short compression covered by the section quotes)"
             )
     nonempty = [item for item in remainders if item]
     if len(nonempty) >= 2 and len(set(nonempty)) < len(nonempty):
         parts.append("finished note repeats the same analysis in more than one knowledge section")
     if parts:
         return ("R10", False, "; ".join(parts))
-    return ("R10", True, "prose adds analysis beyond the quotes")
+    return ("R10", True, "prose is grounded without unsupported elaboration pressure")
 
 
 def _coverage(prose: str, quote: str, span: int = 12) -> float:
@@ -654,15 +721,17 @@ def _coverage(prose: str, quote: str, span: int = 12) -> float:
 
 
 def r11_quote_overlap(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Prose must not be mostly the quote rewritten or pasted."""
+    """Prose must not be mostly the quote pasted; skipped for Chinese prose on Latin transcripts."""
     if ctx.gate is None or not ctx.gate.passed:
         return ("R11", True, "skipped because the transcript is not usable")
+    if _cross_lingual_zh_on_en(ctx):
+        return ("R11", True, "skipped for Chinese prose on a Latin transcript")
     for section in ctx.sections:
         if section.inapplicable or not section.quotes:
             continue
         quote = " ".join(item.text for item in section.quotes)
         ratio = _coverage(section.prose, quote)
-        if ratio > 0.70:
+        if ratio > 0.85:
             return (
                 "R11",
                 False,
@@ -777,6 +846,14 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     if len(sentences) > 2:
         return ("R13", False, f"今天立刻动手一步 has {len(sentences)} sentences; maximum is 2")
     action = sentences[0]
+    if _cross_lingual_zh_on_en(ctx):
+        if not section.quotes:
+            return (
+                "R13",
+                False,
+                "今天立刻动手一步 needs a supporting quote when the transcript is not Chinese",
+            )
+        return ("R13", True, "today step is a short grounded action (cross-lingual)")
     today = _tokens(action)
     if not today:
         return ("R13", False, "今天立刻动手一步 has no content words")
@@ -843,6 +920,50 @@ def r15_failed_status(ctx: RuleContext) -> tuple[str, bool, str]:
     return ("R15", True, "status does not forbid a note")
 
 
+def r16_quote_anchored_nouns(ctx: RuleContext) -> tuple[str, bool, str]:
+    """Proper nouns in prose must appear in that section's quotes (tolerance 0). Skips sentence-initial caps; no cross-lingual lexical gate."""
+    if ctx.gate is None or not ctx.gate.passed:
+        return ("R16", True, "skipped because the transcript is not usable")
+    missing: list[str] = []
+    for section in ctx.sections:
+        if section.inapplicable:
+            continue
+        if not section.quotes:
+            continue
+        quote_blob = " ".join(q.text for q in section.quotes)
+        quote_fold = _fold(quote_blob)
+        for match in _LATIN_WORD.finditer(section.prose):
+            word = match.group(0)
+            if not word[0].isupper():
+                continue
+            if _is_sentence_start(section.prose, match.start()):
+                continue
+            key = word.casefold().strip()
+            if len(key) < 2 or key in _PROPER_SKIP:
+                continue
+            if key in quote_fold or word in quote_blob:
+                continue
+            label = f"{section.heading}:{word}"
+            if label not in missing:
+                missing.append(label)
+        for match in _BOOK.finditer(section.prose):
+            term = match.group(1).strip()
+            key = term.casefold()
+            if key and key not in quote_fold and term not in quote_blob:
+                label = f"{section.heading}:{term}"
+                if label not in missing:
+                    missing.append(label)
+    if missing:
+        return (
+            "R16",
+            False,
+            "proper nouns in prose missing from that section's quotes (tol=0): "
+            + ", ".join(missing[:8]),
+        )
+    return ("R16", True, "section prose nouns are anchored in section quotes")
+
+
+
 RULES = (
     r01_gate,
     r02_frontmatter,
@@ -859,6 +980,7 @@ RULES = (
     r13_today_step,
     r14_platform_title,
     r15_failed_status,
+    r16_quote_anchored_nouns,
 )
 
 

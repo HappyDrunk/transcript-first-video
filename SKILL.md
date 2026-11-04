@@ -11,7 +11,7 @@ Turn a **YouTube** or **Twitter/X video** URL into a transcript, then write the 
 
 Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
 
-Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Each section quotes a real stretch of the transcript, or says `本节不适用：` with a reason and one quote.
+Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional).
 
 Failure that must be said out loud = no usable transcript, or nothing in the transcript worth extracting. Do not deposit a finished note in either case.
 
@@ -39,17 +39,18 @@ Failure that must be said out loud = no usable transcript, or nothing in the tra
      Tell the user no usable transcript was acquired, and the reason. Stop.
      Do not write note.md.
 3. Read every file in chunks/.
-     If duration_seconds is 1800 or more, first write chunks/NN.notes.md
-     (3–5 lines of points per chunk), then write the note from those points.
+     If duration_seconds is greater than 300 (over 5 minutes), first write chunks/NN.notes.md
+     inventory: each line is `[mm:ss]` + short verbatim excerpt + one-line restatement of that excerpt.
+     Then write the note from those inventory points (do not invent beyond them).
 4. Write note.md from the scaffold. You write the analysis. The script does not.
 5. If every section is 本节不适用
      python3 scripts/verify_note.py --job <dir>
      That sets status to no-extractable-content, deletes note.md, and leaves the transcript.
      Tell the user there was nothing to extract. Stop.
 6. python3 scripts/verify_note.py --job <dir>
-     If it refuses, edit note.md from the reasons. At most 2 repair rounds.
+     If it refuses, the note is 未交 (not deposited). Edit note.md from the reasons. At most 2 repair rounds.
 7. If round 2 still refuses
-     Tell the user which reason failed. Do not deposit the note.
+     Tell the user which reason failed. Treat as 未交. Do not deposit the note.
 ```
 
 `transcript_ready` means the transcript passed the gate. `finished` stays false until you have a note that verify allows. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
@@ -65,20 +66,23 @@ Keep these four, in this order:
 3. 翻车或别用
 4. 今天立刻动手一步
 
-Any section may be a single line `本节不适用：<one sentence reason>` plus one quote that shows the transcript really does not contain that part. Do not invent a step to fill a section.
+Sections 翻车或别用 and 今天立刻动手一步 may be a single line `本节不适用：<one sentence reason>` when the transcript truly has nothing for that part. A proof quote is optional for those two sections.
 
-If all four sections are `本节不适用`, that is not a note. Delete `note.md` by running `verify_note.py --job`. Do not deposit it.
+Sections 问题与做法 and 完整怎么做 must not be whole-section `本节不适用`. If the material is thin, still write short claims that stay inside the quotes you cite.
+
+Do not invent a step to fill a section. If all four sections are `本节不适用`, that is not a note. Delete `note.md` by running `verify_note.py --job`. Do not deposit it.
 
 ## How to write
 
-`verify_note.py` enforces R01–R15. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. These are the same checks:
+`verify_note.py` enforces R01–R16. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. These are the same checks:
 
-- After each claim, quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous stretch of that line's words.
-- Prose is your own sentences. Do not only rephrase the quote.
-- For a video longer than 5 minutes, take quotes from at least 3 different quartile stretches of the transcript.
-- 今天立刻动手一步 starts with a verb, is at most 2 sentences, and matches a suggestion that is actually in the transcript.
-- Do not write a number, a person's name, or a product name that is not in the transcript.
+- After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous stretch of that line's words. One quote may support at most the next 3 prose sentences in that section.
+- Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, or numbers.
+- For a video longer than 5 minutes, take quotes from at least 3 different quartile stretches of the transcript, and keep the chunks/NN.notes.md inventory.
+- 今天立刻动手一步 starts with a verb, is at most 2 sentences, and stays inside its section quotes (cross-language notes are not forced to share surface tokens with English imperatives).
+- Do not write a number, a person's name, or a product name that is not in the supporting quotes for that section (R16) and not in the transcript (R07/R08).
 - A platform title, if you record one, goes only in frontmatter `platform_title`. It does not enter the body. The hosts do not copy the platform title into the scaffold.
+- Eval / intake rule: a note that fails `verify_note.py` is 未交, not a scored deposit.
 
 `caption_kind` is `auto` or `manual` when the host knows. `caption_trust: low` means the captions were automatic and their language was not the expected language. Treat that transcript as less reliable: stay close to the words, and say so if a claim is thin.
 
@@ -176,7 +180,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 ## Bundled resources
 
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
-- `scripts/verify_note.py` — R01–R15. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`.
+- `scripts/verify_note.py` — R01–R16. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
 - `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.
