@@ -70,7 +70,7 @@ SCAFFOLD_QUOTED_WINDOW = (
 _SCAFFOLD_INSTRUCTIONS = (
     "Scaffold only. This file is not a finished knowledge note. "
     "Read every file in chunks/ and write the analysis in note.md. "
-    "Under each heading, write claims grounded only in that section's quotes (you may compress or merge quotes from the same section; do not add facts the quotes do not support) and quote a contiguous "
+    "Under each heading, after Pass-1 verbatim quotes are chosen, write claims grounded only in that section's quotes (compress/merge allowed; no outside facts, numbers, names, or causes) and quote a contiguous "
     f"passage of the transcript, at least {QUOTE_WINDOW} characters. "
     "When the transcript line has a clock, quote it as > [mm:ss] followed by the words. "
     "Sections 翻车或别用 and 今天立刻动手一步 may be one line 本节不适用：<reason> without a proof quote. Sections 问题与做法 and 完整怎么做 must not be whole-section 不适用; if thin, still write grounded claims from quotes. "
