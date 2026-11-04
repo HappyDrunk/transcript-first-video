@@ -23,18 +23,18 @@ Result: pass.
 | `evals/adversarial/first_slice_2.md` | FAIL R12 | FAIL | R03, R10, R12 |
 | `evals/adversarial/from_title_1.md` | FAIL R14 | FAIL | R10, R14 |
 | `evals/adversarial/from_title_2.md` | FAIL R14 | FAIL | R10, R14 |
-| `evals/adversarial/keyword_salad_en.md` | FAIL R09 | FAIL | R09, R13 |
+| `evals/adversarial/keyword_salad_en.md` | FAIL R09 | FAIL | R09, R13, R16 |
 | `evals/adversarial/missing_front_1.md` | FAIL R02 | FAIL | R02, R10 |
 | `evals/adversarial/missing_front_2.md` | FAIL R02 | FAIL | R02, R10 |
-| `evals/adversarial/names_1.md` | FAIL R08 | FAIL | R07, R08, R10 |
-| `evals/adversarial/names_2.md` | FAIL R08 | FAIL | R07, R08, R10 |
+| `evals/adversarial/names_1.md` | FAIL R08 | FAIL | R07, R08, R10, R16 |
+| `evals/adversarial/names_2.md` | FAIL R08 | FAIL | R07, R08, R10, R16 |
 | `evals/adversarial/number_1.md` | FAIL R07 | FAIL | R07, R10 |
 | `evals/adversarial/number_2.md` | FAIL R07 | FAIL | R07, R10 |
 | `evals/adversarial/quote_only_1.md` | FAIL R10 | FAIL | R10, R13 |
 | `evals/adversarial/quote_only_2.md` | FAIL R10 | FAIL | R10, R13 |
 | `evals/adversarial/restatement_1.md` | FAIL R11 | FAIL | R10, R11 |
 | `evals/adversarial/restatement_2.md` | FAIL R11 | FAIL | R10, R11 |
-| `evals/adversarial/salad_en_2.md` | FAIL R09 | FAIL | R09, R13 |
+| `evals/adversarial/salad_en_2.md` | FAIL R09 | FAIL | R09, R13, R16 |
 | `evals/adversarial/salad_en_3.md` | FAIL R09 | FAIL | R09, R13 |
 | `evals/adversarial/salad_zh_1.md` | FAIL R09 | FAIL | R09, R10, R13 |
 | `evals/adversarial/salad_zh_2.md` | FAIL R09 | FAIL | R09, R10, R13 |

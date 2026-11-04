@@ -116,7 +116,7 @@ def verify(
     confidence: float | None = None,
     job_status: str | None = None,
 ) -> dict:
-    """Run R01–R15. ``reasons`` are ``Rxx FAIL: ...`` lines."""
+    """Run R01–R16. ``reasons`` are ``Rxx FAIL: ...`` lines."""
     ctx = verify_rules.build_context(
         transcript,
         note,
