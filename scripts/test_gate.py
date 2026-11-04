@@ -999,15 +999,64 @@ class EvidencePathTests(unittest.TestCase):
             "/tmp/tfv-evidence/note.md",
             "/home/someone/transcript.txt",
             r"C:\Users\someone\note.md",
+            "C:/Users/someone/note.md",
         ):
             with self.assertRaises(SystemExit):
                 run_evidence.assert_relative_evidence(sample, "sample")
+
+    def test_windows_checkout_strips_to_forward_slash_command(self) -> None:
+        import run_evidence
+
+        windows_root = r"C:\Users\desktop\transcript-first-video"
+
+        class WindowsCheckout:
+            def as_posix(self) -> str:
+                return windows_root.replace("\\", "/")
+
+            def __str__(self) -> str:
+                return windows_root
+
+        original = run_evidence.ROOT
+        run_evidence.ROOT = WindowsCheckout()
+        try:
+            script = windows_root + r"\scripts\verify_note.py"
+            self.assertEqual(run_evidence.relativize_text(script), "scripts/verify_note.py")
+            self.assertEqual(
+                run_evidence.relativize_text(windows_root.replace("\\", "/") + "/scripts/verify_note.py"),
+                "scripts/verify_note.py",
+            )
+            self.assertEqual(run_evidence.relativize_text(windows_root), ".")
+            command = run_evidence.recorded_command(
+                [
+                    "python.exe",
+                    script,
+                    "--transcript",
+                    "evals/fixtures/usable_en_transcript.txt",
+                    "--note",
+                    "evals/fixtures/usable_en_note.md",
+                ]
+            )
+            self.assertEqual(
+                command,
+                "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt "
+                "--note evals/fixtures/usable_en_note.md",
+            )
+            self.assertNotIn(windows_root, command)
+            self.assertNotIn("\\", command)
+            with self.assertRaises(SystemExit):
+                run_evidence.assert_relative_evidence(script, "sample")
+            with self.assertRaises(SystemExit):
+                run_evidence.assert_relative_evidence(windows_root.replace("\\", "/") + "\\scripts", "sample")
+            run_evidence.assert_relative_evidence(command, "sample")
+        finally:
+            run_evidence.ROOT = original
 
     def test_repo_relative_evidence_text_is_accepted(self) -> None:
         import run_evidence
 
         run_evidence.assert_relative_evidence(
-            "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt",
+            "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt "
+            "https://www.youtube.com/watch?v=KwhgfwOSToQ",
             "sample",
         )
 

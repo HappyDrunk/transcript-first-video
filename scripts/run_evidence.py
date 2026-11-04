@@ -3,8 +3,8 @@
 
 Writes evals/results/gate-evidence.json and gate-evidence.md.
 Paths in those files are repo-relative. A machine path such as /workspace/...
-is a failure. Fixture mismatches exit 1. A live fetch that fails is recorded,
-not fatal.
+or C:\\Users\\... is a failure. Fixture mismatches exit 1. A live fetch that
+fails is recorded, not fatal.
 
 --skip-live does not fetch, and it keeps the checked-in live sample when one
 is already in gate-evidence.json. The generated_at stamp stays put when the
@@ -34,17 +34,46 @@ EVIDENCE_MD = ROOT / "evals" / "results" / "gate-evidence.md"
 _MACHINE_PATH = re.compile(
     r"(?<![A-Za-z0-9_])(?:"
     r"/(?:workspace|home|Users|tmp|private|var|opt|agent|root)(?:/[^\s\"'`<>|]*)?"
-    r"|[A-Za-z]:\\[^\s\"'`<>|]*"
+    r"|[A-Za-z]:[\\/][^\s\"'`<>|]*"
     r")"
 )
 
 
+def _checkout_roots() -> list[str]:
+    """Absolute prefixes for this checkout, POSIX and Windows spellings."""
+    candidates: list[str] = []
+    for root in (ROOT.as_posix(), str(ROOT), str(ROOT).replace("\\", "/")):
+        if root and root not in candidates:
+            candidates.append(root)
+    return candidates
+
+
+def _path_is_absolute(part: str) -> bool:
+    """True for a POSIX absolute path or a Windows drive path.
+
+    Desktop smoke records `C:\\...` even when a later reader is not Windows.
+    pathlib on POSIX does not treat that string as absolute.
+    """
+    if Path(part).is_absolute():
+        return True
+    return len(part) >= 3 and part[0].isalpha() and part[1] == ":" and part[2] in "\\/"
+
+
 def relativize_text(text: str) -> str:
-    """Rewrite this checkout's absolute prefix to a repo-relative path."""
-    root = ROOT.as_posix()
-    if root and root in text:
+    """Rewrite this checkout's absolute prefix to a repo-relative path.
+
+    Windows records the checkout with backslashes. Strip that prefix the same
+    way as a POSIX prefix, then write any remaining backslashes as `/` so a
+    recorded command stays `python3 scripts/verify_note.py ...`.
+    """
+    for root in _checkout_roots():
+        if root not in text:
+            continue
         text = text.replace(root + "/", "")
+        text = text.replace(root + "\\", "")
         text = text.replace(root, ".")
+    if "\\" in text:
+        text = text.replace("\\", "/")
     return text
 
 
@@ -66,14 +95,14 @@ def recorded_command(argv: list[str]) -> str:
             name = Path(part).name
             shown.append("python3" if name.startswith("python") else name)
             continue
-        shown.append(relativize_text(part) if Path(part).is_absolute() else part)
+        shown.append(relativize_text(part) if _path_is_absolute(part) else part)
     return " ".join(shown)
 
 
 def assert_relative_evidence(text: str, label: str) -> None:
-    root = ROOT.as_posix()
-    if root and root in text:
-        raise SystemExit(f"{label} contains this checkout's path ({root})")
+    for root in _checkout_roots():
+        if root in text:
+            raise SystemExit(f"{label} contains this checkout's path ({root})")
     match = _MACHINE_PATH.search(text)
     if match:
         raise SystemExit(f"{label} contains a machine path ({match.group(0)})")

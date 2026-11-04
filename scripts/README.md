@@ -22,7 +22,7 @@ bash scripts/smoke.sh --live
 
 `--live` still does not set `ASR_BACKEND`. No captions means `not_finished`. Whisper is a separate install: `pip install -r requirements-asr.txt`, then `ASR_BACKEND=whisper`. `ffmpeg` has to be on `PATH` for local whisper.
 
-Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`, `evals/fixtures/...`). A machine path such as `/workspace/...` fails the evidence script. `--skip-live` keeps the checked-in live sample and does not delete `evals/results/live/`. CI runs that command and fails if `evals/results` changes.
+Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`, `evals/fixtures/...`). A machine path such as `/workspace/...` or `C:\Users\...` fails the evidence script. A Windows checkout prefix is stripped, then any remaining backslash is written as `/`. `--skip-live` keeps the checked-in live sample and does not delete `evals/results/live/`. CI runs that command and fails if `evals/results` changes.
 
 ## YouTube
 

@@ -23,6 +23,12 @@ No live receipt here is a gibberish transcript. Captions that came back either p
 
 **③ Effect. An agent or a person. CI does not score this.** [evals/results/spotcheck.md](evals/results/spotcheck.md) records that the old live notes were withdrawn, and it still reads the fixture refusals. Actions does not open that file. A green check is not a pass of those rows, and it is not a grade of summary quality. The prompts in [evals/evals.json](evals/evals.json) are the same kind of assertion. The reader did not listen to the audio.
 
+## Where the model comparison stands
+
+Lane A is Claude Desktop with this skill loaded. The comparison set is named `model-consensus-gold-v2`. The gold note bodies are not in this repository.
+
+Pull request #10 (`548a96a`) is on `main`. On the `sample_v2` set, `verify_note.py` passes 10 of 10 notes against the rules. Stage 4 `overall_pass` is still false. That 10 of 10 is the mechanical rule check. It is not a 冲9 pass. There is no `v1.0.0` tag that marks 冲9 complete.
+
 ## The host writes a scaffold
 
 When the transcript passes the quality gate, the host writes `transcript.txt`, `segments.json`, `chunks/`, `status.json`, and `note.scaffold.md`. Caption lines are `[mm:ss] text`, or `[hh:mm:ss] text` after one hour. `segments.json` is `start`, `end`, and `text` in seconds. Chunks are about 8 minutes or about 6000 characters. `status` is `transcript_ready`. `finished` is false. `note` is null. The scaffold has the frontmatter fields `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, and `quoted_window`, then four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步) and fill instructions. `caption_kind` is `auto` or `manual` when known. `caption_trust: low` means automatic captions were not in the expected language. `title` is the job id (`youtube_<id>` or `x_<id>`). The platform's title and description are not copied in. The scaffold is not a finished knowledge note. The host does not fill the sections. You write `note.md`. A section with nothing to extract is `本节不适用：<reason>` plus one quote. If every section is that line, `verify_note.py --job` sets `no-extractable-content` and deletes `note.md`.
@@ -253,6 +259,12 @@ YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平�
 这个仓库里没有一份现场抓回来的胡话文稿。字幕要么过了门槛，要么根本没有。胡话和英语循环的拒绝在第 ① 层。
 
 **③ 效果。人或者 Agent 看的。CI 不打分。** [evals/results/spotcheck.md](evals/results/spotcheck.md) 记下那些现场模板笔记已经撤回，也仍在读夹具里被拒绝的文件。Actions 不打开这个文件。绿色勾不是这些行通过了，也不是给摘要质量打分。[evals/evals.json](evals/evals.json) 里的题目是同一种断言。读的人没有去听音频。
+
+## 模型对照现在停在哪
+
+A 路是 Claude Desktop，加上这份 skill。对照集的名字是 `model-consensus-gold-v2`。金标笔记的正文没有放进这个仓库。
+
+拉取请求 #10（`548a96a`）已经在 `main` 上。`sample_v2` 这一组，`verify_note.py` 按规则 10 份里过了 10 份。第 4 阶段的 `overall_pass` 仍是 false。这 10/10 是机械规则核对。它不是冲9通过。仓库里没有 `v1.0.0` 标签把冲9标成做完。
 
 ## 主机写下的是脚手架
 
