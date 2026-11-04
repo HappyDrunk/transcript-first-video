@@ -12,7 +12,7 @@ Offline:
 bash scripts/smoke.sh
 ```
 
-This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles `evals/fixtures/usable_en_transcript.txt`, regenerates fixture evidence with `run_evidence.py --skip-live`, and runs `scripts/verify_report.py`. ASR stays off. No language model is called.
+This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, and `scripts/test_claim_ground_check.py`, settles `evals/fixtures/usable_en_transcript.txt`, regenerates fixture evidence with `run_evidence.py --skip-live`, and runs `scripts/verify_report.py`. ASR stays off. No language model is called. `test_claim_ground_check.py` checks a counts API on synthetic fixture notes. It does not score gold notes.
 
 With a network, the same script also tries a short public captioned video ("Me at the zoo", `jNQXAC9IVRw`):
 
@@ -55,6 +55,15 @@ python3 scripts/verify_note.py --job artifacts/youtube_KwhgfwOSToQ
 ```
 
 Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires the transcript to pass the quality gate and a knowledge note: frontmatter plus the four sections, each quoting 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `knowledge_note.py`). A section may instead be one line, `本节不适用：<reason>`, plus one quote. If every section is that line, the command sets `status` to `no-extractable-content` and deletes `note.md`. Pasting the path under a rewritten title is refused. So is a quote with no analysis. This check does not play the audio and does not grade an LLM summary. `--transcript` and `--note` still work for a fixture pair.
+
+## Local claim counts
+
+```bash
+python3 scripts/claim_ground_check.py path/to/note.md --quiet
+python3 scripts/test_claim_ground_check.py
+```
+
+`claim_ground_check.py` is an optional local helper. It counts prose sentences whose numbers, proper nouns, or long same-script phrases are absent from that section's blockquotes. Paths use `pathlib`. It writes only when you pass `--out`, and only to that path. It does not call a language model. Public CI runs `test_claim_ground_check.py`, which checks that counts API on synthetic fixture notes and does not score gold. CI does not run `claim_ground_check.py` as a gate or as an LLM judge. R01–R16 stay in `verify_note.py`.
 
 ## Environment variables
 
@@ -101,6 +110,7 @@ Regenerate the checked-in pass/fail record. `--skip-live` skips the YouTube fetc
 ```bash
 python3 scripts/test_gate.py
 python3 scripts/test_no_overfit.py
+python3 scripts/test_claim_ground_check.py
 python3 scripts/run_evidence.py
 python3 scripts/verify_report.py
 python3 scripts/run_evidence.py --skip-live

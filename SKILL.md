@@ -74,15 +74,28 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 ## How to write
 
-`verify_note.py` enforces R01–R16. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. These are the same checks:
+`verify_note.py` enforces R01–R16. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. Writing is a **required two-pass**. Do not skip Pass 1.
+
+### Pass 1 — Extract only (no section prose yet)
+
+1. Read every file in `chunks/` (and the transcript if needed).
+2. Select contiguous verbatim blocks of at least 40 characters that will become `> [mm:ss] …` quotes. Prefer blocks that carry the methods, steps, warnings, and action advice you will need.
+3. For a video longer than 5 minutes, first write `chunks/NN.notes.md` inventory: each line is `[mm:ss]` + short verbatim excerpt + one-line restatement of **that excerpt only**. Do not invent beyond the excerpt.
+4. World knowledge, outside articles, and inferred causes are forbidden in this pass. If the transcript does not say it, it is not on the inventory.
+
+### Pass 2 — Analyse only from selected blocks
+
+Write the four sections. Every verifiable claim must sit on Pass-1 quotes in **that same section**.
 
 - After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous verbatim stretch of the speech. Words that run across adjacent cues count; the cue clocks do not. One quote may support at most the next 3 prose sentences in that section.
-- Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, or numbers.
+- Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, numbers, product names, or causal links (`because` / `所以` / `导致` / `因此`) unless the supporting quote itself states them.
+- If a sentence needs a number, a proper noun, or a causal assertion that is not in the same-section quotes: delete it, or replace it with a short `转写未给出…` line. Do not fill the gap with plausible wording.
+- Before you deposit, self-audit: for each prose sentence, name the supporting quote stamp in that section. If you cannot, retract the sentence.
 - For a video longer than 5 minutes, take quotes from at least 3 different quartile stretches of the transcript, and keep the chunks/NN.notes.md inventory.
 - 今天立刻动手一步 starts with a verb, is at most 2 sentences, and stays inside its section quotes (cross-language notes are not forced to share surface tokens with English imperatives).
 - Do not write a number, a person's name, or a product name that is not in the supporting quotes for that section (R16) and not in the transcript (R07/R08).
 - A platform title, if you record one, goes only in frontmatter `platform_title`. It does not enter the body. The hosts do not copy the platform title into the scaffold.
-- Eval / intake rule: a note that fails `verify_note.py` is 未交, not a scored deposit.
+- Eval / intake rule: a note that fails `verify_note.py` is 未交, not a scored deposit. Disclosure still says the note was written with Claude plus this skill.
 
 `caption_kind` is `auto` or `manual` when the host knows. `caption_trust: low` means the captions were automatic and their language was not the expected language. Treat that transcript as less reliable: stay close to the words, and say so if a claim is thin.
 
@@ -181,6 +194,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
 - `scripts/verify_note.py` — R01–R16. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
+- `scripts/claim_ground_check.py` — optional local helper. It counts sentences whose numbers, proper nouns, or long phrases are absent from that section's quotes. Deterministic. No language model. Not a public CI gate and not an LLM judge. It does not replace R01–R16.
 - `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.
@@ -189,7 +203,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.
 - `references/note-examples.md` — skeletons for two good notes and three bad notes. The author fills the bodies. Do not invent a video for them.
-- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`.
+- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py` (counts API on synthetic notes, not a note judge), `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`. `scripts/claim_ground_check.py` is not a CI gate.
 - `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.
 - `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X). The template notes were withdrawn.
 - `evals/results/spotcheck.md` — layer ③. It records that withdrawal and still reads the fixture refusals. CI does not score it. It is not an audio check.
