@@ -11,8 +11,8 @@ A note that fails verify is 未交 (not deposited).
 | R01 | The transcript is missing or fails the quality gate, including an essay about a failed transcription. |
 | R02 | Frontmatter is missing a required field, `gate_passed` is not true, `quoted_window` is not a real quote, or the note does not cite the transcript path. |
 | R03 | A knowledge section is missing or out of order, `本节不适用` is malformed, a required content section is whole-section N/A, or all four sections are `本节不适用`. |
-| R04 | A blockquote is not a verbatim transcript span of at least 40 characters. A path or a title is not a quote. Optional N/A sections 3–4 may omit a proof quote. |
-| R05 | A quote's `[mm:ss]` or `[hh:mm:ss]` stamp is more than 15 seconds from the cue that contains the words. Quotes with no stamp are not timed. |
+| R04 | A blockquote is not a verbatim transcript span of at least 40 characters. Adjacent cues count as one span: their texts are joined in order, and a leading `[mm:ss]` or `[hh:mm:ss]` is not part of the speech. A path or a title is not a quote. Optional N/A sections 3–4 may omit a proof quote. |
+| R05 | A quote's `[mm:ss]` or `[hh:mm:ss]` stamp is more than 15 seconds from the stamp anchor. The anchor is the start of the covered cue closest to the stamp (the earlier cue when the distances tie). A span across adjacent cues uses that same anchor. Quotes with no stamp are not timed. |
 | R06 | The same blockquote is used in two sections. |
 | R07 | A digit or percent in the prose is not in the transcript. |
 | R08 | More than two proper nouns in the prose (mid-sentence capitals, `《》`, or quoted terms) are absent from the transcript. |
@@ -24,5 +24,9 @@ A note that fails verify is 未交 (not deposited).
 | R14 | More than three words from `platform_title` are absent from the transcript. |
 | R15 | `status` is `failed`, `not_finished`, `quality_gate_failed`, or `no-extractable-content` while `note.md` is still being checked. |
 | R16 | A mid-sentence proper noun in the prose is absent from that section's supporting quotes (tolerance 0). No cross-lingual lexical-overlap gate. |
+
+R04 folds speech by joining cue texts in order with a single space. Whitespace is collapsed and case is folded. A leading `[mm:ss]` or `[hh:mm:ss]` on a cue is not speech. The blockquote has to be an exact substring of that string, at least 40 characters. A paraphrase, a skipped cue, or a reordering is not a quote.
+
+R05 times a stamped quote against cue starts. Every cue whose text overlaps that verbatim span is covered. The stamp anchor is the covered start closest to the stamp. When two starts are equally close, the earlier cue is the anchor. The stamp has to fall within 15 seconds of the anchor. A quote with no stamp is not timed.
 
 `scripts/verify_report.py` scores `evals/adversarial/` and `evals/good/` and writes `evals/results/verify-report.md`. Intercept below 95% or a false positive above 10% fails the run.

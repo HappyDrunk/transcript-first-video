@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 import verify_note  # noqa: E402
+import verify_rules  # noqa: E402
 import x_host  # noqa: E402
 import youtube_host  # noqa: E402
 
@@ -394,6 +395,134 @@ class VerifierTests(unittest.TestCase):
         result = verify_note.verify(transcript, text, expected_lang="en")
         self.assertFalse(result["allowed"], result["reasons"])
         self.assertTrue(any(reason.startswith("R09 FAIL:") for reason in result["reasons"]))
+
+    def test_r04_r05_cross_cue_verbatim_span(self) -> None:
+        """A ≥40-character quote may cross adjacent cues. Clocks are not speech.
+
+        R05's stamp anchor is the covered cue start closest to the stamp
+        (the earlier cue when the distances tie). The ±15s window stays.
+        """
+        first = "Alpha starts the thought about drainage"
+        second = "and beta finishes the thought"
+        span = f"{first} {second}"
+        bark = "Put a handful of bark in the new pot so water can drain slowly"
+        leave = "Do not feed the plant this week after repotting it outside"
+        cues = ((0, first), (40, second), (70, bark), (120, leave))
+        self.assertLess(len(first), verify_note.QUOTE_WINDOW)
+        self.assertLess(len(second), verify_note.QUOTE_WINDOW)
+        self.assertGreaterEqual(len(span), verify_note.QUOTE_WINDOW)
+        self.assertGreaterEqual(len(bark), verify_note.QUOTE_WINDOW)
+        self.assertNotIn(span, first)
+        self.assertNotIn(span, second)
+
+        plain = ROOT / "evals/fixtures/usable_en_transcript.txt"
+        plain_ctx = verify_rules.build_context(plain, "plain", expected_lang="en")
+        self.assertEqual(
+            verify_rules._verbatim_haystack(plain_ctx.segments, plain_ctx.gate.text),
+            verify_rules._fold(plain_ctx.gate.text),
+        )
+
+        def note(path: Path, quote: str, stamp: int | None) -> str:
+            cite = path.as_posix()
+            quoted = f"> {quality_gate.format_stamp(stamp)} {quote}" if stamp is not None else f"> {quote}"
+            return (
+                "---\n"
+                'title: "cross-cue"\n'
+                'source_url: "fixture"\n'
+                'video_id: "cross-cue"\n'
+                'acquisition: "fixture"\n'
+                "gate_passed: true\n"
+                f'transcript_path: "{cite}"\n'
+                "quoted_window: |-\n"
+                f"  {bark}\n"
+                "---\n"
+                "# note\n\n"
+                "## 问题与做法\n\n"
+                "Drainage is one continuous instruction across the two spoken cues.\n\n"
+                f"{quoted}\n\n"
+                "## 完整怎么做\n\n"
+                "Set bark in the pot before the plant goes in. That order is the method.\n\n"
+                f"> {bark}\n\n"
+                "## 翻车或别用\n\n"
+                "本节不适用：原文没有写出不能用的情形。\n\n"
+                "## 今天立刻动手一步\n\n"
+                "本节不适用：原文没有可以今天就做的一步。\n"
+            )
+
+        def write(tmp: Path, kind: str) -> Path:
+            path = tmp / f"{kind}.txt"
+            if kind == "stamped":
+                body = quality_gate.format_transcript(
+                    [quality_gate.Segment(float(start), float(start) + 3, text) for start, text in cues]
+                )
+            elif kind == "vtt":
+                blocks = ["WEBVTT", ""]
+                for start, text in cues:
+                    blocks.append(f"00:{start // 60:02d}:{start % 60:02d}.000 --> 00:{(start + 3) // 60:02d}:{(start + 3) % 60:02d}.000")
+                    blocks.append(text)
+                    blocks.append("")
+                body = "\n".join(blocks)
+            else:
+                blocks = []
+                for index, (start, text) in enumerate(cues, start=1):
+                    blocks.append(str(index))
+                    blocks.append(
+                        f"00:{start // 60:02d}:{start % 60:02d},000 --> 00:{(start + 3) // 60:02d}:{(start + 3) % 60:02d},000"
+                    )
+                    blocks.append(text)
+                    blocks.append("")
+                body = "\n".join(blocks)
+            path.write_text(body, encoding="utf-8")
+            return path
+
+        def rules(path: Path, quote: str, stamp: int | None):
+            ctx = verify_rules.build_context(path, note(path, quote, stamp), expected_lang="en")
+            self.assertIsNotNone(ctx.gate)
+            self.assertTrue(ctx.gate.passed, ctx.gate.reasons)
+            return ctx, verify_rules.r04_quotes_verbatim(ctx), verify_rules.r05_timestamps(ctx)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for kind in ("stamped", "vtt", "srt"):
+                path = write(root, kind)
+                ctx, r04, r05 = rules(path, span, 40)
+                self.assertTrue(r04[1], f"{kind}: {r04[2]}")
+                self.assertTrue(r05[1], f"{kind}: {r05[2]}")
+                _ctx, r04_start, r05_start = rules(path, span, 0)
+                self.assertTrue(r04_start[1], r04_start[2])
+                self.assertTrue(r05_start[1], r05_start[2])
+                _ctx, _r04_edge, r05_edge = rules(path, span, 25)
+                self.assertTrue(r05_edge[1], f"{kind}: {r05_edge[2]}")
+                _ctx, _r04_far, r05_far = rules(path, span, 24)
+                self.assertFalse(r05_far[1], kind)
+                self.assertIn("16s", r05_far[2])
+                self.assertIn("[00:40]", r05_far[2])
+                _ctx, _r04_tie, r05_tie = rules(path, span, 20)
+                self.assertFalse(r05_tie[1], kind)
+                self.assertIn("20s from the cue at [00:00]", r05_tie[2])
+                _ctx, r04_skip, _r05_skip = rules(path, f"{first} {bark}", 0)
+                self.assertFalse(r04_skip[1], kind)
+                self.assertIn("not verbatim", r04_skip[2])
+                _ctx, r04_para, _r05_para = rules(path, "Alpha begins a remark about drainage and beta ends it", 0)
+                self.assertFalse(r04_para[1], kind)
+                self.assertIn("not verbatim", r04_para[2])
+                _ctx, _r04_late, r05_late = rules(path, bark, 86)
+                self.assertFalse(r05_late[1], kind)
+                self.assertIn("16s", r05_late[2])
+                self.assertIn("[01:10]", r05_late[2])
+                _ctx, _r04_near, r05_near = rules(path, bark, 85)
+                self.assertTrue(r05_near[1], f"{kind}: {r05_near[2]}")
+
+            stamped = write(root, "stamped")
+            held = verify_rules.build_context(stamped, note(stamped, span, 40), expected_lang="en")
+            for rule in (
+                verify_rules.r02_frontmatter,
+                verify_rules.r08_proper_nouns,
+                verify_rules.r13_today_step,
+                verify_rules.r16_quote_anchored_nouns,
+            ):
+                result = rule(held)
+                self.assertTrue(result[1], result)
 
 
 class HostTests(unittest.TestCase):

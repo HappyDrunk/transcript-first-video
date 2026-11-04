@@ -4,6 +4,8 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+- R04 accepts a blockquote that is a contiguous verbatim span of at least 40 characters across adjacent cues. Cue clocks are left out of the speech fold. The match stays exact: a paraphrase or a skipped cue still fails.
+- R05 stamp anchor for a quote that covers more than one cue is the start of the covered cue closest to the stamp (the earlier cue when the distances tie). The stamp still has to fall within 15 seconds of that anchor.
 - Claude v2 grounded-prose pass (eval step1): delete “Prose is your own sentences / Do not only rephrase”; allow compress/merge of in-section quotes with facts grounded in those quotes.
 - Inventory-first threshold lowered from 1800s to >5 minutes (`chunks/NN.notes.md` with timestamp + excerpt + one-line restatement).
 - Sections 3–4 may be `本节不适用` without a proof quote; sections 1–2 must not be whole-section N/A (R03/R04).

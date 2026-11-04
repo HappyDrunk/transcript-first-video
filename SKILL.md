@@ -76,7 +76,7 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 `verify_note.py` enforces R01–R16. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. These are the same checks:
 
-- After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous stretch of that line's words. One quote may support at most the next 3 prose sentences in that section.
+- After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous verbatim stretch of the speech. Words that run across adjacent cues count; the cue clocks do not. One quote may support at most the next 3 prose sentences in that section.
 - Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, or numbers.
 - For a video longer than 5 minutes, take quotes from at least 3 different quartile stretches of the transcript, and keep the chunks/NN.notes.md inventory.
 - 今天立刻动手一步 starts with a verb, is at most 2 sentences, and stays inside its section quotes (cross-language notes are not forced to share surface tokens with English imperatives).

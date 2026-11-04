@@ -182,8 +182,10 @@ def build_context(
             )
         )
     speech = gate.text if gate is not None else ""
-    quoted = bool(exists and gate is not None and _window_in(note, speech))
     segments = _stamped_lines(raw) or (quality_gate.prepare_segments(raw) if raw else [])
+    quoted = bool(
+        exists and gate is not None and _window_in(note, _verbatim_haystack(segments, speech))
+    )
     return RuleContext(
         transcript_path=transcript,
         note=note,
@@ -253,6 +255,80 @@ def _stamped_lines(raw: str) -> list:
 
 def _speech(ctx: RuleContext) -> str:
     return ctx.gate.text if ctx.gate is not None else ""
+
+
+def _cue_body(text: str) -> str:
+    """Drop one leading ``[mm:ss]`` or ``[hh:mm:ss]``. Cue clocks are not speech."""
+    _stamp, body = parse_stamp(text or "")
+    return body
+
+
+def _indexed_cues(segments: list) -> tuple[str, list[tuple[int, int, object]]]:
+    """Cue texts joined by one space, plus each cue's span in that string."""
+    parts: list[str] = []
+    spans: list[tuple[int, int, object]] = []
+    cursor = 0
+    for segment in segments:
+        body = _fold(_cue_body(segment.text))
+        if not body:
+            continue
+        if parts:
+            cursor += 1
+        start = cursor
+        parts.append(body)
+        cursor += len(body)
+        spans.append((start, cursor, segment))
+    return " ".join(parts), spans
+
+
+def _verbatim_haystack(segments: list, speech: str) -> str:
+    """Speech fold for verbatim quotes. Adjacent cues join; clocks stay out."""
+    if segments:
+        joined, _spans = _indexed_cues(segments)
+        if joined:
+            return joined
+    return _fold(speech)
+
+
+def _verbatim_covers(quote_text: str, segments: list) -> list[list]:
+    """Each hit is the adjacent cues overlapped by one exact copy of the quote."""
+    needle = _fold(quote_text)
+    if len(needle) < 12:
+        return []
+    joined, spans = _indexed_cues(segments)
+    covers: list[list] = []
+    start = 0
+    while True:
+        index = joined.find(needle, start)
+        if index < 0:
+            break
+        end = index + len(needle)
+        covered = [
+            segment
+            for cue_start, cue_end, segment in spans
+            if cue_start < end and cue_end > index
+        ]
+        if covered:
+            covers.append(covered)
+        start = index + 1
+    return covers
+
+
+def _stamp_anchor(quote_text: str, segments: list, stamp: int) -> tuple[int, object] | None:
+    """Closest covered cue start to ``stamp``. Equal distances keep the earlier cue.
+
+    A cue is covered when the verbatim span overlaps its text. The delta is
+    ``abs(stamp - int(cue.start))``.
+    """
+    best: tuple[int, object] | None = None
+    for covered in _verbatim_covers(quote_text, segments):
+        for segment in covered:
+            if segment.start is None:
+                continue
+            delta = abs(stamp - int(segment.start))
+            if best is None or delta < best[0]:
+                best = (delta, segment)
+    return best
 
 
 def _section_map(ctx: RuleContext) -> dict[str, SectionView]:
@@ -406,13 +482,18 @@ def _quote_in_speech(text: str, speech: str) -> bool:
 
 
 def r04_quotes_verbatim(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Every blockquote is a verbatim transcript span of at least 40 characters."""
+    """Every blockquote is a verbatim span of at least 40 characters.
+
+    Adjacent cue texts are one string. Leading cue clocks are not part of it.
+    The quote has to be an exact substring of that string after whitespace
+    collapse and case fold.
+    """
     if ctx.gate is None or not ctx.gate.passed:
         return ("R04", True, "skipped because the transcript is not usable")
-    speech = _speech(ctx)
+    speech = _verbatim_haystack(ctx.segments, _speech(ctx))
     parts: list[str] = []
     if not ctx.quoted:
-        if len(_fold(speech)) < QUOTE_WINDOW:
+        if len(speech) < QUOTE_WINDOW:
             parts.append(
                 "note does not quote a transcript window "
                 f"(transcript is shorter than {QUOTE_WINDOW} characters after cleanup, "
@@ -463,7 +544,12 @@ def _segment_for(quote_text: str, segments: list) -> object | None:
 
 
 def r05_timestamps(ctx: RuleContext) -> tuple[str, bool, str]:
-    """A stamped quote sits within 15 seconds of the cue that contains it."""
+    """A stamped quote sits within 15 seconds of its stamp anchor.
+
+    The anchor is the start of the covered cue closest to the stamp. A span
+    across adjacent cues covers every cue whose text the span overlaps. Equal
+    distances keep the earlier cue. Quotes with no stamp are not timed.
+    """
     if ctx.gate is None or not ctx.gate.passed:
         return ("R05", True, "skipped because the transcript is not usable")
     parts: list[str] = []
@@ -471,14 +557,14 @@ def r05_timestamps(ctx: RuleContext) -> tuple[str, bool, str]:
         for quote in section.quotes:
             if quote.stamp is None:
                 continue
-            segment = _segment_for(quote.text, ctx.segments)
-            if segment is None or segment.start is None:
+            anchor = _stamp_anchor(quote.text, ctx.segments, quote.stamp)
+            if anchor is None:
                 parts.append(
                     f"section {section.heading} quote stamp [{_fmt(quote.stamp)}] "
                     "does not match a timed cue"
                 )
                 continue
-            delta = abs(quote.stamp - int(segment.start))
+            delta, segment = anchor
             if delta > 15:
                 parts.append(
                     f"section {section.heading} quote stamp [{_fmt(quote.stamp)}] "
