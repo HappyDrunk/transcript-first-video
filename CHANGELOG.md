@@ -4,6 +4,8 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+- Evidence paths on Windows strip this checkout the same way POSIX paths do. The prefix is removed whether it is written with `\` or `/`. Remaining backslashes are written as `/`, so a recorded command stays `python3 scripts/verify_note.py ...` and a nested script path stays `scripts/verify_note.py`. A leftover checkout path, including `C:\...`, still fails the evidence check.
+- Eval disclosure. Lane A is Claude Desktop with this skill loaded. The comparison set is `model-consensus-gold-v2`. Those gold note bodies are not in this repository. After #10 (`548a96a`), `sample_v2` mechanical verify is 10/10 against the rules. Stage 4 `overall_pass` is still false. That 10/10 is not a 冲9 pass. `v1.0.0` is not tagged as 冲9-complete.
 - R04 accepts a blockquote that is a contiguous verbatim span of at least 40 characters across adjacent cues. Cue clocks are left out of the speech fold. The match stays exact: a paraphrase or a skipped cue still fails.
 - R05 stamp anchor for a quote that covers more than one cue is the start of the covered cue closest to the stamp (the earlier cue when the distances tie). The stamp still has to fall within 15 seconds of that anchor.
 - Claude v2 grounded-prose pass (eval step1): delete “Prose is your own sentences / Do not only rephrase”; allow compress/merge of in-section quotes with facts grounded in those quotes.
