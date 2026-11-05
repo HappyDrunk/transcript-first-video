@@ -7,31 +7,35 @@ acquisition: "fixture"
 gate_passed: true
 transcript_path: "evals/corpus/pricing_en_long.txt"
 quoted_window: |-
-  Write the outcome the buyer gets before you name a plan.
+  Ask three customers what they pay today before a public number.
 expected_lang: "en"
 ---
 # note
 
+## 先记住一句话
+
+Ask three customers what they pay today before a public number.
+
 ## 问题与做法
 
-Keep write, outcome, buyer, and gets in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
+Ask three customers what they pay today before a public number. The public number follows what those three customers pay today.
 
-> [00:00] Write the outcome the buyer gets before you name a plan.
+> [00:40] Ask three customers what they pay today before a public number.
 
 ## 完整怎么做
 
-Keep publish, first, price, and those in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
+Describe the workflow the buyer repeats every week in plain words. When you describe it, the words stay plain and the subject stays the workflow the buyer repeats every week.
 
-> [04:00] Publish the first price only after those three conversations.
+> [03:00] Describe the workflow the buyer repeats every week in plain words.
 
 ## 翻车或别用
 
-Keep stop, trial, buyer, and name in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
+Stop adding features that the three buyers never mentioned once. If the three buyers never mentioned a feature once, stop adding it.
 
-> [08:00] Stop the trial if the buyer will not name a budget at all.
+> [06:00] Stop adding features that the three buyers never mentioned once.
 
 ## 今天立刻动手一步
 
-Review the three conversations before you change the page again. Do that step today and leave unrelated edits alone.
+Cut a step the buyers called confusing before you raise anything. The raise waits until that confusing step is cut.
 
-> [09:20] Review the three conversations before you change the page again.
+> [10:00] Cut a step the buyers called confusing before you raise anything.

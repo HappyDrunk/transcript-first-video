@@ -12,26 +12,30 @@ expected_lang: "en"
 ---
 # note
 
+## 先记住一句话
+
+Ask three customers what they pay today before you publish a number.
+
 ## 问题与做法
 
-Keep three, customers, publish, and number in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
+Ask three customers what they pay today before you publish a number. What they pay today is the number you may then publish.
 
 > Ask three customers what they pay today before you publish a number.
 
 ## 完整怎么做
 
-Keep copy, competitor, page, and call in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
+Do not copy a competitor page and call that research. A copied competitor page is not research.
 
 > Do not copy a competitor page and call that research.
 
 ## 翻车或别用
 
-Keep publish, first, price, and those in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
+Publish the first price only after those three conversations. Those three conversations come before the first price is published.
 
 > Publish the first price only after those three conversations.
 
 ## 今天立刻动手一步
 
-Keep the cheap plan for teams that are still small and learning. Do that step today and leave unrelated edits alone.
+Keep the cheap plan for teams that are still small and learning. The cheap plan is kept for those teams while they are still small and learning.
 
 > Keep the cheap plan for teams that are still small and learning.

@@ -12,26 +12,30 @@ expected_lang: "en"
 ---
 # note
 
+## 先记住一句话
+
+Write the outcome the buyer gets before you name a plan.
+
 ## 问题与做法
 
-Keep write, outcome, buyer, and gets in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
+Write the outcome the buyer gets before you name a plan. The plan's name follows the outcome the buyer gets.
 
 > Write the outcome the buyer gets before you name a plan.
 
 ## 完整怎么做
 
-Keep three, customers, publish, and number in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
+Ask three customers what they pay today before you publish a number. What they pay today is the number you may then publish.
 
 > Ask three customers what they pay today before you publish a number.
 
 ## 翻车或别用
 
-Keep copy, competitor, page, and call in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
+Do not copy a competitor page and call that research. A copied competitor page is not research.
 
 > Do not copy a competitor page and call that research.
 
 ## 今天立刻动手一步
 
-Publish the first price only after those three conversations. Do that step today and leave unrelated edits alone.
+Publish the first price only after those three conversations. The first price goes out after those three conversations, not before.
 
 > Publish the first price only after those three conversations.
