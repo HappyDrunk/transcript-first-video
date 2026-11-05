@@ -60,7 +60,13 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Fix:** Port the capability layer (jobs + fetch captions/audio + ASR + gate + sink adapter). Keep foreign desk schemas out of the portable skill.
 
-## 10. Mixed knowledge sinks
+## 10. Coverage C pass is not a full inventory
+
+**Mistake:** Treat a Coverage C pass as proof the inventory listed the transcript, or as a human 9/10 on detail depth.
+
+**Fix:** C checks that the note uses the inventory the job already wrote (rows present, quartile spread, at least 9/10 of those rows). A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it." It does not stop "under-extracted at inventory time." `C WARN` is a notice when the row count is implausibly low versus duration or chunk count. It does not change pass/fail. The write-up is `scripts/README.md`.
+
+## 11. Mixed knowledge sinks
 
 **Mistake:** Drop YouTube, WeChat, and X notes into one undifferentiated folder “for convenience”.
 

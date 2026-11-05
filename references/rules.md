@@ -8,6 +8,8 @@ A note that fails verify is 未交 (not deposited).
 
 Coverage gate C is not one of these rules and does not loosen them. It lives in `scripts/coverage_check.py`. A long note can pass R01–R17 and still fail C. The human bar is 9/10 detail depth and 9/10 summary completeness. C does not score that bar and does not call a model. Hall thresholds are unchanged.
 
+C checks the note against the inventory the job already wrote (the rows exist, quartile spread, and at least 9/10 of those rows in the note). It does not prove that inventory was complete against the full transcript. A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it," not "under-extracted at inventory time." A `C WARN` line when the row count is implausibly low versus duration or chunk count is a notice only. It does not loosen C01–C04, and the absence of that warning is not a completeness proof. Operators: `scripts/README.md`.
+
 | Rule | Refusal |
 | :--- | :--- |
 | R01 | The transcript is missing or fails the quality gate, including an essay about a failed transcription. |

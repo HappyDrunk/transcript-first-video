@@ -108,6 +108,47 @@ def _write_job(
     return job
 
 
+def _sparse_job(
+    root: Path,
+    *,
+    duration: int,
+    rows: list[tuple[int, str]],
+    quoted: list[int],
+    chunks: int = 0,
+) -> Path:
+    by_stamp = {stamp: excerpt for stamp, excerpt in rows}
+    inventory_lines = []
+    transcript_lines = []
+    for stamp, excerpt in rows:
+        minutes, seconds = divmod(stamp, 60)
+        clock = f"[{minutes:02d}:{seconds:02d}]"
+        inventory_lines.append(f"{clock} {excerpt} | restatement of that line only")
+        transcript_lines.append(f"{clock} {excerpt}")
+    quote_lines = []
+    for stamp in quoted:
+        minutes, seconds = divmod(stamp, 60)
+        quote_lines.append(f"> [{minutes:02d}:{seconds:02d}] {by_stamp[stamp]}")
+    note = "\n".join(["## 先记住一句话", "", "The note keeps each quoted line.", "", *quote_lines, ""])
+    job = root / "job"
+    job.mkdir(parents=True)
+    (job / "transcript.txt").write_text("\n".join(transcript_lines) + "\n", encoding="utf-8")
+    (job / "status.json").write_text(
+        json.dumps({"duration_seconds": duration}),
+        encoding="utf-8",
+    )
+    (job / "note.md").write_text(note, encoding="utf-8")
+    (job / "inventory.md").write_text("\n".join(inventory_lines) + "\n", encoding="utf-8")
+    if chunks:
+        folder = job / "chunks"
+        folder.mkdir()
+        for index in range(1, chunks + 1):
+            (folder / f"{index:02d}.txt").write_text(
+                "chunk text without a stamp\n",
+                encoding="utf-8",
+            )
+    return job
+
+
 class CoverageCheckTests(unittest.TestCase):
     def test_script_reads_only_and_calls_no_model(self) -> None:
         source = Path(cov.__file__).read_text(encoding="utf-8")
@@ -172,6 +213,7 @@ class CoverageCheckTests(unittest.TestCase):
         self.assertTrue(result["long"])
         self.assertEqual(result["inventory_hits"], 10)
         self.assertEqual(result["quartiles"], [0, 1, 2, 3])
+        self.assertEqual(result["warnings"], [])
 
     def test_nine_of_ten_passes_and_eight_fails(self) -> None:
         prose = "Ten arcs, one left as a single banter line still quoted."
@@ -187,6 +229,7 @@ class CoverageCheckTests(unittest.TestCase):
             )
         self.assertTrue(passed["ok"], passed["reasons"])
         self.assertEqual(passed["inventory_hits"], 9)
+        self.assertEqual(passed["warnings"], [])
         self.assertFalse(failed["ok"])
         self.assertTrue(any(line.startswith("C03 FAIL:") for line in failed["reasons"]))
         self.assertEqual(failed["inventory_hits"], 8)
@@ -278,6 +321,7 @@ class CoverageCheckTests(unittest.TestCase):
             result = cov.check_job(job)
         self.assertTrue(result["ok"], result["reasons"])
         self.assertEqual(result["inventory_lines"], 10)
+        self.assertEqual(result["warnings"], [])
 
     def test_two_chunks_without_a_clock_count_as_long(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -319,6 +363,110 @@ class CoverageCheckTests(unittest.TestCase):
         self.assertTrue(result["ok"], result["reasons"])
         self.assertTrue(result["skipped"])
         self.assertFalse(result["long"])
+        self.assertEqual(result["warnings"], [])
+
+    def test_thin_warning_does_not_loosen_thresholds(self) -> None:
+        """A sparse inventory can still pass. The warning is not a new fail."""
+        self.assertEqual(cov.HIT_RATE_NUMERATOR, 9)
+        self.assertEqual(cov.HIT_RATE_DENOMINATOR, 10)
+        self.assertEqual(cov.MIN_HITS, 3)
+        self.assertEqual(cov.DELIVERY_RATIO, 0.9)
+        self.assertEqual(cov.THIN_SECONDS_PER_LINE, 600)
+        self.assertEqual(cov.hits_required(10), 9)
+        self.assertEqual(cov.hits_required(3), 3)
+        self.assertIsNone(cov.inventory_thin_warning(3, 1800, 0))
+        self.assertIsNone(cov.inventory_thin_warning(6, 3600, 0))
+        self.assertIsNone(cov.inventory_thin_warning(10, DURATION, 2))
+        self.assertIsNone(cov.inventory_thin_warning(0, 3600, 8))
+        duration_only = cov.inventory_thin_warning(3, 3600, 0)
+        self.assertIsNotNone(duration_only)
+        assert duration_only is not None
+        self.assertTrue(duration_only.startswith("C WARN:"))
+        self.assertNotIn("FAIL", duration_only)
+        both = cov.inventory_thin_warning(3, 3600, 8)
+        self.assertIsNotNone(both)
+        assert both is not None
+        self.assertIn("3600s", both)
+        self.assertIn("8 chunks", both)
+
+    def test_sparse_inventory_warns_and_still_passes(self) -> None:
+        """Three lines on a one-hour talk clear C03 and still warn."""
+        rows = [
+            (120, ARCS[0][1]),
+            (1500, ARCS[3][1]),
+            (3000, ARCS[7][1]),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _sparse_job(Path(tmp), duration=3600, rows=rows, quoted=[120, 1500, 3000])
+            result = cov.check_job(job)
+            script = Path(cov.__file__)
+            completed = subprocess.run(
+                [sys.executable, str(script), "--job", str(job), "--json"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertTrue(result["ok"], result["reasons"])
+        self.assertEqual(result["reasons"], [])
+        self.assertEqual(result["inventory_lines"], 3)
+        self.assertEqual(result["inventory_hits"], 3)
+        self.assertEqual(result["inventory_need"], 3)
+        self.assertGreaterEqual(len(result["quartiles"]), 3)
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("under one line per 10 minutes", result["warnings"][0])
+        self.assertEqual(completed.returncode, 0)
+        payload = json.loads(completed.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["warnings"], result["warnings"])
+        self.assertNotIn("FAIL", completed.stdout)
+
+    def test_sparse_inventory_that_misses_rows_still_fails(self) -> None:
+        """The warning does not clear a C03 miss, and it does not loosen 9/10."""
+        rows = [
+            (120, ARCS[0][1]),
+            (1500, ARCS[3][1]),
+            (3000, ARCS[7][1]),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _sparse_job(Path(tmp), duration=3600, rows=rows, quoted=[120])
+            result = cov.check_job(job)
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(line.startswith("C03 FAIL:") for line in result["reasons"]))
+        self.assertEqual(result["inventory_hits"], 1)
+        self.assertEqual(result["inventory_need"], 3)
+        self.assertTrue(result["warnings"])
+        self.assertTrue(result["warnings"][0].startswith("C WARN:"))
+
+    def test_fewer_lines_than_chunks_warns_without_failing(self) -> None:
+        rows = [
+            (30, ARCS[0][1]),
+            (400, ARCS[3][1]),
+            (1000, ARCS[7][1]),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _sparse_job(
+                Path(tmp),
+                duration=DURATION,
+                rows=rows,
+                quoted=[30, 400, 1000],
+                chunks=4,
+            )
+            result = cov.check_job(job)
+            plain = subprocess.run(
+                [sys.executable, str(Path(cov.__file__)), "--job", str(job)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertTrue(result["ok"], result["reasons"])
+        self.assertEqual(result["reasons"], [])
+        self.assertEqual(len(result["warnings"]), 1)
+        self.assertIn("fewer lines than chunk files", result["warnings"][0])
+        self.assertNotIn("under one line per 10 minutes", result["warnings"][0])
+        self.assertEqual(plain.returncode, 0)
+        self.assertIn("coverage ok", plain.stdout)
+        self.assertIn("C WARN:", plain.stdout)
+        self.assertNotIn("FAIL", plain.stdout)
 
     def test_cli_exit_codes(self) -> None:
         prose = "Export the overnight file before the standup meeting starts today."

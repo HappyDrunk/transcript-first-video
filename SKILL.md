@@ -187,6 +187,8 @@ On a video longer than 5 minutes (`duration_seconds` > 300, or no clock and two 
 
 At or under 5 minutes, C01–C03 are skipped. The command still runs. `verify_note.py` still requires the section quotes. R12 still treats exactly 300 seconds as long; C uses a strict greater-than 300.
 
+Coverage C checks that the note uses the inventory the job already wrote; it does not prove that inventory was complete against the full transcript, and a thin inventory can still pass (`scripts/README.md`).
+
 **C04** runs whenever a delivery body is about to be sent (`--delivery`). Delivery prose letters (CJK plus Latin, YAML and quote lines removed) under 0.9× the same count in `note.md` fail. That is the summary-completeness floor. A full-arc body passes. A thin stub fails. Write the local prose in the delivery language so the comparison is the same text with quotes removed, not a short recap of a longer note.
 
 FAIL lines look like `C03 FAIL: ...`. Exit is non-zero. FAIL means 未交. Repair stays inside the two rounds shared with verify.
@@ -298,7 +300,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
 - `scripts/verify_note.py` — R01–R17. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
 - `scripts/claim_ground_check.py` — optional local helper. It counts sentences whose numbers, proper nouns, or long phrases are absent from that section's quotes. Deterministic. No language model. Not a public CI gate and not an LLM judge. It does not replace R01–R17.
-- `scripts/coverage_check.py` — Coverage gate C. Always run after verify, before finished or delivery. Deterministic. No language model. Long videos fail closed on missing inventory, fewer than 3 quartiles, or under 9/10 of inventory lines. `--delivery` fails a body under 9/10 of the local prose letter count. It does not replace R01–R17 and it does not score a human 9/10.
+- `scripts/coverage_check.py` — Coverage gate C. Always run after verify, before finished or delivery. Deterministic. No language model. Long videos fail closed on missing inventory, fewer than 3 quartiles, or under 9/10 of inventory lines. It checks the note against the inventory on the job. It does not prove that inventory is complete. `--delivery` fails a body under 9/10 of the local prose letter count. It does not replace R01–R17 and it does not score a human 9/10.
 - `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.
@@ -313,6 +315,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X). The template notes were withdrawn.
 - `evals/results/spotcheck.md` — layer ③. It records that withdrawal and still reads the fixture refusals. CI does not score it. It is not an audio check.
 - `evals/results/hall_j_retest_receipt.md` — receipt for the in-distribution 1.0.0 Hall J run. Not a held-out 9. CI does not score it. Do not copy it into a note.
+- `evals/results/held_out_mechanical_receipt.md` — mechanical verify and Coverage C on 10 videos (10/10 and 10/10). Draft gold was not user-signed. `held_out_nine_claimed` is false. A signed-gold held-out is still required before any 9 claim. CI does not score this file.
 - `evals/results/` — paths in the evidence files are repo-relative.
 
 ## Packaging note

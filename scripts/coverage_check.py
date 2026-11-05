@@ -25,6 +25,18 @@ On a long job:
   and the excerpt share 40 contiguous characters after whitespace is removed
   and case is folded. This is the detail-depth floor. It is not a 9/10 grade.
 
+C03 counts lines the job already wrote. It does not compare that inventory
+to the full transcript. A thin inventory can still pass. The gate stops
+"wrote an inventory and then ignored it." It does not stop "under-extracted
+when the inventory was written."
+
+A long job with a loaded inventory may also print ``C WARN``. That line is
+not a failure and does not change the exit code. It fires when the row count
+is under one line per 10 minutes (``THIN_SECONDS_PER_LINE``), or when two or
+more ``chunks/NN.txt`` files exist and there are fewer inventory lines than
+those files. Silence is not a completeness proof. C01–C04 thresholds are
+unchanged.
+
 ``--delivery PATH`` is how the pipeline passes the Feishu or chat body. The
 gate is not opt-in: the run always executes this script after verify, and
 always passes ``--delivery`` before sending. C04 fails when the delivery
@@ -38,7 +50,8 @@ characters, or the same overlap against a stamped transcript or chunk line
 when ``segments.json`` has no timed cues.
 
 Exit 0 when allowed. Exit 1 on FAIL. Exit 2 on usage. A failure line is
-``Cxx FAIL: ...``. This script only reads the job. It does not write a file.
+``Cxx FAIL: ...``. A ``C WARN`` line may follow a pass or a fail. It is not
+a ``Cxx FAIL``. This script only reads the job. It does not write a file.
 """
 
 from __future__ import annotations
@@ -61,6 +74,9 @@ MIN_HITS = 3
 HIT_RATE_NUMERATOR = 9
 HIT_RATE_DENOMINATOR = 10
 DELIVERY_RATIO = 0.9
+# Warning floor only. Not a C01–C04 threshold and not a pass/fail change.
+# One inventory line per 10 minutes, or fewer lines than chunk files.
+THIN_SECONDS_PER_LINE = 600
 _LETTER = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fffA-Za-z]")
 
 
@@ -311,6 +327,39 @@ def hits_required(line_count: int) -> int:
     return max(MIN_HITS, scaled)
 
 
+def inventory_thin_warning(
+    line_count: int,
+    duration: float | None,
+    chunk_count: int,
+) -> str | None:
+    """Sparse-inventory notice. Not a fail, and not a completeness proof."""
+    if line_count <= 0:
+        return None
+    parts: list[str] = []
+    if (
+        duration is not None
+        and duration > LONG_AFTER
+        and line_count * THIN_SECONDS_PER_LINE < duration
+    ):
+        parts.append(
+            f"{line_count} inventory lines for a {int(duration)}s transcript "
+            f"(under one line per {THIN_SECONDS_PER_LINE // 60} minutes)"
+        )
+    if chunk_count >= 2 and line_count < chunk_count:
+        parts.append(
+            f"{line_count} inventory lines for {chunk_count} chunks "
+            "(fewer lines than chunk files)"
+        )
+    if not parts:
+        return None
+    return (
+        "C WARN: "
+        + "; ".join(parts)
+        + ". Coverage C checks the note against this inventory; "
+        "it does not prove the inventory listed the transcript"
+    )
+
+
 def line_represented(line: InventoryLine, quotes: list[QuoteHit]) -> bool:
     for quote in quotes:
         if quote.moment is not None and int(quote.moment) == line.stamp:
@@ -323,8 +372,12 @@ def line_represented(line: InventoryLine, quotes: list[QuoteHit]) -> bool:
 
 
 def check_job(job: Path, delivery: Path | None = None) -> dict:
-    """Run coverage gate C. ``reasons`` are ``Cxx FAIL: ...`` lines."""
+    """Run coverage gate C. ``reasons`` are ``Cxx FAIL`` lines.
+
+    ``warnings`` are ``C WARN`` lines. They do not change ``ok`` or the exit code.
+    """
     reasons: list[str] = []
+    warnings: list[str] = []
     note_path = job / "note.md"
     has_transcript = (job / "transcript.txt").is_file() or bool(chunk_txts(job))
     if not note_path.is_file():
@@ -371,6 +424,13 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
                     f"{hits} of {len(inventory)} inventory lines are in the note; "
                     f"need {need} (9/10 of the lines, at least 3)"
                 )
+            warning = inventory_thin_warning(
+                len(inventory),
+                duration,
+                len(chunk_txts(job)),
+            )
+            if warning:
+                warnings.append(warning)
     delivery_letters = None
     note_letters = prose_letters(note_text) if note_text else 0
     ratio = None
@@ -395,6 +455,7 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
         "long": long,
         "skipped": skipped,
         "reasons": reasons,
+        "warnings": warnings,
         "duration_seconds": duration,
         "quartiles": quartiles,
         "inventory_lines": len(inventory),
@@ -440,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
             )
     else:
         print("coverage ok")
+    if not args.json and result["warnings"]:
+        print("\n".join(result["warnings"]))
     return 1 if result["reasons"] else 0
 
 
