@@ -11,7 +11,7 @@ Turn a **YouTube** or **Twitter/X video** URL into a transcript, then write the 
 
 Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
 
-Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A local `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional). Those quotes stay in the local note so verify can ground the claims. The Feishu or chat body follows Language preference and Delivery style. It does not have to repeat the quotes. 中英文对照 is not the default. 小白能懂 is not the default.
+Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A local `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional). Those quotes stay in the local note so verify can ground the claims. The Feishu or chat body follows Language preference. It does not have to repeat the quotes. 中英文对照 is not the default. Chinese delivery prose defaults to 小白能懂. That is not a second question.
 
 Failure that must be said out loud = no usable transcript, or nothing in the transcript worth extracting. Do not deposit a finished note in either case. Do not deliver one either.
 
@@ -31,19 +31,7 @@ The local `note.md` is the verify artifact. It keeps YAML frontmatter and the qu
 
 A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machine frontmatter into the delivered body. That includes `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`, `caption_kind`, `caption_trust`, `platform_title`, and any other `---` block.
 
-## Delivery style
-
-Ask once, immediately after language, on that same install or first run. Still before any video work. The choices are `小白能懂`, `术语保留`, and `自定义`.
-
-Persist the answer in `style.txt` beside this `SKILL.md`, same folder rules as `language.txt`. Do not commit the file. Line 1 is exactly one of `小白能懂`, `术语保留`, or `自定义`. If line 1 is `自定义`, line 2 is required: the user's one short instruction. If the file is missing, line 1 is not one of the three, or `自定义` has no line 2, ask. Do not assume `小白能懂`.
-
-`小白能懂` is the owner's acceptance bar for this skill's Chinese notes. Another install picks its own style. It is not the default.
-
-- `小白能懂` — ELI5. Explain a mechanism in plain words: 为什么, 是什么, 好处. A Latin proper noun the quote requires may stay. Do not stack jargon into headings or into the body. The four section headings stay as they are.
-- `术语保留` — keep field terms as the speaker used them. Still faithful to the quotes.
-- `自定义` — follow the one saved instruction line. It does not add permission to invent.
-
-The delivery body follows the saved style. `verify_note.py` and coverage still gate the local `note.md`. Style does not loosen faithfulness. Plain words may only restate what that note already grounds. Do not add a mechanism, a cause, or a benefit the note does not already support.
+Chinese delivery prose is 小白能懂 unless the user later says otherwise. Explain a mechanism in plain words: 为什么, 是什么, 好处. A Latin proper noun the quote requires may stay. Do not stack jargon into headings or into the body. The four section headings stay as they are. Plain words may only restate what the local note already grounds. Do not add a mechanism, a cause, or a benefit the note does not already support. There is no style file and no second install question.
 
 ## What this skill does not do
 
@@ -63,11 +51,8 @@ The delivery body follows the saved style. `verify_note.py` and coverage still g
      If language.txt is missing, empty, or not exactly one of 中文 / 英文 / 中英文对照:
        Ask those three. This is the first thing you say. Persist one line in language.txt.
        Do not assume 中英文对照.
-     Then, on that same install or first run, if style.txt is missing or invalid:
-       Ask 小白能懂 / 术语保留 / 自定义. Persist style.txt.
-       Line 1 is one of those three. If 自定义, line 2 is the user's one-line instruction and is required.
-       Do not assume 小白能懂.
-     Do not fetch, and do not write a note, until both files are valid.
+     Do not fetch, and do not write a note, until that file is valid.
+     Chinese delivery prose is 小白能懂. Do not ask a second preference.
 1. python3 scripts/youtube_host.py "<youtube url>"
    or python3 scripts/x_host.py "<x or twitter status url>"
    Job directory:
@@ -106,11 +91,12 @@ The delivery body follows the saved style. `verify_note.py` and coverage still g
      Tell the user which Rxx or Cxx line failed. Treat as 未交.
      Do not set finished. Do not deposit the note. Do not deliver.
 9. When you deliver to Feishu or chat
-     Do this only after language.txt and style.txt are valid, verify has allowed the note,
+     Do this only after language.txt is valid, verify has allowed the note,
      and coverage_check.py has allowed it.
-     If either file is missing or invalid, ask that one and persist it. Do not send.
-     Build that body from the local note, in the saved language and the saved style.
-     Do not rewrite note.md to match the style. Style does not loosen R01–R17 or coverage.
+     If language.txt is missing or invalid, ask and persist it. Do not send.
+     Build that body from the local note in the saved language.
+     中文 delivery is 小白能懂: plain words only, no added fact.
+     Do not rewrite note.md to match the delivery wording. That wording does not loosen R01–R17 or coverage.
      Strip YAML frontmatter. Never paste it.
      中文: Chinese prose only. Leave transcript quote blocks in the local note.
      英文: English prose only. Leave transcript quote blocks in the local note.
@@ -299,7 +285,7 @@ Write `note.md` only after a usable transcript, and only by reading the chunks. 
 
 Feishu is not required. This skill does not call Feishu and does not read a Feishu token. A Feishu wiki, a Notion database, or another sink can live in the user's own project and consume this Markdown. A folder of `.md` files is a complete sink.
 
-When the sink is Feishu or chat, send the delivery body from Language preference and Delivery style, not the raw `note.md`. If either saved choice is missing or invalid, ask and persist it. Do not upload yet. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`. The body still opens with `## 先记住一句话`. A long 通读 in that body still covers the main method-bearing arcs. `小白能懂` restates the grounded note in plain words. It does not add a fact.
+When the sink is Feishu or chat, send the delivery body from Language preference, not the raw `note.md`. If language.txt is missing or invalid, ask and persist it. Do not upload yet. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`. 中文 prose is 小白能懂: plain words for 为什么, 是什么, and 好处, with no added fact. The body still opens with `## 先记住一句话`. A long 通读 in that body still covers the main method-bearing arcs.
 
 Keep sinks channel-separated when the user maintains partitions (e.g. YouTube vs X vs WeChat vs official docs). Do not dump every medium into one catch-all folder.
 
