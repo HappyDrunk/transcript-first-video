@@ -7,31 +7,35 @@ acquisition: "fixture"
 gate_passed: true
 transcript_path: "evals/corpus/pricing_en_long.txt"
 quoted_window: |-
-  Write the outcome the buyer gets before you name a plan.
+  Do not copy a competitor page and call that research.
 expected_lang: "en"
 ---
 # note
 
+## 先记住一句话
+
+Do not copy a competitor page and call that research.
+
 ## 问题与做法
 
-Keep write, outcome, buyer, and gets in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
+Do not copy a competitor page and call that research. A copied competitor page is not research.
 
-> [00:00] Write the outcome the buyer gets before you name a plan.
+> [01:20] Do not copy a competitor page and call that research.
 
 ## 完整怎么做
 
-Keep publish, first, price, and those in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
+Leave a discount for annual payment if the buyer asks for one. No ask from the buyer means no annual discount is left.
 
-> [04:00] Publish the first price only after those three conversations.
+> [05:00] Leave a discount for annual payment if the buyer asks for one.
 
 ## 翻车或别用
 
-Keep stop, trial, buyer, and name in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
+Name the budget limit before you promise a custom integration. The custom integration waits until the budget limit is named.
 
-> [08:00] Stop the trial if the buyer will not name a budget at all.
+> [07:00] Name the budget limit before you promise a custom integration.
 
 ## 今天立刻动手一步
 
-Review the three conversations before you change the page again. Do that step today and leave unrelated edits alone.
+Send the revised page only to the buyers who spoke with you. The revised page stays with those buyers.
 
-> [09:20] Review the three conversations before you change the page again.
+> [10:40] Send the revised page only to the buyers who spoke with you.
