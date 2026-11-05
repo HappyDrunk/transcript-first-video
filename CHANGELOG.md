@@ -4,6 +4,8 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
+- Language preference, asked once on install or before the first delivered note: `中文`, `英文`, or `中英文对照`. Save it in `language.txt` beside the installed `SKILL.md`. If it is unset, ask. Do not assume `中英文对照`. `中文` delivers Chinese prose only; English transcript quotes stay in the local `note.md` for verify. `英文` delivers English prose only. `中英文对照` delivers the analysis plus contiguous original-language transcript quotes under the sections. A Feishu or chat upload strips YAML frontmatter. Hard gates A and B and R01–R16 are unchanged.
+
 ## 1.0.0 — 2026-11-05
 
 Skill and scripts, with a measured Hall J pass. R01–R16 are unchanged. The annotated tag `v1.0.0` belongs on the squash-merge commit on `main` after this section lands. Do not force-push `main`.

@@ -11,9 +11,9 @@ Turn a **YouTube** or **Twitter/X video** URL into a transcript, then write the 
 
 Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
 
-Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional).
+Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A local `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional). Those quotes stay in the local note so verify can ground the claims. The Feishu or chat body follows Language preference. It does not have to repeat the quotes. 中英文对照 is not the default.
 
-Failure that must be said out loud = no usable transcript, or nothing in the transcript worth extracting. Do not deposit a finished note in either case.
+Failure that must be said out loud = no usable transcript, or nothing in the transcript worth extracting. Do not deposit a finished note in either case. Do not deliver one either.
 
 ## What this skill does not do
 
@@ -23,6 +23,22 @@ Failure that must be said out loud = no usable transcript, or nothing in the tra
 - Burn visual multi-turn by default (vision only when the picture itself is the information and the user asks).
 - Clone an entire host desk (systemd stack, foreign inbox schemas, personal vault paths).
 - Put cookies or API keys into the skill, logs, receipts, or git.
+
+## Language preference
+
+Ask once, on install or before the first delivered note, whichever comes first. The choices are `中文`, `英文`, and `中英文对照`.
+
+Persist the answer in `language.txt` beside this `SKILL.md` in the installed skill folder, when that folder is writable. One line, exactly one of those three. Do not commit the file. If you cannot write there, keep the same line in the host project and read it before the next delivery. If nothing is saved, or the saved line is not one of the three, ask. Do not assume `中英文对照`. Do not deliver until the user has chosen.
+
+- `中文` — Chinese prose only in the delivered note. No English transcript quote blocks in that body. A Latin proper noun the local note already keeps (Hard gate 2) may stay. Original-language quotes stay in the local `note.md` so verify and `claim_ground_check.py` can ground claims.
+- `英文` — English prose only in the delivered note. Transcript quote blocks stay in the local verify artifact.
+- `中英文对照` — analysis, plus contiguous original-language transcript quotes under the sections.
+
+If the local note's prose is the other language, deliver a rendering of that prose only. Do not add a fact, a number, a name, or a cause the local note does not already ground.
+
+The local `note.md` is the verify artifact. It keeps YAML frontmatter and the quotes R01–R16 check. `verify_note.py` and `claim_ground_check.py` read that file, not the delivered body. Keeping quotes there is not a requirement to paste them into Feishu or chat.
+
+A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machine frontmatter into the delivered body. That includes `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`, `caption_kind`, `caption_trust`, `platform_title`, and any other `---` block.
 
 ## Run
 
@@ -50,7 +66,16 @@ Failure that must be said out loud = no usable transcript, or nothing in the tra
 6. python3 scripts/verify_note.py --job <dir>
      If it refuses, the note is 未交 (not deposited). Edit note.md from the reasons. At most 2 repair rounds.
 7. If round 2 still refuses
-     Tell the user which reason failed. Treat as 未交. Do not deposit the note.
+     Tell the user which reason failed. Treat as 未交. Do not deposit the note. Do not deliver.
+8. When you deliver to Feishu or chat
+     Do this only after Language preference is set and verify has allowed the note.
+     If the choice is unset, ask first. Do not send.
+     Build that body from the local note. Do not rewrite note.md to match it.
+     Strip YAML frontmatter. Never paste it.
+     中文: Chinese prose only. Leave transcript quote blocks in the local note.
+     英文: English prose only. Leave transcript quote blocks in the local note.
+     中英文对照: prose plus that section's contiguous original-language quotes.
+     A folder of note.md files is a complete sink. That file stays the verify artifact.
 ```
 
 `transcript_ready` means the transcript passed the gate. `finished` stays false until you have a note that verify allows. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
@@ -85,7 +110,7 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 ### Pass 2 — Analyse only from selected blocks
 
-Write the four sections. Every verifiable claim must sit on Pass-1 quotes in **that same section**.
+Write the four sections into the local `note.md`. Every verifiable claim must sit on Pass-1 quotes in **that same section**. Quotes in this file are the verify evidence. Delivery is later, and Language preference decides whether those quotes appear in the Feishu or chat body. The YAML frontmatter never does.
 
 - After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous verbatim stretch of the speech. Words that run across adjacent cues count; the cue clocks do not. One quote may support at most the next 3 prose sentences in that section.
 - Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, numbers, product names, or causal links (`because` / `所以` / `导致` / `因此`) unless the supporting quote itself states them.
@@ -101,7 +126,9 @@ Write the four sections. Every verifiable claim must sit on Pass-1 quotes in **t
 
 ## Hard gates
 
-Land these in the writing. R01–R16 stay as written. Do not loosen them.
+Land these in the writing of the local `note.md`. R01–R16 stay as written. Do not loosen them.
+
+(A) and (B) stay in force. No usable transcript means not finished: do not deposit a note, and do not deliver one. The checks below apply to prose in the local `note.md` against that section's quotes. They do not require those quotes in the Feishu or chat body, and they do not require English quote blocks there. Chinese-only delivery (`中文`) is allowed. `中英文对照` is a saved choice, not a default. Do not drop a quote from the local note, and do not add a fact while shortening the delivery, to make a language mode pass.
 
 Measured Hall J retest (2026-11-05T02:53:29+08:00 Asia/Shanghai): `overall_pass` true. `skill_hallucinations_per_note` 0.0 (need ≤0.2 and < baseline×0.5; baseline_hall 1.0). `skill_core_recall` 0.913 (21/23; need ≥0.7 and ≥ baseline−0.1; baseline_recall 1.0). `should_reject` 1.0. `gold_sha256` `0eaa5f806d7e6ddc175dc62abfa7851f56b9805748b5b0a8d66268e7afa54dd1` (unchanged). Public receipt: [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). Gold note bodies are outside this repository. The checks below follow ragas, TruLens, gbrain, Guardrails, and NeMo.
 
@@ -185,6 +212,8 @@ Write `note.md` only after a usable transcript, and only by reading the chunks. 
 `verify_note.py` still refuses a quote stub and refuses a note whose four sections are all `本节不适用`. A stop before `transcript_ready` writes `status.json` only.
 
 Feishu is not required. This skill does not call Feishu and does not read a Feishu token. A Feishu wiki, a Notion database, or another sink can live in the user's own project and consume this Markdown. A folder of `.md` files is a complete sink.
+
+When the sink is Feishu or chat, send the delivery body from Language preference, not the raw `note.md`. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`.
 
 Keep sinks channel-separated when the user maintains partitions (e.g. YouTube vs X vs WeChat vs official docs). Do not dump every medium into one catch-all folder.
 
