@@ -56,7 +56,7 @@ flowchart LR
 
 ## Note
 
-Open with `## 先记住一句话`, then four sections, in this order. The opening heading is not `课前`.
+This is what a finished note looks like.
 
 ```markdown
 ## 先记住一句话
@@ -70,13 +70,9 @@ Open with `## 先记住一句话`, then four sections, in this order. The openin
 ## 今天立刻动手一步
 ```
 
-`verify_note.py` checks this shape against the transcript. 翻车或别用 and 今天立刻动手一步 may be one line, `本节不适用：` plus a reason, when the speech has nothing for that part. The first two sections stay filled. If every section is that line, the check deletes `note.md`.
+Chinese delivery defaults to **小白能懂** — plain words for why, what, and the benefit; titles and the body stay free of piled jargon; a Latin proper noun from the talk may stay.
 
-The local `note.md` keeps the quotes. Chinese delivery prose defaults to **小白能懂**: plain words for 为什么, 是什么, and 好处. A Latin proper noun from the quote may stay. Every delivered fact has to already be grounded in the local note. `中文` and `英文` leave the quote blocks in `note.md`; the delivered body is prose in that one language. `中英文对照` adds the original-language quotes under the sections. That is the language file above, not a second question.
-
-Feishu is optional and lives in your own project. This skill does not call Feishu. A chat or Feishu delivery strips YAML frontmatter.
-
-A filled-in example: [references/note-examples.md](references/note-examples.md).
+A filled example: [references/note-examples.md](references/note-examples.md).
 
 ## Read-feel knobs
 
@@ -166,13 +162,21 @@ python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --
 
 ### 笔记
 
-先写 `## 先记住一句话`，再按顺序写四节：问题与做法、完整怎么做、翻车或别用、今天立刻动手一步。开头不要用 `课前`。
+写完的笔记长这样。
 
-`verify_note.py` 按文稿核对这个形状。翻车或别用、今天立刻动手一步，在口播里没有那一块时，可以写一行 `本节不适用：` 加原因。前两节要写下内容。四节都是这一行时，核对会删掉 `note.md`。
+```markdown
+## 先记住一句话
 
-本地 `note.md` 留着引文。中文交付默认 **小白能懂**：用白话写为什么、是什么、好处。引文里的拉丁专名可以留着。交出去的每件事，都要已经落在本地笔记上。`中文` 和 `英文` 把引文块留在 `note.md`，交付正文只用那一种语言。`中英文对照` 才在各节下面加上原文引文。这就是上面那个语言文件，不是第二道提问。
+## 问题与做法
 
-飞书是可选的，在你自己的项目里。这份 skill 不调用飞书。交给聊天或飞书时，去掉 YAML 前置字段。
+## 完整怎么做
+
+## 翻车或别用
+
+## 今天立刻动手一步
+```
+
+中文交付默认是 **小白能懂**：用白话写为什么、是什么、好处；标题和正文不堆术语；口播里的拉丁专名可以留着。
 
 写完的例子：[references/note-examples.md](references/note-examples.md)。
 
