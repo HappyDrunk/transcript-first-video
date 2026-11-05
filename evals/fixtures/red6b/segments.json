@@ -1,0 +1,277 @@
+[
+  {
+    "start": 0.0,
+    "end": 2.252,
+    "text": "After I received early access to Gemini 4 Argon,"
+  },
+  {
+    "start": 2.627,
+    "end": 5.296,
+    "text": "I've spun out more changes into Chromium in the last two weeks"
+  },
+  {
+    "start": 5.296,
+    "end": 7.34,
+    "text": "than I would typically do in a matter of months."
+  },
+  {
+    "start": 8.675,
+    "end": 12.345,
+    "text": "Chromium is an open source repository that powers web browsers,"
+  },
+  {
+    "start": 12.595,
+    "end": 15.89,
+    "text": "and it's also used to power a lot of other electronics"
+  },
+  {
+    "start": 15.89,
+    "end": 16.933,
+    "text": "like here,"
+  },
+  {
+    "start": 17.642,
+    "end": 18.393,
+    "text": "also here,"
+  },
+  {
+    "start": 18.977,
+    "end": 19.978,
+    "text": "here too,"
+  },
+  {
+    "start": 20.603,
+    "end": 22.272,
+    "text": "here,"
+  },
+  {
+    "start": 22.564,
+    "end": 23.982,
+    "text": "and even here."
+  },
+  {
+    "start": 24.774,
+    "end": 26.276,
+    "text": "Chromium has been around for two decades."
+  },
+  {
+    "start": 26.401,
+    "end": 28.028,
+    "text": "It's got about 40 million lines of code,"
+  },
+  {
+    "start": 28.403,
+    "end": 33.491,
+    "text": "and like any long running open source project, it's really complex."
+  },
+  {
+    "start": 33.825,
+    "end": 37.37,
+    "text": "There's the core engine itself, and that's a very solid piece of technology."
+  },
+  {
+    "start": 37.537,
+    "end": 39.039,
+    "text": "Then there's a set of features on top,"
+  },
+  {
+    "start": 39.497,
+    "end": 40.498,
+    "text": "think the bookmarks bar,"
+  },
+  {
+    "start": 40.832,
+    "end": 41.75,
+    "text": "the tab strip,"
+  },
+  {
+    "start": 42.083,
+    "end": 43.334,
+    "text": "the downloads bar."
+  },
+  {
+    "start": 43.918,
+    "end": 47.547,
+    "text": "There's hundreds of features that have been added by lots of different teams,"
+  },
+  {
+    "start": 47.964,
+    "end": 50.8,
+    "text": "and these features have been built up incrementally, and as a result,"
+  },
+  {
+    "start": 51.009,
+    "end": 53.72,
+    "text": "they often have unexpected interactions with each other."
+  },
+  {
+    "start": 53.72,
+    "end": 55.18,
+    "text": "Allow me to demonstrate."
+  },
+  {
+    "start": 55.18,
+    "end": 58.516,
+    "text": "Imagine this is the code base,"
+  },
+  {
+    "start": 58.892,
+    "end": 60.101,
+    "text": "and each of these is a feature."
+  },
+  {
+    "start": 60.101,
+    "end": 61.77,
+    "text": "I want to make a change to the bookmarks bar,"
+  },
+  {
+    "start": 62.353,
+    "end": 63.563,
+    "text": "I should be able to make one small change."
+  },
+  {
+    "start": 65.065,
+    "end": 67.942,
+    "text": "Things that seem unrelated can be connected underneath."
+  },
+  {
+    "start": 68.359,
+    "end": 70.987,
+    "text": "The goal of our team is to create modular components so that we can"
+  },
+  {
+    "start": 71.112,
+    "end": 74.574,
+    "text": "independently develop and test our features."
+  },
+  {
+    "start": 74.991,
+    "end": 76.868,
+    "text": "This is something that would have taken years of time,"
+  },
+  {
+    "start": 77.202,
+    "end": 79.954,
+    "text": "and therefore we've tried a lot of different models"
+  },
+  {
+    "start": 79.954,
+    "end": 82.123,
+    "text": "in an attempt to speed up some of this work"
+  },
+  {
+    "start": 82.29,
+    "end": 85.168,
+    "text": "but the Chromium repository is different because of its size,"
+  },
+  {
+    "start": 85.168,
+    "end": 88.296,
+    "text": "and that's really hard for AI agents to navigate effectively."
+  },
+  {
+    "start": 88.296,
+    "end": 90.632,
+    "text": "Quite often, the model would kind of go off rails."
+  },
+  {
+    "start": 90.673,
+    "end": 93.676,
+    "text": "It would generate code that was not the level of quality that we were expecting."
+  },
+  {
+    "start": 93.968,
+    "end": 95.595,
+    "text": "There was a lot of handholding involved."
+  },
+  {
+    "start": 96.054,
+    "end": 99.307,
+    "text": "Gemini 4 Argon seems to have surpassed these limitations."
+  },
+  {
+    "start": 99.307,
+    "end": 101.684,
+    "text": "I just tell it, \"Hey, we're trying to detangle this spaghetti,"
+  },
+  {
+    "start": 101.684,
+    "end": 103.686,
+    "text": "no skills, no harness."
+  },
+  {
+    "start": 103.686,
+    "end": 107.857,
+    "text": "Here's a memory file for how to work with some of the existing tools”."
+  },
+  {
+    "start": 108.149,
+    "end": 111.319,
+    "text": "And it spins up 20 changes at a time."
+  },
+  {
+    "start": 111.778,
+    "end": 115.615,
+    "text": "We typically run a couple hundred thousand tests on every change."
+  },
+  {
+    "start": 115.907,
+    "end": 119.16,
+    "text": "Then we have two humans that review the changes."
+  },
+  {
+    "start": 119.285,
+    "end": 123.79,
+    "text": "We then run a couple million tests on both new and old devices."
+  },
+  {
+    "start": 124.29,
+    "end": 127.669,
+    "text": "Gemini 4 can stand up 20 of these changes"
+  },
+  {
+    "start": 127.669,
+    "end": 129.42,
+    "text": "at a time that pass all the tests."
+  },
+  {
+    "start": 129.504,
+    "end": 132.757,
+    "text": "That's one of the clearest signs of the quality of the model itself."
+  },
+  {
+    "start": 133.299,
+    "end": 135.343,
+    "text": "A typical engineer might put out one change a day."
+  },
+  {
+    "start": 135.426,
+    "end": 137.053,
+    "text": "20 changes is 20 days of work."
+  },
+  {
+    "start": 137.72,
+    "end": 141.516,
+    "text": "We can now think about where do we want to take the Chromium repository?"
+  },
+  {
+    "start": 142.016,
+    "end": 145.103,
+    "text": "Historically, we were limited by our ability to do the work."
+  },
+  {
+    "start": 145.228,
+    "end": 147.272,
+    "text": "Now, we're only limited by our own imagination"
+  },
+  {
+    "start": 147.272,
+    "end": 149.232,
+    "text": "in terms of what we can accomplish and"
+  },
+  {
+    "start": 149.232,
+    "end": 151.359,
+    "text": "how we can improve the experience for our users."
+  }
+]

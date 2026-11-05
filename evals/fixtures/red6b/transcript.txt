@@ -1,0 +1,55 @@
+[00:00] After I received early access to Gemini 4 Argon,
+[00:02] I've spun out more changes into Chromium in the last two weeks
+[00:05] than I would typically do in a matter of months.
+[00:08] Chromium is an open source repository that powers web browsers,
+[00:12] and it's also used to power a lot of other electronics
+[00:15] like here,
+[00:17] also here,
+[00:18] here too,
+[00:20] here,
+[00:22] and even here.
+[00:24] Chromium has been around for two decades.
+[00:26] It's got about 40 million lines of code,
+[00:28] and like any long running open source project, it's really complex.
+[00:33] There's the core engine itself, and that's a very solid piece of technology.
+[00:37] Then there's a set of features on top,
+[00:39] think the bookmarks bar,
+[00:40] the tab strip,
+[00:42] the downloads bar.
+[00:43] There's hundreds of features that have been added by lots of different teams,
+[00:47] and these features have been built up incrementally, and as a result,
+[00:51] they often have unexpected interactions with each other.
+[00:53] Allow me to demonstrate.
+[00:55] Imagine this is the code base,
+[00:58] and each of these is a feature.
+[01:00] I want to make a change to the bookmarks bar,
+[01:02] I should be able to make one small change.
+[01:05] Things that seem unrelated can be connected underneath.
+[01:08] The goal of our team is to create modular components so that we can
+[01:11] independently develop and test our features.
+[01:14] This is something that would have taken years of time,
+[01:17] and therefore we've tried a lot of different models
+[01:19] in an attempt to speed up some of this work
+[01:22] but the Chromium repository is different because of its size,
+[01:25] and that's really hard for AI agents to navigate effectively.
+[01:28] Quite often, the model would kind of go off rails.
+[01:30] It would generate code that was not the level of quality that we were expecting.
+[01:33] There was a lot of handholding involved.
+[01:36] Gemini 4 Argon seems to have surpassed these limitations.
+[01:39] I just tell it, "Hey, we're trying to detangle this spaghetti,
+[01:41] no skills, no harness.
+[01:43] Here's a memory file for how to work with some of the existing tools”.
+[01:48] And it spins up 20 changes at a time.
+[01:51] We typically run a couple hundred thousand tests on every change.
+[01:55] Then we have two humans that review the changes.
+[01:59] We then run a couple million tests on both new and old devices.
+[02:04] Gemini 4 can stand up 20 of these changes
+[02:07] at a time that pass all the tests.
+[02:09] That's one of the clearest signs of the quality of the model itself.
+[02:13] A typical engineer might put out one change a day.
+[02:15] 20 changes is 20 days of work.
+[02:17] We can now think about where do we want to take the Chromium repository?
+[02:22] Historically, we were limited by our ability to do the work.
+[02:25] Now, we're only limited by our own imagination
+[02:27] in terms of what we can accomplish and
+[02:29] how we can improve the experience for our users.
