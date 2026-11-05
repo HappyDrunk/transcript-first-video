@@ -11,7 +11,7 @@ Turn a **YouTube** or **Twitter/X video** URL into a transcript, then write the 
 
 Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
 
-Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A local `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional). Those quotes stay in the local note so verify can ground the claims. The Feishu or chat body follows Language preference. It does not have to repeat the quotes. 中英文对照 is not the default. Chinese delivery prose defaults to 小白能懂. That is not a second question.
+Success takes both bars. (A) A usable transcript: captions or ASR that passes the quality gate. (B) A local `note.md` you wrote from that transcript. The note has four sections, 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步. Sections 1–2 always quote the transcript. Sections 3–4 quote the transcript, or may say `本节不适用：` with a reason (proof quote optional). Those quotes stay in the local note so verify can ground the claims. The delivery body follows `language.txt` and does not have to repeat the quotes. 中英文对照 is not the default. Chinese delivery prose defaults to 小白能懂. That is not a second question.
 
 Failure that must be said out loud = no usable transcript, or nothing in the transcript worth extracting. Do not deposit a finished note in either case. Do not deliver one either.
 
@@ -25,11 +25,9 @@ Persist the answer in `language.txt` beside this `SKILL.md` in the installed ski
 - `英文` — English prose only in the delivered note. Transcript quote blocks stay in the local verify artifact.
 - `中英文对照` — analysis, plus contiguous original-language transcript quotes under the sections.
 
-If the local note's prose is the other language, deliver a rendering of that prose only. Do not add a fact, a number, a name, or a cause the local note does not already ground.
+The local `note.md` is the verify artifact. It keeps YAML frontmatter and the quotes R01–R17 check. `verify_note.py` and `claim_ground_check.py` read that file, not the delivered body.
 
-The local `note.md` is the verify artifact. It keeps YAML frontmatter and the quotes R01–R17 check. `verify_note.py` and `claim_ground_check.py` read that file, not the delivered body. Keeping quotes there is not a requirement to paste them into Feishu or chat.
-
-A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machine frontmatter into the delivered body. That includes `title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`, `caption_kind`, `caption_trust`, `platform_title`, and any other `---` block.
+The delivery body follows `language.txt`. If the local note's prose is the other language, deliver a rendering of that prose only. Do not add a fact, a number, a name, or a cause the local note does not already ground. Strip machine YAML if the host needs that.
 
 Chinese delivery prose is 小白能懂 unless the user later says otherwise. Explain a mechanism in plain words: 为什么, 是什么, 好处. A Latin proper noun the quote requires may stay. Do not stack jargon into headings or into the body. The four section headings stay as they are. Plain words may only restate what the local note already grounds. Do not add a mechanism, a cause, or a benefit the note does not already support. There is no style file and no second install question.
 
@@ -41,7 +39,6 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
 - Burn visual multi-turn by default (vision only when the picture itself is the information and the user asks).
 - Clone an entire host desk (systemd stack, foreign inbox schemas, personal vault paths).
 - Put cookies or API keys into the skill, logs, receipts, or git.
-- Open a note with `课前` or `课前先记住一句话`. The opening heading is `## 先记住一句话`.
 - Ship a thin claim-passing stub as the final 通读 when method-bearing arcs are still uncovered.
 
 ## Run
@@ -68,7 +65,7 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
      If duration_seconds is greater than 300 (over 5 minutes), first write chunks/NN.notes.md
      inventory: each line is `[mm:ss]` + short verbatim excerpt + one-line restatement of that excerpt.
      Then write the note from those inventory points (do not invent beyond them).
-4. Write note.md from the scaffold. Open with ## 先记住一句话. Never 课前.
+4. Write note.md from the scaffold. Open with ## 先记住一句话.
      You write the analysis. The script does not.
      On a long video, cover the main method-bearing arcs.
      A verify pass on a few facts is not enough when those arcs are missing.
@@ -90,19 +87,18 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
 8. If round 2 still refuses
      Tell the user which Rxx or Cxx line failed. Treat as 未交.
      Do not set finished. Do not deposit the note. Do not deliver.
-9. When you deliver to Feishu or chat
+9. When you deliver
      Do this only after language.txt is valid, verify has allowed the note,
      and coverage_check.py has allowed it.
      If language.txt is missing or invalid, ask and persist it. Do not send.
-     Build that body from the local note in the saved language.
-     中文 delivery is 小白能懂: plain words only, no added fact.
+     The delivery body follows language.txt. Do not add a fact the local note
+     does not ground. Strip machine YAML if the host needs that.
      Do not rewrite note.md to match the delivery wording. That wording does not loosen R01–R17 or coverage.
-     Strip YAML frontmatter. Never paste it.
-     中文: Chinese prose only. Leave transcript quote blocks in the local note.
+     中文: Chinese prose only, 小白能懂. Leave transcript quote blocks in the local note.
      英文: English prose only. Leave transcript quote blocks in the local note.
      中英文对照: prose plus that section's contiguous original-language quotes.
-     Keep the opening heading ## 先记住一句话. Never 课前.
-     Always run, before send:
+     Keep the opening heading ## 先记住一句话.
+     Before send:
        python3 scripts/coverage_check.py --job <dir> --delivery <body>
      C04 FAIL is 未交. It uses the same 2 repair rounds. Do not send.
      A folder of note.md files is a complete sink. That file stays the verify artifact.
@@ -141,7 +137,7 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 ### Pass 2 — Analyse only from selected blocks
 
-Write the four sections into the local `note.md`. Every verifiable claim must sit on Pass-1 quotes in **that same section**. Quotes in this file are the verify evidence. Delivery is later, and Language preference decides whether those quotes appear in the Feishu or chat body. The YAML frontmatter never does.
+Write the four sections into the local `note.md`. Every verifiable claim must sit on Pass-1 quotes in **that same section**. Quotes in this file are the verify evidence. Delivery is later. The delivery body follows `language.txt`. Do not add a fact the local note does not ground. Strip machine YAML if the host needs that.
 
 - After each verifiable claim (any sentence that asserts a fact, number, name, step, or causal link), quote the transcript: `> [mm:ss] words copied verbatim`. Use `[hh:mm:ss]` when the stamp in the transcript has hours. The quote is 40–200 characters and is a contiguous verbatim stretch of the speech. Words that run across adjacent cues count; the cue clocks do not. One quote may support at most the next 3 prose sentences in that section.
 - Prose may compress or merge quotes from the same section. Every fact in the prose must be supportable by that section's quotes. Do not add transcript-external explanation, examples, numbers, product names, or causal links (`because` / `所以` / `导致` / `因此`) unless the supporting quote itself states them.
@@ -160,7 +156,7 @@ Write the four sections into the local `note.md`. Every verifiable claim must si
 
 Land these in the writing of the local `note.md`. R01–R17 stay as written. Do not loosen them.
 
-(A) and (B) stay in force. No usable transcript means not finished: do not deposit a note, and do not deliver one. The checks below apply to prose in the local `note.md` against that section's quotes. They do not require those quotes in the Feishu or chat body, and they do not require English quote blocks there. Chinese-only delivery (`中文`) is allowed. `中英文对照` is a saved choice, not a default. Do not drop a quote from the local note, and do not add a fact while shortening the delivery, to make a language mode pass.
+(A) and (B) stay in force. No usable transcript means not finished: do not deposit a note, and do not deliver one. The checks below apply to prose in the local `note.md` against that section's quotes. They do not require those quotes in the delivered body, and they do not require English quote blocks there. Chinese-only delivery (`中文`) is allowed. `中英文对照` is a saved choice, not a default. Do not drop a quote from the local note, and do not add a fact while shortening the delivery, to make a language mode pass.
 
 The 1.0.0 Hall J receipt is [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). That run used in-distribution eval notes. It is not a held-out 9. Do not paste the receipt into a note or into these instructions.
 
@@ -174,12 +170,12 @@ The 1.0.0 Hall J receipt is [evals/results/hall_j_retest_receipt.md](evals/resul
 
 These are required. They do not replace Hard gates A and B, and they do not loosen R01–R17.
 
-1. The note opens with `## 先记住一句话`. Never `## 课前先记住一句话`. Never the prefix `课前` on that heading or any other heading. The four verify sections still follow, in that order. This heading does not replace them. R03 does not score it.
+1. The note opens with `## 先记住一句话`. The four verify sections still follow, in that order. This heading does not replace them. R03 does not score it.
 2. A long-form 通读 covers the video's main transcript arcs. A thin stub that only passes `verify_note.py` or `claim_ground_check.py` on a few facts is not done when method-bearing arcs are missing. Chit-chat, a sponsor read, and banter can be one line. If the analyzer times out, retry it or hand-write from the full transcript until those arcs are in the note. Do not invent an arc the transcript does not contain. Do not deposit or deliver the stub.
 
 ## Coverage gate C
 
-The human bar for a long 通读 is **9/10 on detail depth and 9/10 on summary completeness**. Both count. Four grounded claims and a short Feishu body are below that bar even when every written sentence is faithful. Spotcheck stays a human reading. This gate does not emit a 9/10 score and does not call a model.
+The human bar for a long 通读 is **9/10 on detail depth and 9/10 on summary completeness**. Both count. Four grounded claims and a short delivery body are below that bar even when every written sentence is faithful. Spotcheck stays a human reading. This gate does not emit a 9/10 score and does not call a model.
 
 `scripts/coverage_check.py` is the deterministic floor under that bar. It always runs after `verify_note.py` and before `finished` or delivery. It is not opt-in. R01–R17 and the Hall thresholds stay as they are.
 
@@ -191,7 +187,7 @@ On a video longer than 5 minutes (`duration_seconds` > 300, or no clock and two 
 
 At or under 5 minutes, C01–C03 are skipped. The command still runs. `verify_note.py` still requires the section quotes. R12 still treats exactly 300 seconds as long; C uses a strict greater-than 300.
 
-**C04** runs whenever a Feishu or chat body is about to be sent (`--delivery`). Delivery prose letters (CJK plus Latin, YAML and quote lines removed) under 0.9× the same count in `note.md` fail. That is the summary-completeness floor. A full-arc body passes. A thin stub fails. Write the local prose in the delivery language so the comparison is the same text with quotes removed, not a short recap of a longer note.
+**C04** runs whenever a delivery body is about to be sent (`--delivery`). Delivery prose letters (CJK plus Latin, YAML and quote lines removed) under 0.9× the same count in `note.md` fail. That is the summary-completeness floor. A full-arc body passes. A thin stub fails. Write the local prose in the delivery language so the comparison is the same text with quotes removed, not a short recap of a longer note.
 
 FAIL lines look like `C03 FAIL: ...`. Exit is non-zero. FAIL means 未交. Repair stays inside the two rounds shared with verify.
 
@@ -204,8 +200,6 @@ Before locking a long note, read the full transcript (every file in `chunks/`) f
 A method, a step sequence, a warning, or a worked case stays in the note. Low-value chit-chat, a sponsor read, or pure banter can be one line.
 
 If a full-transcript analyzer times out or returns a partial note, retry it, or write the missing arcs by hand from the transcript. Stop when the main arcs are covered. No usable transcript is still not finished: do not fill the gap from the title.
-
-A host delivery that uses the seven-block labels (课堂开场, 核心拆解, 真实案例, 写好××的×条, 避坑指南, 课后作业) still opens with `先记住一句话`, never `课前`. Those labels do not replace the four sections in local `note.md`, and they do not skip verify.
 
 ## Pipeline (portable)
 
@@ -220,7 +214,7 @@ link
        fail → upgrade model once (e.g. small→medium) OR stop with a reason
   → verify_note.py --job
   → coverage_check.py --job always, before finished
-  → coverage_check.py --job --delivery before Feishu or chat
+  → coverage_check.py --job --delivery before send
   → verify and coverage share at most 2 repair rounds
   → all sections 本节不适用 → no-extractable-content, delete note.md
   → no usable text → say not finished; do not pretend
@@ -283,13 +277,9 @@ Write `note.md` only after a usable transcript, and only by reading the chunks. 
 
 `verify_note.py` still refuses a quote stub and refuses a note whose four sections are all `本节不适用`. A stop before `transcript_ready` writes `status.json` only.
 
-Feishu is not required. This skill does not call Feishu and does not read a Feishu token. A Feishu wiki, a Notion database, or another sink can live in the user's own project and consume this Markdown. A folder of `.md` files is a complete sink.
-
-When the sink is Feishu or chat, send the delivery body from Language preference, not the raw `note.md`. If language.txt is missing or invalid, ask and persist it. Do not upload yet. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`. 中文 prose is 小白能懂: plain words for 为什么, 是什么, and 好处, with no added fact. The body still opens with `## 先记住一句话`. A long 通读 in that body still covers the main method-bearing arcs.
+A folder of `.md` files is a complete sink. This skill does not call an external wiki and does not read a sink token. The delivery body follows `language.txt`. Do not add a fact the local note does not ground. Strip machine YAML if the host needs that. Optional host notes: [references/host-delivery.md](references/host-delivery.md).
 
 Keep sinks channel-separated when the user maintains partitions (e.g. YouTube vs X vs WeChat vs official docs). Do not dump every medium into one catch-all folder.
-
-This skill does not hardcode personal wiki tokens. Pass parent / sink config from the host project.
 
 ## Extending (slots)
 
@@ -316,6 +306,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `scripts/smoke.sh` — offline check: venv, yt-dlp, gate tests, fixture settle. `--live` adds one captioned YouTube URL. It does not turn ASR on.
 - `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.
+- `references/host-delivery.md` — optional host notes for a sink outside this repo. The skill does not call that sink.
 - `references/note-examples.md` — skeletons for two good notes and three bad notes. The author fills the bodies. Do not invent a video for them.
 - `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py` (counts API on synthetic notes, not a note judge), `scripts/test_coverage_check.py` (synthetic jobs for gate C, not a 9/10 grader), `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`. `scripts/claim_ground_check.py` is not a CI gate. Coverage C is deterministic and is on that CI path. Spotcheck stays human.
 - `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.
