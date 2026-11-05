@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Coverage gate C. Deterministic. No language model.
 
-Faithfulness is not coverage. A long note can pass R01–R16 and
+Faithfulness is not coverage. A long note can pass R01–R17 and
 ``claim_ground_check.py`` and still leave method-bearing arcs out. This
-script refuses that deposit. It does not change R01–R16 or any Hall threshold.
+script refuses that deposit. It does not change R01–R17 or any Hall threshold.
 
 Long means ``duration_seconds`` is greater than 300, or no clock exists and
 the job has two or more ``chunks/NN.txt`` files (the host already split the
