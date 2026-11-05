@@ -5,6 +5,7 @@ This repository is the portable gate and skill. A production host may live in an
 ## Unreleased
 
 - Language preference, asked once on install or before the first delivered note: `中文`, `英文`, or `中英文对照`. Save it in `language.txt` beside the installed `SKILL.md`. If it is unset, ask. Do not assume `中英文对照`. `中文` delivers Chinese prose only; English transcript quotes stay in the local `note.md` for verify. `英文` delivers English prose only. `中英文对照` delivers the analysis plus contiguous original-language transcript quotes under the sections. A Feishu or chat upload strips YAML frontmatter. Hard gates A and B and R01–R16 are unchanged.
+- The note opens with `## 先记住一句话`. `课前先记住一句话` and the prefix `课前` are forbidden. A long 通读 has to cover the video's main method-bearing transcript arcs. A stub that only passes claim/verify on a few facts is not done when those arcs are missing. Chit-chat, a sponsor read, and banter can be one line. If the analyzer times out, retry or hand-write from the full transcript. Do not invent an arc. R01–R16 and hard gates A and B are unchanged.
 
 ## 1.0.0 — 2026-11-05
 

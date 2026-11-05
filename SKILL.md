@@ -23,6 +23,8 @@ Failure that must be said out loud = no usable transcript, or nothing in the tra
 - Burn visual multi-turn by default (vision only when the picture itself is the information and the user asks).
 - Clone an entire host desk (systemd stack, foreign inbox schemas, personal vault paths).
 - Put cookies or API keys into the skill, logs, receipts, or git.
+- Open a note with `课前` or `课前先记住一句话`. The opening heading is `## 先记住一句话`.
+- Ship a thin claim-passing stub as the final 通读 when method-bearing arcs are still uncovered.
 
 ## Language preference
 
@@ -58,7 +60,11 @@ A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machin
      If duration_seconds is greater than 300 (over 5 minutes), first write chunks/NN.notes.md
      inventory: each line is `[mm:ss]` + short verbatim excerpt + one-line restatement of that excerpt.
      Then write the note from those inventory points (do not invent beyond them).
-4. Write note.md from the scaffold. You write the analysis. The script does not.
+4. Write note.md from the scaffold. Open with ## 先记住一句话. Never 课前.
+     You write the analysis. The script does not.
+     On a long video, cover the main method-bearing arcs.
+     A verify pass on a few facts is not enough when those arcs are missing.
+     If an analyzer times out, retry or hand-write from the full transcript.
 5. If every section is 本节不适用
      python3 scripts/verify_note.py --job <dir>
      That sets status to no-extractable-content, deletes note.md, and leaves the transcript.
@@ -75,6 +81,8 @@ A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machin
      中文: Chinese prose only. Leave transcript quote blocks in the local note.
      英文: English prose only. Leave transcript quote blocks in the local note.
      中英文对照: prose plus that section's contiguous original-language quotes.
+     Keep the opening heading ## 先记住一句话. Never 课前.
+     A long 通读 still has to carry the main method-bearing arcs in that body.
      A folder of note.md files is a complete sink. That file stays the verify artifact.
 ```
 
@@ -84,7 +92,7 @@ Commands and env var names: `scripts/README.md`.
 
 ## Sections
 
-Keep these four, in this order:
+Open the note with `## 先记住一句话`, then keep these four, in this order:
 
 1. 问题与做法
 2. 完整怎么做
@@ -137,6 +145,25 @@ Measured Hall J retest (2026-11-05T02:53:29+08:00 Asia/Shanghai): `overall_pass`
 3. **Mechanism + named-entity coverage (LlamaIndex citation habit):** In Pass 1, deliberately select verbatim blocks that cover (a) how a core mechanism works (e.g. "no memory → resend full history"), (b) named people/works the talk hangs on (e.g. Robert Moses), (c) the speaker's "ask why / how" method beats. If a >5min inventory line would be only color/anecdote, prefer a mechanism/named-entity line in the same quartile instead. Pass 2 must turn those blocks into prose claims in 问题与做法 or 完整怎么做 — do not leave them only in unused inventory.
 4. **Guardrails self-audit before deposit:** For each prose sentence, point to its same-section quote stamp. If any noun-vehicle fails (1) or any ASR name fails (2), **delete or rewrite that sentence** before deposit — same as a failed output rail → retry, not "close enough".
 5. **No invented ordinal scaffolds / causal overreach (ragas Faithfulness + TruLens groundedness):** Do **not** number the talk as `第一层/第二层/第三层/第四层/最上层是…` (or `Layer 1/2/3…`) unless that exact ordinal framing appears in the supporting quotes. Concepts may be named and explained from quotes (`Context 是…`, `Tool 是…`) without assigning layer ranks the speaker did not say. Likewise do not write speaker conclusions as `所以…` / `因此推出…` / `这说明他不要X` unless the quote itself carries that causal step — paraphrase only what is entailed by the quoted words (NeMo fact-check shaped: if entailment fails, delete the sentence). Measured Hall J retest 2026-11-05T02:53:29+08:00 Asia/Shanghai: `overall_pass` true, `skill_hallucinations_per_note` 0.0, `skill_core_recall` 0.913 (21/23).
+
+## Hard rules
+
+These are required. They do not replace Hard gates A and B, and they do not loosen R01–R16.
+
+1. The note opens with `## 先记住一句话`. Never `## 课前先记住一句话`. Never the prefix `课前` on that heading or any other heading. The four verify sections still follow, in that order. This heading does not replace them. R03 does not score it.
+2. A long-form 通读 covers the video's main transcript arcs. A thin stub that only passes `verify_note.py` or `claim_ground_check.py` on a few facts is not done when method-bearing arcs are missing. Chit-chat, a sponsor read, and banter can be one line. If the analyzer times out, retry it or hand-write from the full transcript until those arcs are in the note. Do not invent an arc the transcript does not contain. Do not deposit or deliver the stub.
+
+## Analysis layer
+
+The local `note.md` keeps the four sections 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, with the quotes R01–R16 check. `## 先记住一句话` comes first. The sentence under it has to be supportable by those quotes. It is not a new claim with no quote.
+
+Before locking a long note, read the full transcript (every file in `chunks/`) for method-bearing arcs. Expand until those arcs are present in the delivery language. A local claim check on a short extract does not close the note.
+
+A method, a step sequence, a warning, or a worked case stays in the note. Low-value chit-chat, a sponsor read, or pure banter can be one line.
+
+If a full-transcript analyzer times out or returns a partial note, retry it, or write the missing arcs by hand from the transcript. Stop when the main arcs are covered. No usable transcript is still not finished: do not fill the gap from the title.
+
+A host delivery that uses the seven-block labels (课堂开场, 核心拆解, 真实案例, 写好××的×条, 避坑指南, 课后作业) still opens with `先记住一句话`, never `课前`. Those labels do not replace the four sections in local `note.md`, and they do not skip verify.
 
 ## Pipeline (portable)
 
@@ -213,7 +240,7 @@ Write `note.md` only after a usable transcript, and only by reading the chunks. 
 
 Feishu is not required. This skill does not call Feishu and does not read a Feishu token. A Feishu wiki, a Notion database, or another sink can live in the user's own project and consume this Markdown. A folder of `.md` files is a complete sink.
 
-When the sink is Feishu or chat, send the delivery body from Language preference, not the raw `note.md`. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`.
+When the sink is Feishu or chat, send the delivery body from Language preference, not the raw `note.md`. Strip YAML frontmatter before upload. When the choice is `中文` or `英文`, transcript quote blocks stay in the local `note.md`. The body still opens with `## 先记住一句话`. A long 通读 in that body still covers the main method-bearing arcs.
 
 Keep sinks channel-separated when the user maintains partitions (e.g. YouTube vs X vs WeChat vs official docs). Do not dump every medium into one catch-all folder.
 

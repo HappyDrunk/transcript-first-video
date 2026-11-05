@@ -59,6 +59,10 @@ quoted_window: |-
 
 Transcript: `artifacts/youtube_<id>/transcript.txt`.
 
+## 先记住一句话
+
+<one sentence grounded in the transcript. It does not replace the four sections.>
+
 ## 问题与做法
 
 <what the speech is solving, and the move that addresses it>
@@ -84,7 +88,7 @@ Transcript: `artifacts/youtube_<id>/transcript.txt`.
 > <words copied from the transcript>
 ````
 
-The example above is the shape `verify_note.py` expects of a finished local note. It is not what the host writes, and it is not the Feishu or chat body. Delivery strips the YAML frontmatter. Quote blocks stay in this local file when the language preference is 中文 or 英文. The committed live transcripts, with the template notes removed, are [evals/results/live/youtube_jNQXAC9IVRw/transcript.txt](evals/results/live/youtube_jNQXAC9IVRw/transcript.txt) and [evals/results/live/youtube_KwhgfwOSToQ/transcript.txt](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt).
+The example above is the local note. `verify_note.py` checks the four sections and their quotes. It does not score the opening heading. The skill still requires `## 先记住一句话`. Do not write `课前` or `课前先记住一句话`. A long 通读 has to cover the main method-bearing arcs. A short note that only passes the claim check is not finished when those arcs are missing. The example is not what the host writes, and it is not the Feishu or chat body. Delivery strips the YAML frontmatter and keeps that opening heading. Quote blocks stay in this local file when the language preference is 中文 or 英文. The committed live transcripts, with the template notes removed, are [evals/results/live/youtube_jNQXAC9IVRw/transcript.txt](evals/results/live/youtube_jNQXAC9IVRw/transcript.txt) and [evals/results/live/youtube_KwhgfwOSToQ/transcript.txt](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt).
 
 ## Try it on one captioned video
 
@@ -301,6 +305,10 @@ quoted_window: |-
 
 Transcript: `artifacts/youtube_<id>/transcript.txt`。
 
+## 先记住一句话
+
+<一句落在文稿上的话。它不代替下面四节。>
+
 ## 问题与做法
 
 <这段话在解决什么，对应的做法是什么>
@@ -326,7 +334,7 @@ Transcript: `artifacts/youtube_<id>/transcript.txt`。
 > <从文稿里抄来的字>
 ````
 
-上面那段例子，是 `verify_note.py` 对一份写完的本地笔记所要求的形状。它不是主机写下的文件，也不是飞书或聊天里的正文。交付时去掉 YAML 前置字段。语言偏好是中文或英文时，引文块留在这份本地文件里。提交在仓库里的现场文稿，模板笔记已经拿掉：[evals/results/live/youtube_jNQXAC9IVRw/transcript.txt](evals/results/live/youtube_jNQXAC9IVRw/transcript.txt)，以及 [evals/results/live/youtube_KwhgfwOSToQ/transcript.txt](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt)。
+上面那段例子是本地笔记。`verify_note.py` 核对的是四节和其中的引文，不给开头标题打分。这份 skill 仍然要求 `## 先记住一句话`。不要写 `课前`，也不要写 `课前先记住一句话`。长文稿的通读要盖住主要的方法段落。只靠几条能过核对的事实、却漏掉这些段落，不算写完。它不是主机写下的文件，也不是飞书或聊天里的正文。交付时去掉 YAML 前置字段，并保留这个开头标题。语言偏好是中文或英文时，引文块留在这份本地文件里。提交在仓库里的现场文稿，模板笔记已经拿掉：[evals/results/live/youtube_jNQXAC9IVRw/transcript.txt](evals/results/live/youtube_jNQXAC9IVRw/transcript.txt)，以及 [evals/results/live/youtube_KwhgfwOSToQ/transcript.txt](evals/results/live/youtube_KwhgfwOSToQ/transcript.txt)。
 
 ## 先跑通一条有字幕的视频
 
