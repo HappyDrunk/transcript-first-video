@@ -75,6 +75,10 @@ python3 scripts/test_coverage_check.py
 
 Grounded is not covered. The human bar for a long 通读 is 9/10 detail depth and 9/10 summary completeness. Both count. This script does not score that bar and does not call a model. It always runs after `verify_note.py` and before finished or a Feishu/chat send. On a video longer than 5 minutes it refuses a missing inventory (C01), quotes in fewer than 3 duration quartiles (C02), or fewer than 9/10 of the inventory lines (C03, at least 3). `--delivery` refuses a body whose CJK and Latin letters, after YAML and quote lines are removed, are under 0.9× `note.md` (C04). At or under 5 minutes, C01–C03 are skipped and the command still runs. Exit 0 is allowed. Exit 1 is FAIL (`Cxx FAIL: ...`). Exit 2 is usage. A thin grounded stub fails. A full-arc note passes. R01–R17 are unchanged. Spotcheck stays human.
 
+Coverage C checks that the note uses the inventory the job already wrote: the rows exist (C01), note quotes spread across quartiles (C02), and at least 9/10 of those rows show up in the note (C03, at least 3). It does not prove the inventory itself was complete against the full transcript. A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it." It does not stop "under-extracted at inventory time."
+
+On a long job with a loaded inventory, the command may print `C WARN` when the row count is implausibly low: fewer than one line per 10 minutes, or fewer lines than `chunks/NN.txt` files when there are two or more chunks. That line does not change the exit code and does not loosen C01–C04. A run with no warning is still not a completeness proof. The same limit is in `references/rules.md`.
+
 ## Environment variables
 
 Names only. Do not commit values.

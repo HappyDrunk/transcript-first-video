@@ -108,6 +108,8 @@ A person's read: [evals/results/spotcheck.md](evals/results/spotcheck.md)
 
 Measured receipt on hallucinations: [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)
 
+Mechanical held-out receipt (verify and Coverage C only; not a 9): [evals/results/held_out_mechanical_receipt.md](evals/results/held_out_mechanical_receipt.md)
+
 How to change this repo: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md)
 
 ## License
@@ -191,6 +193,8 @@ python3 scripts/coverage_check.py --job artifacts/youtube_jNQXAC9IVRw
 人读过的样本：[evals/results/spotcheck.md](evals/results/spotcheck.md)
 
 幻觉相关实测回执：[evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)
+
+机械抽查回执（只含核对和 Coverage C，不是 9 分）：[evals/results/held_out_mechanical_receipt.md](evals/results/held_out_mechanical_receipt.md)
 
 怎么改仓库：[CONTRIBUTING.md](CONTRIBUTING.md)、[CHANGELOG.md](CHANGELOG.md)
 
