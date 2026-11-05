@@ -99,6 +99,18 @@ Write the four sections. Every verifiable claim must sit on Pass-1 quotes in **t
 
 `caption_kind` is `auto` or `manual` when the host knows. `caption_trust: low` means the captions were automatic and their language was not the expected language. Treat that transcript as less reliable: stay close to the words, and say so if a claim is thin.
 
+## Hard gates
+
+Land these in the writing. R01–R16 stay as written. Do not loosen them.
+
+Measured Hall J retest (2026-11-05T02:53:29+08:00 Asia/Shanghai): `overall_pass` true. `skill_hallucinations_per_note` 0.0 (need ≤0.2 and < baseline×0.5; baseline_hall 1.0). `skill_core_recall` 0.913 (21/23; need ≥0.7 and ≥ baseline−0.1; baseline_recall 1.0). `should_reject` 1.0. `gold_sha256` `0eaa5f806d7e6ddc175dc62abfa7851f56b9805748b5b0a8d66268e7afa54dd1` (unchanged). Public receipt: [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). Gold note bodies are outside this repository. The checks below follow ragas, TruLens, gbrain, Guardrails, and NeMo.
+
+1. **Faithfulness / no invented vehicles (gbrain + ragas):** Every concrete vehicle in prose — tool, list, template, metaphor, object you "write/make/open" — must appear as the same kind of thing in that section's supporting quotes. If the quote says "understand what is happening" you may write 先弄清…在发生什么; you may **not** invent 写一张清单 / 做一张表 / 建一个看板 unless those words (or clear synonyms spoken in the quote) are in the quote. Action section: paraphrase the imperative cue only; delete decorative nouns the speaker did not say.
+2. **ASR proper nouns keep Latin form (NeMo fact-check shaped):** When a quote contains a near-miss ASR token for a product/person (`clod`/`Claude`, `open ai`/`OpenAI`, brand-like Capitals), keep the **recognized Latin proper noun** in Chinese prose (`Claude 写的` / `Claude written`). Do **not** replace it with a vague paraphrase that drops the name (`随手写出`, `随便写的`, `某个模型写的`) unless the quote itself uses only the vague wording. If unsure whether ASR is a name, keep the quote's Latin token unchanged in prose.
+3. **Mechanism + named-entity coverage (LlamaIndex citation habit):** In Pass 1, deliberately select verbatim blocks that cover (a) how a core mechanism works (e.g. "no memory → resend full history"), (b) named people/works the talk hangs on (e.g. Robert Moses), (c) the speaker's "ask why / how" method beats. If a >5min inventory line would be only color/anecdote, prefer a mechanism/named-entity line in the same quartile instead. Pass 2 must turn those blocks into prose claims in 问题与做法 or 完整怎么做 — do not leave them only in unused inventory.
+4. **Guardrails self-audit before deposit:** For each prose sentence, point to its same-section quote stamp. If any noun-vehicle fails (1) or any ASR name fails (2), **delete or rewrite that sentence** before deposit — same as a failed output rail → retry, not "close enough".
+5. **No invented ordinal scaffolds / causal overreach (ragas Faithfulness + TruLens groundedness):** Do **not** number the talk as `第一层/第二层/第三层/第四层/最上层是…` (or `Layer 1/2/3…`) unless that exact ordinal framing appears in the supporting quotes. Concepts may be named and explained from quotes (`Context 是…`, `Tool 是…`) without assigning layer ranks the speaker did not say. Likewise do not write speaker conclusions as `所以…` / `因此推出…` / `这说明他不要X` unless the quote itself carries that causal step — paraphrase only what is entailed by the quoted words (NeMo fact-check shaped: if entailment fails, delete the sentence). Measured Hall J retest 2026-11-05T02:53:29+08:00 Asia/Shanghai: `overall_pass` true, `skill_hallucinations_per_note` 0.0, `skill_core_recall` 0.913 (21/23).
+
 ## Pipeline (portable)
 
 ```text
@@ -207,6 +219,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.
 - `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X). The template notes were withdrawn.
 - `evals/results/spotcheck.md` — layer ③. It records that withdrawal and still reads the fixture refusals. CI does not score it. It is not an audio check.
+- `evals/results/hall_j_retest_receipt.md` — public Hall J receipt for the 1.0.0 measure (`overall_pass` true at 2026-11-05T02:53:29+08:00 Asia/Shanghai). Gold note bodies are outside this repository. CI does not score it.
 - `evals/results/` — paths in the evidence files are repo-relative.
 
 ## Packaging note
