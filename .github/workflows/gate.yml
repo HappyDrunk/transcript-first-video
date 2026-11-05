@@ -19,6 +19,9 @@ jobs:
           python-version: "3.12"
       - name: Gate tests
         run: python3 scripts/test_gate.py
+      - name: Regression tests (expected failures)
+        run: python3 scripts/test_regressions.py
+        continue-on-error: true
       - name: No video-specific tokens
         run: python3 scripts/test_no_overfit.py
       - name: Claim grounding counts unit test
