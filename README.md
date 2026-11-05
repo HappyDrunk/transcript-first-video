@@ -4,7 +4,7 @@
 
 # English
 
-YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer. A finished note needs both bars. (A) The spoken words are written down and pass a quality check. (B) The note analyzes that transcript into reusable knowledge. The local note quotes the transcript in each section so the check can ground the claims. A quote by itself is not the knowledge. The gate does not listen to the audio. Delivery to Feishu or chat follows [Language preference](SKILL.md#language-preference). 中英文对照 is not the default.
+YouTube and Twitter/X video. This skill fetches those two. Other platforms are not promised. It is a transcript-first honesty gate, not a multi-platform summarizer. A finished note needs both bars. (A) The spoken words are written down and pass a quality check. (B) The note analyzes that transcript into reusable knowledge. The local note quotes the transcript in each section so the check can ground the claims. A quote by itself is not the knowledge. The gate does not listen to the audio. Delivery to Feishu or chat follows [Language preference](SKILL.md#language-preference), then [Delivery style](SKILL.md#delivery-style). Ask language first, then style, and save both before any fetch. 中英文对照 is not the default. 小白能懂 is not the default.
 
 ## Three layers of evidence
 
@@ -41,7 +41,7 @@ A finished `note.md` is a later file. `verify_note.py` allows one only when each
 
 `status.json` in the same folder is a machine stub. When the job stops (`not_finished`, or the gate refuses the text), that stub is the whole directory. There is no scaffold and no `note.md`.
 
-Feishu is optional, and it lives in your own project if you use it at all. This skill does not call Feishu, and it does not need a Feishu token. A folder of Markdown files is enough. A Feishu or chat upload strips YAML frontmatter. Do not paste that Obsidian block into the delivered body. Before the first delivery, ask once: 中文, 英文, or 中英文对照, and keep the answer. If it is unset, ask. Do not assume 中英文对照. 中文 is Chinese prose only: English transcript quotes stay in the local note that verify checks. 英文 is English prose only. 中英文对照 is the analysis plus contiguous original-language transcript quotes under the sections. The rule is [Language preference](SKILL.md#language-preference).
+Feishu is optional, and it lives in your own project if you use it at all. This skill does not call Feishu, and it does not need a Feishu token. A folder of Markdown files is enough. A Feishu or chat upload strips YAML frontmatter. Do not paste that Obsidian block into the delivered body. On install, before any fetch, ask once: 中文, 英文, or 中英文对照, and keep the answer. Then ask 小白能懂, 术语保留, or 自定义, and keep that too. If either is unset, ask. Do not assume 中英文对照 or 小白能懂. 中文 is Chinese prose only: English transcript quotes stay in the local note that verify checks. 英文 is English prose only. 中英文对照 is the analysis plus contiguous original-language transcript quotes under the sections. 小白能懂 restates that note in plain words and does not add a fact. The rules are [Language preference](SKILL.md#language-preference) and [Delivery style](SKILL.md#delivery-style).
 
 ````markdown
 ---
@@ -191,7 +191,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` is a common place. Yours might be `skills/transcript-first-video/` beside the project that actually downloads audio. Either works, as long as that agent reads skills from there.
 
-When the clone finishes, nothing plays by itself. You have the rules. On install, or before the first note is delivered, ask once which of 中文, 英文, or 中英文对照 to use, and save it. The rule is [Language preference](SKILL.md#language-preference). The command that finishes a captioned link is in [Try it on one captioned video](#try-it-on-one-captioned-video). `scripts/` has a YouTube fetcher, an X/Twitter video fetcher, and a gate you can run before a note is allowed into a vault. The queue and the shelf where notes live stay in your project. Other video sites are not fetched here.
+When the clone finishes, nothing plays by itself. You have the rules. On install, before any fetch, ask language first (中文, 英文, or 中英文对照), then style (小白能懂, 术语保留, or 自定义), and save both. The rules are [Language preference](SKILL.md#language-preference) and [Delivery style](SKILL.md#delivery-style). The command that finishes a captioned link is in [Try it on one captioned video](#try-it-on-one-captioned-video). `scripts/` has a YouTube fetcher, an X/Twitter video fetcher, and a gate you can run before a note is allowed into a vault. The queue and the shelf where notes live stay in your project. Other video sites are not fetched here.
 
 ## How to use
 
@@ -252,7 +252,7 @@ MIT. You can use it, change it, and ship it with your own work. Keep the copyrig
 
 # 中文
 
-YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器。写完的笔记要同时过两道。（A）嘴里的话落成文字，并且过了质量检查。（B）笔记把这段文稿分析成可以复用的知识。本地笔记每一节都引用文稿，核对才对得上。只有引用，还不是知识。门槛不听音频。交给飞书或聊天的正文，按 [Language preference](SKILL.md#language-preference)。不默认中英文对照。
+YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平台不承诺。它是一道「先有文稿才许写笔记」的门槛，不是多平台摘要器。写完的笔记要同时过两道。（A）嘴里的话落成文字，并且过了质量检查。（B）笔记把这段文稿分析成可以复用的知识。本地笔记每一节都引用文稿，核对才对得上。只有引用，还不是知识。门槛不听音频。交给飞书或聊天的正文，先按 [Language preference](SKILL.md#language-preference)，再按 [Delivery style](SKILL.md#delivery-style)。安装时先问语言，再问文体，两样都留下，然后才去抓视频。不默认中英文对照。不默认小白能懂。
 
 ## 三层证据
 
@@ -289,7 +289,7 @@ A 路是 Claude Desktop，加上这份 skill。对照集的名字是 `model-cons
 
 旁边的 `status.json` 是给程序看的短状态。任务停下的时候（`not_finished`，或者门槛拒绝了这段字），目录里只有这份状态。没有脚手架，也没有 `note.md`。
 
-飞书是可选的。你要用的话，它在你自己的项目里。这份 skill 不调用飞书，也不需要飞书令牌。一个放 Markdown 的文件夹就够了。飞书或聊天的上传会去掉 YAML 前置字段。不要把那段 Obsidian 字段贴进交付正文。第一次交付之前问一次：中文、英文，或中英文对照，并把答案留下。没设过就问。不要默认中英文对照。中文只交付中文正文：英文文稿引文留在本地那份给核对的笔记里。英文只交付英文正文。中英文对照是分析，再加上各节下面连续的原文引文。规矩在 [Language preference](SKILL.md#language-preference)。
+飞书是可选的。你要用的话，它在你自己的项目里。这份 skill 不调用飞书，也不需要飞书令牌。一个放 Markdown 的文件夹就够了。飞书或聊天的上传会去掉 YAML 前置字段。不要把那段 Obsidian 字段贴进交付正文。安装时、抓视频之前，先问一次：中文、英文，或中英文对照，并把答案留下。紧接着问小白能懂、术语保留，或自定义，也留下。没设过就问。不要默认中英文对照，也不要默认小白能懂。中文只交付中文正文：英文文稿引文留在本地那份给核对的笔记里。英文只交付英文正文。中英文对照是分析，再加上各节下面连续的原文引文。小白能懂是把已经核对过的笔记改成白话，不加事实。规矩在 [Language preference](SKILL.md#language-preference) 和 [Delivery style](SKILL.md#delivery-style)。
 
 ````markdown
 ---
@@ -439,7 +439,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 `~/.agents/skills/` 是常见的一个位置。你的也可能是项目旁边的 `skills/transcript-first-video/`，跟真正下载音频的那个程序放一起。只要这个 Agent 会从那儿读 skill，就行。
 
-克隆完，什么也不会自己播。你拿到的是规矩。安装时，或第一次交付笔记之前，问一次用中文、英文，还是中英文对照，并把答案留下。规矩在 [Language preference](SKILL.md#language-preference)。真正能把一条有字幕的链接做完的命令，在[先跑通一条有字幕的视频](#先跑通一条有字幕的视频)。`scripts/` 里有 YouTube 抓取、X / Twitter 视频抓取，和一道入库前的门槛。队列和笔记放哪，仍在你自己的项目里。别的视频网站，这里不抓。
+克隆完，什么也不会自己播。你拿到的是规矩。安装时、抓视频之前，先问语言（中文、英文，或中英文对照），再问文体（小白能懂、术语保留，或自定义），两样都留下。规矩在 [Language preference](SKILL.md#language-preference) 和 [Delivery style](SKILL.md#delivery-style)。真正能把一条有字幕的链接做完的命令，在[先跑通一条有字幕的视频](#先跑通一条有字幕的视频)。`scripts/` 里有 YouTube 抓取、X / Twitter 视频抓取，和一道入库前的门槛。队列和笔记放哪，仍在你自己的项目里。别的视频网站，这里不抓。
 
 ## 怎么用
 
