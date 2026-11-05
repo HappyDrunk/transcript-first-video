@@ -120,7 +120,7 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 ## How to write
 
-`verify_note.py` enforces R01–R16. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. Writing is a **required two-pass**. Do not skip Pass 1.
+`verify_note.py` enforces R01–R17. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. Writing is a **required two-pass**. Do not skip Pass 1. R01–R16 are unchanged. R17 checks that a section's prose shares content words with that section's own quotes.
 
 ### Pass 1 — Extract only (no section prose yet)
 
@@ -140,6 +140,7 @@ Write the four sections into the local `note.md`. Every verifiable claim must si
 - For a video longer than 5 minutes, take quotes from at least 3 different quartile stretches of the transcript, and keep the chunks/NN.notes.md inventory.
 - 今天立刻动手一步 starts with a verb, is at most 2 sentences, and stays inside its section quotes (cross-language notes are not forced to share surface tokens with English imperatives).
 - Do not write a number, a person's name, or a product name that is not in the supporting quotes for that section (R16) and not in the transcript (R07/R08).
+- R17: same-script prose must share at least three content tokens with that section's own quotes (a Latin word of four letters, or a consecutive CJK pair). A number in the prose must be in those quotes. A quote moved from another section fails. Chinese prose on a Latin quote skips the token floor and still checks numbers.
 - A platform title, if you record one, goes only in frontmatter `platform_title`. It does not enter the body. The hosts do not copy the platform title into the scaffold.
 - Eval / intake rule: a note that fails `verify_note.py` is 未交, not a scored deposit. Disclosure still says the note was written with Claude plus this skill.
 

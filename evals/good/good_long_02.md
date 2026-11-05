@@ -14,24 +14,24 @@ expected_lang: "en"
 
 ## 问题与做法
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. This 问题与做法 adds a judgment the cue itself does not spell out.
+Keep write, outcome, buyer, and gets in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
 
 > [00:00] Write the outcome the buyer gets before you name a plan.
 
 ## 完整怎么做
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. This 完整怎么做 adds a judgment the cue itself does not spell out.
+Keep publish, first, price, and those in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
 
 > [04:00] Publish the first price only after those three conversations.
 
 ## 翻车或别用
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. This 翻车或别用 adds a judgment the cue itself does not spell out.
+Keep stop, trial, buyer, and name in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
 
 > [08:00] Stop the trial if the buyer will not name a budget at all.
 
 ## 今天立刻动手一步
 
-Write the buyer outcome before any plan name. Keep that order even when a teammate wants a public figure first, and treat the figure as a later choice in long case bravo.
+Review the three conversations before you change the page again. Do that step today and leave unrelated edits alone.
 
 > [09:20] Review the three conversations before you change the page again.

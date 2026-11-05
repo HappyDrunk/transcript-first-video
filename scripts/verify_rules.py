@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic note rules R01–R15.
+"""Deterministic note rules R01–R17.
 
 Each rule returns ``(rule_id, ok, message)``. Callers prefix a failure as
 ``R07 FAIL: ...``. No rule calls a language model.
@@ -1049,6 +1049,72 @@ def r16_quote_anchored_nouns(ctx: RuleContext) -> tuple[str, bool, str]:
     return ("R16", True, "section prose nouns are anchored in section quotes")
 
 
+_R17_MIN_TOKENS = 3
+
+
+def _content_tokens(text: str) -> set[str]:
+    """Latin words of length >= 4, plus every consecutive CJK pair."""
+    latin = {
+        word.casefold()
+        for word in _LATIN_WORD.findall(text)
+        if len(word) >= 4 and word.casefold() not in _EN_STOP
+    }
+    pairs: set[str] = set()
+    for run in _CJK_RUN.findall(text):
+        pairs.update(run[index : index + 2] for index in range(len(run) - 1))
+    return latin | pairs
+
+
+def _script_counts(text: str) -> tuple[int, int]:
+    cjk = sum(len(run) for run in _CJK_RUN.findall(text))
+    latin = sum(len(word) for word in _LATIN_WORD.findall(text))
+    return cjk, latin
+
+
+def _cross_script(prose: str, quote: str) -> bool:
+    """True when the prose and the quote are not the same majority script."""
+    prose_cjk, prose_latin = _script_counts(prose)
+    quote_cjk, quote_latin = _script_counts(quote)
+    prose_zh = prose_cjk > prose_latin and prose_cjk > 0
+    quote_zh = quote_cjk > quote_latin and quote_cjk > 0
+    prose_en = prose_latin > prose_cjk and prose_latin > 0
+    quote_en = quote_latin > quote_cjk and quote_latin > 0
+    return (prose_zh and quote_en) or (prose_en and quote_zh)
+
+
+def r17_same_section_overlap(ctx: RuleContext) -> tuple[str, bool, str]:
+    """Prose must share content tokens with that section's own quotes.
+
+    A number in the prose has to appear in those quotes. Same-script prose
+    also needs at least three content tokens in common (a Latin word of four
+    letters, or a CJK pair). Chinese prose on a Latin quote skips the token
+    floor, same as R16, and still checks numbers. Cross-section quotes fail.
+    """
+    if ctx.gate is None or not ctx.gate.passed:
+        return ("R17", True, "skipped because the transcript is not usable")
+    parts: list[str] = []
+    for section in ctx.sections:
+        if section.inapplicable or not section.quotes:
+            continue
+        quote = " ".join(item.text for item in section.quotes)
+        for number in _DIGIT.findall(section.prose):
+            if number not in quote:
+                parts.append(
+                    f"section {section.heading} number {number} "
+                    "is absent from that section's quotes"
+                )
+        if _cross_script(section.prose, quote):
+            continue
+        shared = _content_tokens(section.prose) & _content_tokens(quote)
+        if len(shared) < _R17_MIN_TOKENS:
+            parts.append(
+                f"section {section.heading} shares {len(shared)} content "
+                f"tokens with its quotes; need {_R17_MIN_TOKENS}"
+            )
+    if parts:
+        return ("R17", False, "; ".join(parts))
+    return ("R17", True, "section prose overlaps that section's quotes")
+
 
 RULES = (
     r01_gate,
@@ -1067,6 +1133,7 @@ RULES = (
     r14_platform_title,
     r15_failed_status,
     r16_quote_anchored_nouns,
+    r17_same_section_overlap,
 )
 
 

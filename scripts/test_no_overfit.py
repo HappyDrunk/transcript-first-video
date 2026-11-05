@@ -18,7 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 BLACKLIST = ROOT / "evals" / "overfit_blacklist.txt"
-INSTRUCTION_FILES = (ROOT / "SKILL.md",)
+INSTRUCTION_FILES = (
+    ROOT / "SKILL.md",
+    ROOT / "references" / "note-examples.md",
+)
 _SKIP_PARTS = {"__pycache__"}
 _SKIP_NAMES = {"test_no_overfit.py", "overfit_blacklist.txt"}
 
