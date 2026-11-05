@@ -1,6 +1,6 @@
 # Hall J retest receipt
 
-Public record of the measured Hall J gate for `v1.0.0`. Gold note bodies and local ferry trees are outside this repository. This file quotes the measured gates and the gold checksum. It is not an eval dump. CI does not score this file. R01–R16 were not loosened.
+Public record of the measured Hall J gate for `v1.0.0`. Gold note bodies and local ferry trees are outside this repository. This file quotes the measured gates and the gold checksum. It is not an eval dump. CI does not score this file. The rules in that run were R01–R16, and they were not loosened. The live verify band is R01–R17.
 
 Lane A is Claude Desktop with this skill loaded. The comparison set is `model-consensus-gold-v2`.
 

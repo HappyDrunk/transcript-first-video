@@ -130,7 +130,7 @@ Do not invent a step to fill a section. If all four sections are `本节不适�
 
 ## How to write
 
-`verify_note.py` enforces R01–R17. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. Writing is a **required two-pass**. Do not skip Pass 1. R01–R16 are unchanged. R17 checks that a section's prose shares content words with that section's own quotes.
+`verify_note.py` enforces R01–R17. The list is `references/rules.md`. A failure line looks like `R07 FAIL: ...`. Fix the note from that line. Writing is a **required two-pass**. Do not skip Pass 1. R17 checks that a section's prose shares content words with that section's own quotes.
 
 ### Pass 1 — Extract only (no section prose yet)
 
@@ -158,7 +158,7 @@ Write the four sections into the local `note.md`. Every verifiable claim must si
 
 ## Hard gates
 
-Land these in the writing of the local `note.md`. R01–R16 stay as written. Do not loosen them.
+Land these in the writing of the local `note.md`. R01–R17 stay as written. Do not loosen them.
 
 (A) and (B) stay in force. No usable transcript means not finished: do not deposit a note, and do not deliver one. The checks below apply to prose in the local `note.md` against that section's quotes. They do not require those quotes in the Feishu or chat body, and they do not require English quote blocks there. Chinese-only delivery (`中文`) is allowed. `中英文对照` is a saved choice, not a default. Do not drop a quote from the local note, and do not add a fact while shortening the delivery, to make a language mode pass.
 
@@ -172,7 +172,7 @@ The 1.0.0 Hall J receipt is [evals/results/hall_j_retest_receipt.md](evals/resul
 
 ## Hard rules
 
-These are required. They do not replace Hard gates A and B, and they do not loosen R01–R16.
+These are required. They do not replace Hard gates A and B, and they do not loosen R01–R17.
 
 1. The note opens with `## 先记住一句话`. Never `## 课前先记住一句话`. Never the prefix `课前` on that heading or any other heading. The four verify sections still follow, in that order. This heading does not replace them. R03 does not score it.
 2. A long-form 通读 covers the video's main transcript arcs. A thin stub that only passes `verify_note.py` or `claim_ground_check.py` on a few facts is not done when method-bearing arcs are missing. Chit-chat, a sponsor read, and banter can be one line. If the analyzer times out, retry it or hand-write from the full transcript until those arcs are in the note. Do not invent an arc the transcript does not contain. Do not deposit or deliver the stub.
@@ -181,7 +181,7 @@ These are required. They do not replace Hard gates A and B, and they do not loos
 
 The human bar for a long 通读 is **9/10 on detail depth and 9/10 on summary completeness**. Both count. Four grounded claims and a short Feishu body are below that bar even when every written sentence is faithful. Spotcheck stays a human reading. This gate does not emit a 9/10 score and does not call a model.
 
-`scripts/coverage_check.py` is the deterministic floor under that bar. It always runs after `verify_note.py` and before `finished` or delivery. It is not opt-in. R01–R16 and the Hall thresholds stay as they are.
+`scripts/coverage_check.py` is the deterministic floor under that bar. It always runs after `verify_note.py` and before `finished` or delivery. It is not opt-in. R01–R17 and the Hall thresholds stay as they are.
 
 On a video longer than 5 minutes (`duration_seconds` > 300, or no clock and two or more `chunks/NN.txt` files):
 
@@ -197,7 +197,7 @@ FAIL lines look like `C03 FAIL: ...`. Exit is non-zero. FAIL means 未交. Repai
 
 ## Analysis layer
 
-The local `note.md` keeps the four sections 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, with the quotes R01–R16 check. `## 先记住一句话` comes first. The sentence under it has to be supportable by those quotes. It is not a new claim with no quote.
+The local `note.md` keeps the four sections 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, with the quotes R01–R17 check. `## 先记住一句话` comes first. The sentence under it has to be supportable by those quotes. It is not a new claim with no quote.
 
 Before locking a long note, read the full transcript (every file in `chunks/`) for method-bearing arcs. Expand until those arcs are present in the delivery language. A local claim check on a short extract does not close the note.
 
@@ -306,9 +306,9 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 ## Bundled resources
 
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
-- `scripts/verify_note.py` — R01–R16. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
-- `scripts/claim_ground_check.py` — optional local helper. It counts sentences whose numbers, proper nouns, or long phrases are absent from that section's quotes. Deterministic. No language model. Not a public CI gate and not an LLM judge. It does not replace R01–R16.
-- `scripts/coverage_check.py` — Coverage gate C. Always run after verify, before finished or delivery. Deterministic. No language model. Long videos fail closed on missing inventory, fewer than 3 quartiles, or under 9/10 of inventory lines. `--delivery` fails a body under 9/10 of the local prose letter count. It does not replace R01–R16 and it does not score a human 9/10.
+- `scripts/verify_note.py` — R01–R17. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
+- `scripts/claim_ground_check.py` — optional local helper. It counts sentences whose numbers, proper nouns, or long phrases are absent from that section's quotes. Deterministic. No language model. Not a public CI gate and not an LLM judge. It does not replace R01–R17.
+- `scripts/coverage_check.py` — Coverage gate C. Always run after verify, before finished or delivery. Deterministic. No language model. Long videos fail closed on missing inventory, fewer than 3 quartiles, or under 9/10 of inventory lines. `--delivery` fails a body under 9/10 of the local prose letter count. It does not replace R01–R17 and it does not score a human 9/10.
 - `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.

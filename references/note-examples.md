@@ -1,6 +1,6 @@
 # Note examples
 
-Synthetic notes. They are not a held-out video and not an eval-set talk. Each quote is a made-up spoken line, long enough to look like a real blockquote. `verify_note.py` checks R01–R17. R01–R16 are unchanged. R17 refuses a section whose prose does not share content words with that section's own quotes.
+Synthetic notes. They are not a held-out video and not an eval-set talk. Each quote is a made-up spoken line, long enough to look like a real blockquote. `verify_note.py` checks R01–R17. R17 refuses a section whose prose does not share content words with that section's own quotes.
 
 ## Good — four sections, each claim on its own quote
 
