@@ -27,9 +27,9 @@ No live receipt here is a gibberish transcript. Captions that came back either p
 
 Lane A is Claude Desktop with this skill loaded. The comparison set is named `model-consensus-gold-v2`. The gold note bodies are not in this repository.
 
-`v1.0.0` marks this skill and these scripts after a measured Hall J pass. The public receipt is [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). Retest time: 2026-11-05T02:53:29+08:00 Asia/Shanghai. `overall_pass` is true. `skill_hallucinations_per_note` is 0.0 (≤0.2 and below half of baseline 1.0). `skill_core_recall` is 0.913 (21/23; ≥0.7 and at least baseline 1.0 minus 0.1). `should_reject` is 1.0. `gold_sha256` is `0eaa5f806d7e6ddc175dc62abfa7851f56b9805748b5b0a8d66268e7afa54dd1` (unchanged). R01–R16 were not loosened.
+`v1.0.0` records an in-distribution Hall J run. The receipt is [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). Those notes were from the eval set the skill had already seen. A held-out set is still required before anyone calls this skill a 9. That receipt is not a completed 冲9. R01–R16 were not loosened.
 
-On the `sample_v2` set, `verify_note.py` passes 10 of 10 notes against the rules (pull request #10, `548a96a`). That 10 of 10 is the mechanical rule check, and the count is the same one already disclosed. The Hall J receipt is the measured pass.
+On the `sample_v2` set, `verify_note.py` passes 10 of 10 notes against the rules (pull request #10, `548a96a`). That 10 of 10 is the mechanical rule check, and the count is the same one already disclosed. It is not a held-out grade.
 
 The annotated tag `v1.0.0` is created on the merge commit on `main` after this release lands. Gold note bodies stay outside this repository.
 
@@ -241,7 +241,7 @@ Cookies and API keys stay out. A doc may name a setting, such as `YTDLP_COOKIES`
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | Layer ①. The fixture pass/fail table CI regenerates. |
 | [evals/results/live/](evals/results/live/) | Layer ②. Public-URL receipts: a short captioned YouTube transcript, a no-caption stop, a captioned X transcript, and the longer YouTube sample. The template notes were withdrawn. |
 | [evals/results/spotcheck.md](evals/results/spotcheck.md) | Layer ③. Records that those template notes were withdrawn, and reads the fixture refusals. CI does not score it. Not an audio check. |
-| [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) | 冲9 receipt. Measured Hall J pass for `v1.0.0` (`overall_pass` true, hallucinations 0.0, core recall 0.913). Gold note bodies are outside this repository. CI does not score it. |
+| [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) | In-distribution Hall J receipt for `v1.0.0`. Not a held-out 9. Gold note bodies are outside this repository. CI does not score it. |
 | [scripts/](scripts/) | YouTube and X/Twitter video fetchers, and a gate that refuses a note unless the transcript passed and the note analyzes it. `bash scripts/smoke.sh` checks this copy offline. See [scripts/README.md](scripts/README.md). |
 
 How to change this repo, and what shipped: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md).
@@ -275,9 +275,9 @@ YouTube，和 Twitter/X 上的视频。这份 skill 只抓这两处。别的平�
 
 A 路是 Claude Desktop，加上这份 skill。对照集的名字是 `model-consensus-gold-v2`。金标笔记的正文没有放进这个仓库。
 
-`v1.0.0` 标记这份 skill 和这些脚本：Hall 门槛已经按实测通过。公开回执在 [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)。复测时间是 2026-11-05T02:53:29+08:00（Asia/Shanghai）。`overall_pass` 为 true。`skill_hallucinations_per_note` 为 0.0（不超过 0.2，并且低于基线 1.0 的一半）。`skill_core_recall` 为 0.913（21/23；不低于 0.7，并且不低于基线 1.0 减 0.1）。`should_reject` 为 1.0。`gold_sha256` 为 `0eaa5f806d7e6ddc175dc62abfa7851f56b9805748b5b0a8d66268e7afa54dd1`（未变）。R01–R16 没有放宽。
+`v1.0.0` 记下的是一次分布内的 Hall J 实测。回执在 [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)。那些笔记来自这份 skill 已经见过的评测集。要说这份 skill 是 9 分，还得有一份留出集。这份回执不是冲9完成。R01–R16 没有放宽。
 
-`sample_v2` 这一组，`verify_note.py` 按规则 10 份里过了 10 份（拉取请求 #10，`548a96a`）。这 10/10 是机械规则核对，份数和先前披露的一样。Hall J 回执才是这次实测通过。
+`sample_v2` 这一组，`verify_note.py` 按规则 10 份里过了 10 份（拉取请求 #10，`548a96a`）。这 10/10 是机械规则核对，份数和先前披露的一样。它不是留出集上的分数。
 
 带注释的标签 `v1.0.0` 在这一版合进 `main` 之后，打在那一次合并提交上。金标笔记正文留在仓库外。
 
@@ -489,7 +489,7 @@ cookie 和 API key 不放这儿。文档可以写出一个名字，比如 `YTDLP
 | [evals/results/gate-evidence.md](evals/results/gate-evidence.md) | 第 ① 层。CI 会重新生成的夹具通过/拒绝表。 |
 | [evals/results/live/](evals/results/live/) | 第 ② 层。公开网址的回执：一条短的有字幕 YouTube 文稿、一次没有字幕的停下、一条有字幕的 X 文稿，以及更长的那份 YouTube 样本。模板笔记已撤回。 |
 | [evals/results/spotcheck.md](evals/results/spotcheck.md) | 第 ③ 层。记下那些模板笔记已撤回，并读夹具里被拒绝的文件。CI 不打分。不是听音频。 |
-| [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) | 冲9 回执。`v1.0.0` 的 Hall J 实测通过（`overall_pass` true，幻觉 0.0，核心召回 0.913）。金标笔记正文在仓库外。CI 不打分。 |
+| [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) | `v1.0.0` 的分布内 Hall J 回执。不是留出集上的 9 分。金标笔记正文在仓库外。CI 不打分。 |
 | [scripts/](scripts/) | YouTube 和 X / Twitter 视频抓取，以及一道门槛：文稿没过，或者笔记没有把文稿分析成知识，就不许写入。`bash scripts/smoke.sh` 在离线时核对这一份拷贝。见 [scripts/README.md](scripts/README.md)。 |
 
 怎么改这个仓库、发过什么： [CONTRIBUTING.md](CONTRIBUTING.md)，[CHANGELOG.md](CHANGELOG.md)。
