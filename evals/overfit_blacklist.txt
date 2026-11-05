@@ -1,5 +1,6 @@
-# Retired template tokens. One pattern per line. Case-insensitive.
-# scripts/test_no_overfit.py is the only reader. Do not copy these into scripts/.
+# Retired template tokens and eval-set phrases. One pattern per line. Case-insensitive.
+# scripts/test_no_overfit.py scans scripts/ and SKILL.md. Do not copy these into either.
+# Template tokens from withdrawn video-specific notes:
 pothos
 绿萝
 闷根
@@ -7,3 +8,20 @@ elephant
 spaceport
 forward deployed
 FDE
+# Eval-video leakage stripped from the agent-facing skill:
+Robert Moses
+clod
+resend full history
+no memory
+Context 是
+Tool 是
+第一层
+第二层
+第三层
+第四层
+最上层
+gold_sha256
+skill_hallucinations_per_note
+skill_core_recall
+0eaa5f806d7e6ddc175dc62abfa7851f56b9805748b5b0a8d66268e7afa54dd1
+2026-11-05T02:53:29

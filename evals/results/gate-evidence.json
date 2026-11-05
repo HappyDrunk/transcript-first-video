@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-03T08:44:12Z",
+  "generated_at": "2026-11-05T12:11:36Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -186,7 +186,8 @@
       "reasons": [
         "R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi",
         "R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim",
-        "R13 FAIL: 今天立刻动手一步 does not start with a verb"
+        "R13 FAIL: 今天立刻动手一步 does not start with a verb",
+        "R17 FAIL: section 问题与做法 shares 0 content tokens with its quotes; need 3; section 完整怎么做 shares 0 content tokens with its quotes; need 3; section 翻车或别用 shares 0 content tokens with its quotes; need 3; section 今天立刻动手一步 shares 0 content tokens with its quotes; need 3"
       ],
       "naive_would_deposit": true,
       "matched": true

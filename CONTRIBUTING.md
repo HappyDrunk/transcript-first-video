@@ -14,7 +14,7 @@ Offline, from the repo root:
 bash scripts/smoke.sh
 ```
 
-That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py` and `scripts/test_no_overfit.py`, settles a fixture, regenerates fixture evidence, and runs `scripts/verify_report.py`.
+That creates `.venv` when it is missing, installs `requirements.txt` (yt-dlp only), runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py`, and `scripts/test_coverage_check.py`, settles a fixture, regenerates fixture evidence, and runs `scripts/verify_report.py`. Coverage gate C is deterministic. It is not a 9/10 grader and it does not call a model.
 
 `bash scripts/smoke.sh --live` also tries `https://www.youtube.com/watch?v=jNQXAC9IVRw` ("Me at the zoo"). ASR stays off on that run.
 

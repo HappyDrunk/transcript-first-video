@@ -6,6 +6,8 @@ Sections 翻车或别用 and 今天立刻动手一步 may be one line, `本节�
 
 A note that fails verify is 未交 (not deposited).
 
+Coverage gate C is not one of these rules and does not loosen them. It lives in `scripts/coverage_check.py`. A long note can pass R01–R16 and still fail C. The human bar is 9/10 detail depth and 9/10 summary completeness. C does not score that bar and does not call a model. Hall thresholds are unchanged.
+
 | Rule | Refusal |
 | :--- | :--- |
 | R01 | The transcript is missing or fails the quality gate, including an essay about a failed transcription. |
@@ -24,6 +26,7 @@ A note that fails verify is 未交 (not deposited).
 | R14 | More than three words from `platform_title` are absent from the transcript. |
 | R15 | `status` is `failed`, `not_finished`, `quality_gate_failed`, or `no-extractable-content` while `note.md` is still being checked. |
 | R16 | A mid-sentence proper noun in the prose is absent from that section's supporting quotes (tolerance 0). No cross-lingual lexical-overlap gate. |
+| R17 | Same-script prose shares fewer than three content tokens with that section's own quotes (a Latin word of at least four letters, or a consecutive CJK pair), or a number in the prose is absent from those quotes. A quote taken from another section fails. Chinese prose on a Latin quote skips the token floor and still checks numbers. |
 
 R04 folds speech by joining cue texts in order with a single space. Whitespace is collapsed and case is folded. A leading `[mm:ss]` or `[hh:mm:ss]` on a cue is not speech. The blockquote has to be an exact substring of that string, at least 40 characters. A paraphrase, a skipped cue, or a reordering is not a quote.
 
