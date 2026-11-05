@@ -31,7 +31,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import knowledge_note  # noqa: E402
-import verify_rules  # noqa: E402
+try:
+    import verify_rules  # noqa: E402
+except ModuleNotFoundError as exc:
+    if exc.name != "verify_rules":
+        raise
+    print("missing required script file: scripts/verify_rules.py", file=sys.stderr)
+    raise SystemExit(2) from exc
 
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 
