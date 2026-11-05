@@ -1,1 +1,2 @@
 /evals/fixtures/red6b/* -text
+*.sh text eol=lf

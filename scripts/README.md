@@ -6,6 +6,12 @@ Run from the repo root. A host writes `transcript.txt`, `segments.json`, `chunks
 
 ## Smoke
 
+After installing the whole repository directory, check that its scripts and references are present:
+
+```bash
+python3 scripts/install_check.py
+```
+
 Offline:
 
 ```bash

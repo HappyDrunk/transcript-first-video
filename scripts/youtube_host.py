@@ -70,6 +70,41 @@ _LABEL_LANG = {
 }
 
 
+def skill_version() -> str:
+    """Return this install's commit id, or its VERSION for a source copy."""
+    root = Path(__file__).resolve().parents[1]
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        ).stdout.strip()
+        if Path(top).resolve() != root.resolve():
+            raise subprocess.CalledProcessError(1, "git rev-parse --show-toplevel")
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        )
+        commit = result.stdout.strip()
+        if commit:
+            return commit
+    except (OSError, subprocess.SubprocessError):
+        pass
+    version_file = root / "VERSION"
+    if version_file.is_file():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if version:
+            return version
+    return "unknown"
+
+
 class HostError(Exception):
     pass
 
@@ -769,6 +804,7 @@ def finalize_job(
     status_path = job_dir / "status.json"
     base = {
         "schema_version": 1,
+        "skill_version": skill_version(),
         "job_id": job_id,
         "source_url": source,
         "finished": False,
@@ -874,6 +910,7 @@ def write_refusal(
     clear_deposit(job_dir)
     payload = {
         "schema_version": 1,
+        "skill_version": skill_version(),
         "job_id": job_id,
         "source_url": source,
         "status": "not_finished",

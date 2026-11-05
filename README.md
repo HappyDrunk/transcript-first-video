@@ -18,11 +18,14 @@ On install, ask for a language once, before any fetch. Save one line in `languag
 Install this skill: https://github.com/HappyDrunk/transcript-first-video
 ```
 
-If the agent cannot install from a link, clone the folder and leave the name as it is:
+Install the whole repository directory. Do not copy only `SKILL.md` or a subset of `scripts/`; the skill depends on the scripts and reference files beside it. If the agent cannot install from a link, clone the repository and leave the folder name as it is:
 
 ```bash
 git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
+python3 ~/.agents/skills/transcript-first-video/scripts/install_check.py
 ```
+
+The check prints the installed commit (or the `VERSION` for a source copy) and fails with a list of missing files when the installation is incomplete.
 
 Fetch one captioned URL.
 

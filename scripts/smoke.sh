@@ -22,7 +22,9 @@ fi
 source .venv/bin/activate
 python -m pip install --disable-pip-version-check -r requirements.txt
 
+python scripts/install_check.py
 python scripts/test_gate.py
+python scripts/test_regressions.py RegressionTests.test_red12_partial_install_reports_missing_script_file
 python scripts/test_no_overfit.py
 python scripts/test_claim_ground_check.py
 python scripts/test_coverage_check.py
