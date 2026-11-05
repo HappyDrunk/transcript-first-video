@@ -6,6 +6,8 @@ Sections 翻车或别用 and 今天立刻动手一步 may be one line, `本节�
 
 A note that fails verify is 未交 (not deposited).
 
+Coverage gate C is not one of these rules and does not loosen them. It lives in `scripts/coverage_check.py`. A long note can pass R01–R16 and still fail C. The human bar is 9/10 detail depth and 9/10 summary completeness. C does not score that bar and does not call a model. Hall thresholds are unchanged.
+
 | Rule | Refusal |
 | :--- | :--- |
 | R01 | The transcript is missing or fails the quality gate, including an essay about a failed transcription. |

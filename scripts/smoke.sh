@@ -25,6 +25,7 @@ python -m pip install --disable-pip-version-check -r requirements.txt
 python scripts/test_gate.py
 python scripts/test_no_overfit.py
 python scripts/test_claim_ground_check.py
+python scripts/test_coverage_check.py
 
 python scripts/youtube_host.py \
   --settle-transcript evals/fixtures/usable_en_transcript.txt \

@@ -70,11 +70,21 @@ A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machin
      That sets status to no-extractable-content, deletes note.md, and leaves the transcript.
      Tell the user there was nothing to extract. Stop.
 6. python3 scripts/verify_note.py --job <dir>
-     If it refuses, the note is 未交 (not deposited). Edit note.md from the reasons. At most 2 repair rounds.
-7. If round 2 still refuses
-     Tell the user which reason failed. Treat as 未交. Do not deposit the note. Do not deliver.
-8. When you deliver to Feishu or chat
-     Do this only after Language preference is set and verify has allowed the note.
+     If it refuses, the note is 未交 (not deposited). Edit note.md from the reasons.
+     Do not skip the next step, and do not deliver.
+7. python3 scripts/coverage_check.py --job <dir>
+     This always runs after verify, before finished and before delivery.
+     It is not a flag and not opt-in.
+     A video longer than 5 minutes must pass C01–C03. At or under 5 minutes those
+     three are skipped, and the command still runs.
+     FAIL is 未交. verify and coverage share at most 2 repair rounds.
+     One round is an edit, then both commands again.
+8. If round 2 still refuses
+     Tell the user which Rxx or Cxx line failed. Treat as 未交.
+     Do not set finished. Do not deposit the note. Do not deliver.
+9. When you deliver to Feishu or chat
+     Do this only after Language preference is set, verify has allowed the note,
+     and coverage_check.py has allowed it.
      If the choice is unset, ask first. Do not send.
      Build that body from the local note. Do not rewrite note.md to match it.
      Strip YAML frontmatter. Never paste it.
@@ -82,11 +92,14 @@ A Feishu or chat upload strips YAML frontmatter. Do not paste Obsidian or machin
      英文: English prose only. Leave transcript quote blocks in the local note.
      中英文对照: prose plus that section's contiguous original-language quotes.
      Keep the opening heading ## 先记住一句话. Never 课前.
-     A long 通读 still has to carry the main method-bearing arcs in that body.
+     Always run, before send:
+       python3 scripts/coverage_check.py --job <dir> --delivery <body>
+     C04 FAIL is 未交. It uses the same 2 repair rounds. Do not send.
      A folder of note.md files is a complete sink. That file stays the verify artifact.
+     finished stays false until verify and coverage have both allowed the note.
 ```
 
-`transcript_ready` means the transcript passed the gate. `finished` stays false until you have a note that verify allows. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
+`transcript_ready` means the transcript passed the gate. `finished` stays false until verify and coverage have both allowed the note. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
 
 Commands and env var names: `scripts/README.md`.
 
@@ -153,6 +166,24 @@ These are required. They do not replace Hard gates A and B, and they do not loos
 1. The note opens with `## 先记住一句话`. Never `## 课前先记住一句话`. Never the prefix `课前` on that heading or any other heading. The four verify sections still follow, in that order. This heading does not replace them. R03 does not score it.
 2. A long-form 通读 covers the video's main transcript arcs. A thin stub that only passes `verify_note.py` or `claim_ground_check.py` on a few facts is not done when method-bearing arcs are missing. Chit-chat, a sponsor read, and banter can be one line. If the analyzer times out, retry it or hand-write from the full transcript until those arcs are in the note. Do not invent an arc the transcript does not contain. Do not deposit or deliver the stub.
 
+## Coverage gate C
+
+The human bar for a long 通读 is **9/10 on detail depth and 9/10 on summary completeness**. Both count. Four grounded claims and a short Feishu body are below that bar even when every written sentence is faithful. Spotcheck stays a human reading. This gate does not emit a 9/10 score and does not call a model.
+
+`scripts/coverage_check.py` is the deterministic floor under that bar. It always runs after `verify_note.py` and before `finished` or delivery. It is not opt-in. R01–R16 and the Hall thresholds stay as they are.
+
+On a video longer than 5 minutes (`duration_seconds` > 300, or no clock and two or more `chunks/NN.txt` files):
+
+- **C01.** Inventory is missing. Each `chunks/NN.txt` needs `chunks/NN.notes.md`, or the job has one `inventory.md` of `[mm:ss] excerpt | restatement` lines.
+- **C02.** Quotes hit fewer than 3 duration quartiles (0–25, 25–50, 50–75, 75–100). That is the spread check. A note parked in one slice did not read the video.
+- **C03.** Fewer than 9/10 of the inventory lines show up in the note, and never fewer than 3. `need = max(3, ceil(0.9 × lines))`. A line counts on an exact whole-second stamp or on 40 contiguous characters shared with the excerpt. That is the detail-depth floor. Banter may be one inventory line; that line still has to be represented. It does not excuse a missing method line.
+
+At or under 5 minutes, C01–C03 are skipped. The command still runs. `verify_note.py` still requires the section quotes. R12 still treats exactly 300 seconds as long; C uses a strict greater-than 300.
+
+**C04** runs whenever a Feishu or chat body is about to be sent (`--delivery`). Delivery prose letters (CJK plus Latin, YAML and quote lines removed) under 0.9× the same count in `note.md` fail. That is the summary-completeness floor. A full-arc body passes. A thin stub fails. Write the local prose in the delivery language so the comparison is the same text with quotes removed, not a short recap of a longer note.
+
+FAIL lines look like `C03 FAIL: ...`. Exit is non-zero. FAIL means 未交. Repair stays inside the two rounds shared with verify.
+
 ## Analysis layer
 
 The local `note.md` keeps the four sections 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, with the quotes R01–R16 check. `## 先记住一句话` comes first. The sentence under it has to be supportable by those quotes. It is not a new claim with no quote.
@@ -176,7 +207,10 @@ link
   → quality gate
        pass → note.scaffold.md; the agent reads chunks and writes note.md
        fail → upgrade model once (e.g. small→medium) OR stop with a reason
-  → verify_note.py --job, at most 2 repairs
+  → verify_note.py --job
+  → coverage_check.py --job always, before finished
+  → coverage_check.py --job --delivery before Feishu or chat
+  → verify and coverage share at most 2 repair rounds
   → all sections 本节不适用 → no-extractable-content, delete note.md
   → no usable text → say not finished; do not pretend
 ```
@@ -263,6 +297,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `scripts/knowledge_note.py` — the finished-note shape check, `本节不适用` handling, and `render_scaffold`. It does not write the analysis.
 - `scripts/verify_note.py` — R01–R16. `--job <dir>` reads the host directory. All-N/A sets `no-extractable-content` and deletes `note.md`. A failed verify means 未交.
 - `scripts/claim_ground_check.py` — optional local helper. It counts sentences whose numbers, proper nouns, or long phrases are absent from that section's quotes. Deterministic. No language model. Not a public CI gate and not an LLM judge. It does not replace R01–R16.
+- `scripts/coverage_check.py` — Coverage gate C. Always run after verify, before finished or delivery. Deterministic. No language model. Long videos fail closed on missing inventory, fewer than 3 quartiles, or under 9/10 of inventory lines. `--delivery` fails a body under 9/10 of the local prose letter count. It does not replace R01–R16 and it does not score a human 9/10.
 - `references/rules.md` — what each rule refuses.
 - `scripts/youtube_host.py` — YouTube. Captions first, optional ASR, otherwise not finished. A pass writes the timestamped transcript, `segments.json`, `chunks/`, and `note.scaffold.md`.
 - `scripts/x_host.py` — Twitter/X video. Same gate and the same deposit. Captions if present, otherwise optional ASR. Post text is not a transcript.
@@ -271,7 +306,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `requirements-asr.txt` — optional whisper install. Not the default. `ASR_BACKEND` stays off until set.
 - `references/pitfalls.md` — production mistakes distilled from real failures (sanitized). Read when debugging “looks done but isn’t” or Chinese ASR issues.
 - `references/note-examples.md` — skeletons for two good notes and three bad notes. The author fills the bodies. Do not invent a video for them.
-- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py` (counts API on synthetic notes, not a note judge), `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`. `scripts/claim_ground_check.py` is not a CI gate.
+- `evals/evals.json` — prompts for an agent or a person. CI does not run these prompts. CI runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py` (counts API on synthetic notes, not a note judge), `scripts/test_coverage_check.py` (synthetic jobs for gate C, not a 9/10 grader), `scripts/run_evidence.py --skip-live`, and `scripts/verify_report.py`. `scripts/claim_ground_check.py` is not a CI gate. Coverage C is deterministic and is on that CI path. Spotcheck stays human.
 - `evals/results/gate-evidence.md` — layer ①, the fixture table CI checks.
 - `evals/results/live/` — layer ②, committed public-URL receipts (captioned YouTube, no-caption stop, captioned X). The template notes were withdrawn.
 - `evals/results/spotcheck.md` — layer ③. It records that withdrawal and still reads the fixture refusals. CI does not score it. It is not an audio check.

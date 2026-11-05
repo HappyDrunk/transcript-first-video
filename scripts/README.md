@@ -12,7 +12,7 @@ Offline:
 bash scripts/smoke.sh
 ```
 
-This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, and `scripts/test_claim_ground_check.py`, settles `evals/fixtures/usable_en_transcript.txt`, regenerates fixture evidence with `run_evidence.py --skip-live`, and runs `scripts/verify_report.py`. ASR stays off. No language model is called. `test_claim_ground_check.py` checks a counts API on synthetic fixture notes. It does not score gold notes.
+This creates `.venv` if it is missing, installs `requirements.txt` (yt-dlp), runs `scripts/test_gate.py`, `scripts/test_no_overfit.py`, `scripts/test_claim_ground_check.py`, and `scripts/test_coverage_check.py`, settles `evals/fixtures/usable_en_transcript.txt`, regenerates fixture evidence with `run_evidence.py --skip-live`, and runs `scripts/verify_report.py`. ASR stays off. No language model is called. `test_claim_ground_check.py` checks a counts API on synthetic fixture notes. It does not score gold notes. `test_coverage_check.py` checks gate C on synthetic jobs. It does not score a human 9/10.
 
 With a network, the same script also tries a short public captioned video ("Me at the zoo", `jNQXAC9IVRw`):
 
@@ -65,6 +65,16 @@ python3 scripts/test_claim_ground_check.py
 
 `claim_ground_check.py` is an optional local helper. It counts prose sentences whose numbers, proper nouns, or long same-script phrases are absent from that section's blockquotes. Paths use `pathlib`. It writes only when you pass `--out`, and only to that path. It does not call a language model. Public CI runs `test_claim_ground_check.py`, which checks that counts API on synthetic fixture notes and does not score gold. CI does not run `claim_ground_check.py` as a gate or as an LLM judge. R01–R16 stay in `verify_note.py`.
 
+## Coverage gate C
+
+```bash
+python3 scripts/coverage_check.py --job artifacts/youtube_KwhgfwOSToQ
+python3 scripts/coverage_check.py --job artifacts/youtube_KwhgfwOSToQ --delivery path/to/body.md
+python3 scripts/test_coverage_check.py
+```
+
+Grounded is not covered. The human bar for a long 通读 is 9/10 detail depth and 9/10 summary completeness. Both count. This script does not score that bar and does not call a model. It always runs after `verify_note.py` and before finished or a Feishu/chat send. On a video longer than 5 minutes it refuses a missing inventory (C01), quotes in fewer than 3 duration quartiles (C02), or fewer than 9/10 of the inventory lines (C03, at least 3). `--delivery` refuses a body whose CJK and Latin letters, after YAML and quote lines are removed, are under 0.9× `note.md` (C04). At or under 5 minutes, C01–C03 are skipped and the command still runs. Exit 0 is allowed. Exit 1 is FAIL (`Cxx FAIL: ...`). Exit 2 is usage. A thin grounded stub fails. A full-arc note passes. R01–R16 are unchanged. Spotcheck stays human.
+
 ## Environment variables
 
 Names only. Do not commit values.
@@ -111,6 +121,7 @@ Regenerate the checked-in pass/fail record. `--skip-live` skips the YouTube fetc
 python3 scripts/test_gate.py
 python3 scripts/test_no_overfit.py
 python3 scripts/test_claim_ground_check.py
+python3 scripts/test_coverage_check.py
 python3 scripts/run_evidence.py
 python3 scripts/verify_report.py
 python3 scripts/run_evidence.py --skip-live

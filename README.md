@@ -167,6 +167,8 @@ speech-to-text came back nonsense
 
 **Success, in one line:** the local note analyzes the transcript into the four knowledge sections, names the transcript file, and quotes that file in each section. A Feishu or chat body in 中文 is Chinese prose only: no English quote blocks, and no YAML frontmatter.
 
+A grounded note can still be a thin stub. The human bar for a long 通读 is 9/10 on detail depth and 9/10 on summary completeness. Both count. `scripts/coverage_check.py` always runs after verify and before finished or delivery. It is not optional. It does not call a model and it does not emit that 9/10 score. On a video longer than 5 minutes it refuses a missing inventory, quotes that miss three duration quartiles, or a note that carries under 9/10 of the inventory lines. A Feishu or chat body under 9/10 of the local prose letter count fails the same check (`--delivery`). Passing `verify_note.py` does not prove the arcs were covered. Videos at or under 5 minutes still run the command and skip those arc checks. Spotcheck stays a human reading.
+
 **Failure, in one line:** it says not finished, names the next step (queue it, try a stronger model once, or stop), and leaves no essay that pretends the video was watched.
 
 A note from the title alone is a different request. It waits until you ask for that shortcut, and the note itself says the video was not watched. A status such as `needs-transcript` or `video-pending` can sit on the item while it waits. "Fully understood" cannot sit beside it.
@@ -412,6 +414,8 @@ bash scripts/smoke.sh --live
 ```
 
 **成功就一句话：** 本地笔记把文稿分析成那四节知识，写明了文稿文件，并且每一节都引用了文稿。飞书或聊天里的中文正文只有中文，不附英文引文块，也不附 YAML 前置字段。
+
+每句都落在引文上，笔记仍可能只是薄摘。长文稿通读的人用标准是：细节深度九分，概括完整也九分。两样都要。`scripts/coverage_check.py` 在核对通过之后、标完成或交付之前一定会跑，不是可选项。它不打九分，也不调用模型。超过五分钟的视频，缺清单、引文盖不满三个时间四分位、或笔记里不到九成清单行，都会被拒绝。飞书或聊天正文的字数不到本地正文的九成，同一次检查拒绝（`--delivery`）。`verify_note.py` 通过，不等于这些段落已经覆盖。五分钟及以内仍会跑这条命令，只是跳过上面的弧线检查。抽查看的仍是人。
 
 **失败就一句话：** 它说没看完，写下一步（排队、更强的模型试一次、或者停），不留一篇假装看过的作文。
 
