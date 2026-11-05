@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "job_id": "youtube_LVEfFyijQ2c",
+  "source_url": "https://www.youtube.com/watch?v=LVEfFyijQ2c",
+  "finished": false,
+  "acquisition": "yt-dlp",
+  "caption_language": "en",
+  "caption_kind": "manual",
+  "caption_trust": null,
+  "expected_lang": null,
+  "gate_lang": "en",
+  "transcript": "artifacts/youtube_LVEfFyijQ2c/transcript.txt",
+  "segments": "artifacts/youtube_LVEfFyijQ2c/segments.json",
+  "chunks": "artifacts/youtube_LVEfFyijQ2c/chunks",
+  "chunk_count": 1,
+  "duration_seconds": 151.359,
+  "note": null,
+  "scaffold": "artifacts/youtube_LVEfFyijQ2c/note.scaffold.md",
+  "gate": {
+    "passed": true,
+    "reasons": [],
+    "metrics": {
+      "speech_chars": 2028,
+      "cjk": 0,
+      "latin": 2028,
+      "kana": 0,
+      "hangul": 0,
+      "cjk_ratio": 0.0,
+      "latin_ratio": 1.0,
+      "vowel_ratio": 0.3915,
+      "latin_words": 466,
+      "unique_word_ratio": 0.5,
+      "expected_lang": "en",
+      "confidence": null
+    }
+  },
+  "verifier": null,
+  "attempts": [
+    {
+      "source": "yt-dlp",
+      "ok": true,
+      "detail": "en manual"
+    }
+  ],
+  "mirror_host": null,
+  "status": "transcript_ready",
+  "reason": "transcript passed the quality gate; note.scaffold.md is a blank form, not a finished knowledge note",
+  "next_step": "write-note"
+}
