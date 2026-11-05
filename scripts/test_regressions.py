@@ -120,14 +120,49 @@ class RegressionTests(unittest.TestCase):
             chunks.mkdir(parents=True)
             for index in range(1, 5):
                 (chunks / f"{index:02d}.txt").write_text(
-                    f"unstamped section {index} with distinct source material\n", encoding="utf-8"
+                    f"Write the observation for stage {index} and compare it against the expected result. "
+                    f"The reviewer notes whether stage {index} reduces delays or adds handoffs.\n",
+                    encoding="utf-8",
                 )
                 (chunks / f"{index:02d}.notes.md").write_text(
-                    f"- source item {index} | faithful summary of source item {index}\n", encoding="utf-8"
+                    f"- [00:0{index}] Write the observation for stage {index} and compare it against the expected result. "
+                    f"| Stage {index} records the observation and the comparison.\n",
+                    encoding="utf-8",
                 )
             (job / "note.md").write_text(
-                "## honest note\n\nA faithful summary covers the opening, middle, and ending.\n"
-                + "\n".join(f"> source item {index} with faithful details" for index in range(1, 5)),
+                "---\n"
+                "title: \"red4\"\n"
+                "source_url: \"fixture\"\n"
+                "video_id: \"red4\"\n"
+                "acquisition: \"fixture\"\n"
+                "gate_passed: true\n"
+                "transcript_path: \"transcript.txt\"\n"
+                "quoted_window: |-\n"
+                "  Write the observation for stage 1 and compare it against the expected result.\n"
+                "---\n\n"
+                "Transcript: `transcript.txt`.\n\n"
+                "## \u95ee\u9898\u4e0e\u505a\u6cd5\n\n"
+                "The reviewer checks whether the first stage reduces waiting or creates extra handoffs. "
+                "This records an outcome the team can compare before changing its routine.\n\n"
+                "> The reviewer notes whether stage 1 reduces delays or adds handoffs.\n\n"
+                "## \u5b8c\u6574\u600e\u4e48\u505a\n\n"
+                "The reviewer checks the stage for delays and added handoffs. "
+                "This keeps the team focused on the same outcome before it changes the broader workflow. "
+                "The observation also shows whether the adjustment helps the next decision.\n\n"
+                "> The reviewer notes whether stage 2 reduces delays or adds handoffs.\n\n"
+                "## \u7ffb\u8f66\u6216\u522b\u7528\n\n"
+                "The reviewer checks the stage for delays and extra handoffs. "
+                "This keeps the evidence tied to the work instead of an assumption. "
+                "The team can discuss the outcome before it changes another step.\n\n"
+                "> The reviewer notes whether stage 3 reduces delays or adds handoffs.\n\n"
+                "## \u4eca\u5929\u7acb\u523b\u52a8\u624b\u4e00\u6b65\n\n"
+                "Write down the observation and compare it with the expected result before choosing whether to keep the change. "
+                "This gives the team a clear reason for its next step.\n\n"
+                + "\n".join(
+                    f"> Write the observation for stage {index} and compare it against the expected result. "
+                    f"The reviewer notes whether stage {index} reduces delays or adds handoffs."
+                    for index in range(1, 5)
+                ),
                 encoding="utf-8",
             )
             result = coverage_check.check_job(job)
