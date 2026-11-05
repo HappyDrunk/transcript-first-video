@@ -1,40 +1,86 @@
 # transcript-first-video
 
-[English](#english) · [中文](#中文)
+[English](#transcript-first-video) · [中文](#中文)
 
-# English
+[![gate](https://img.shields.io/github/actions/workflow/status/HappyDrunk/transcript-first-video/gate.yml?branch=main&label=gate)](https://github.com/HappyDrunk/transcript-first-video/actions/workflows/gate.yml)
+[![MIT](https://img.shields.io/github/license/HappyDrunk/transcript-first-video)](LICENSE)
+[![tag](https://img.shields.io/github/v/tag/HappyDrunk/transcript-first-video?label=tag)](https://github.com/HappyDrunk/transcript-first-video/tags)
 
-YouTube and Twitter/X video only. Other sites are not fetched. This is a transcript-first gate, not a summarizer. The scripts fetch and check. You write the note.
+YouTube and X/Twitter video only, read from the transcript. The scripts fetch and check. You write the note.
 
-A finished note needs both bars. (A) The spoken words are written down and pass the quality gate. (B) The local `note.md` analyzes that transcript. No usable transcript means not finished. A title, a blurb, or a post is not a watch. The gate does not listen to the audio.
+The note waits until the spoken words are written down and pass a quality check. A title, a blurb, or the post beside the link is not a watch. The gate reads the transcript text. It does not listen to the audio.
 
-## Install
+## Quickstart
 
-Ask language once, before any fetch. The choices are `中文`, `英文`, and `中英文对照`. Save one line in `language.txt` beside the installed `SKILL.md`. If it is missing or not one of those three, ask. Do not assume `中英文对照`.
+On install, ask for a language once, before any fetch. Save one line in `language.txt` beside the installed `SKILL.md`: `中文`, `英文`, or `中英文对照`. If that folder is not writable, keep the same line in the host project. If the file is missing or not one of those three, ask. Do not assume `中英文对照`. Do not commit `language.txt`.
 
 ```text
 Install this skill: https://github.com/HappyDrunk/transcript-first-video
 ```
 
-Or clone the folder and leave the name as it is:
+If the agent cannot install from a link, clone the folder and leave the name as it is:
 
 ```bash
 git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
 ```
 
-The full rule is [Language preference](SKILL.md#language-preference) in [SKILL.md](SKILL.md). If this page and that file disagree, follow the file.
+Fetch one captioned URL. This writes a transcript and a blank scaffold. You write the finished note.
 
-## Note shape
+```bash
+pip install -r requirements.txt
+python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
+```
 
-Open with `## 先记住一句话`. Then four sections, in order: 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步. Never `课前`.
+That URL is "Me at the zoo" (`jNQXAC9IVRw`): short, public, and captioned. `ASR_BACKEND` stays off until you set it. No captions means the job stops unfinished. An X video uses the same gate: `python3 scripts/x_host.py "<status url>" --out artifacts`.
 
-The local `note.md` keeps YAML frontmatter and the quotes `verify_note.py` checks. Feishu or chat delivery strips that frontmatter.
+In chat, after install:
 
-Chinese delivery prose is **小白能懂** by default. Say 为什么, 是什么, and 好处 in plain words. A Latin proper noun from the quote may stay. Do not stack jargon in headings or in the body. Do not add a fact the local note does not already ground. English quotes stay in the local note when the language is `中文`. `英文` is English prose only. `中英文对照` adds contiguous original-language quotes under the sections. This is not a second install question.
+```text
+Use transcript-first-video on this video, then write the note: <url>
+```
+
+```mermaid
+flowchart LR
+  A[link] --> B[transcript] --> C[note] --> D[verify] --> E[coverage]
+```
+
+## Contents
+
+- [Note](#note)
+- [Read-feel knobs](#read-feel-knobs)
+- [Checks](#checks)
+- [Development](#development)
+- [Further reading](#further-reading)
+- [License](#license)
+- [中文](#中文)
+
+## Note
+
+Open with `## 先记住一句话`, then four sections, in this order. The opening heading is not `课前`.
+
+```markdown
+## 先记住一句话
+
+## 问题与做法
+
+## 完整怎么做
+
+## 翻车或别用
+
+## 今天立刻动手一步
+```
+
+`verify_note.py` checks this shape against the transcript. 翻车或别用 and 今天立刻动手一步 may be one line, `本节不适用：` plus a reason, when the speech has nothing for that part. The first two sections stay filled. If every section is that line, the check deletes `note.md`.
+
+The local `note.md` keeps the quotes. Chinese delivery prose defaults to **小白能懂**: plain words for 为什么, 是什么, and 好处. A Latin proper noun from the quote may stay. Every delivered fact has to already be grounded in the local note. `中文` and `英文` leave the quote blocks in `note.md`; the delivered body is prose in that one language. `中英文对照` adds the original-language quotes under the sections. That is the language file above, not a second question.
+
+Feishu is optional and lives in your own project. This skill does not call Feishu. A chat or Feishu delivery strips YAML frontmatter.
+
+A filled-in example: [references/note-examples.md](references/note-examples.md).
 
 ## Read-feel knobs
 
-Constants are the skeleton and the hard gates: the opening heading, the four sections, R01–R17, and Coverage C. Variables are read-feel. They are not an install wizard. Set them only when someone asks. They do not loosen faithfulness.
+The opening heading, the four sections, R01–R17, and Coverage C stay fixed. These knobs change read-feel only. They are not an install wizard. Set one only when someone asks. Changing a knob leaves R01–R17 and Coverage C in force. Delivery wording stays in the delivered body and does not rewrite `note.md`.
 
 | Knob | What it changes |
 | :--- | :--- |
@@ -44,61 +90,95 @@ Constants are the skeleton and the hard gates: the opening heading, the four sec
 | 类比 | An analogy only when the quote already supports it |
 | 专名 | A Latin proper noun stays as the quote has it, unless you are told to gloss it |
 
-## Run
+## Checks
 
 ```bash
-pip install -r requirements.txt
-python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
-python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_<id>
 python3 scripts/coverage_check.py --job artifacts/youtube_<id>
 ```
 
-The host writes a scaffold, not the analysis. `verify_note.py` is R01–R17. `coverage_check.py` runs after that, before finished or delivery. On a video longer than 5 minutes it checks inventory, quartiles, and inventory hit-rate. `--delivery` checks that the Feishu or chat body is not a thin stub. `ASR_BACKEND` is off until you set it. Offline check: `bash scripts/smoke.sh`. More commands: [scripts/README.md](scripts/README.md).
+`verify_note.py` is R01–R17. `coverage_check.py` runs after it, before the note is finished and before delivery. On a video longer than 5 minutes it checks the chunk inventory, quotes in at least three quartile stretches, and inventory coverage. The thresholds are in [scripts/README.md](scripts/README.md). At or under 5 minutes the command still runs. `--delivery` checks the Feishu or chat body. What each rule refuses: [references/rules.md](references/rules.md).
 
-## Evidence
+## Development
 
-CI scores the fixture table, not a model grade of the summary: [evals/results/gate-evidence.md](evals/results/gate-evidence.md). Public-URL receipts, with the old template notes withdrawn: [evals/results/live/](evals/results/live/). A human reading of the refusals: [evals/results/spotcheck.md](evals/results/spotcheck.md). The 1.0.0 Hall J receipt is [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md). That run used in-distribution notes. It is not a held-out 9.
+Offline, from a clone of this repo:
 
-How to change this repo: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md).
+```bash
+bash scripts/smoke.sh
+```
+
+`bash scripts/smoke.sh --live` also tries the short captioned URL above. It does not turn ASR on. Changes to this repo: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Further reading
+
+- [SKILL.md](SKILL.md) — the rules the agent loads. If this page and that file disagree, follow the file.
+- [scripts/README.md](scripts/README.md) — hosts, Coverage C, and environment-variable names.
+- [references/rules.md](references/rules.md) — what R01–R17 refuse.
+- [references/pitfalls.md](references/pitfalls.md) — a note that looks finished and is not.
+- [evals/results/gate-evidence.md](evals/results/gate-evidence.md) — the fixture table CI scores. Not a grade of the summary.
+- [evals/results/live/](evals/results/live/) — public-URL receipts. The old template notes were withdrawn.
+- [evals/results/spotcheck.md](evals/results/spotcheck.md) — a human reading. CI does not score it.
+- [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) — the in-distribution receipt for the 1.0.0 measure. Not a held-out result.
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
-MIT. Copyright (c) 2026 HappyDrunk. Full text: [LICENSE](LICENSE).
+[MIT](LICENSE). Copyright (c) 2026 HappyDrunk.
 
-# 中文
+## 中文
 
-只抓 YouTube 和 Twitter/X 的视频。别的网站不抓。这是一道「先有文稿才许写笔记」的门槛，不是摘要器。脚本负责抓取和核对。笔记由你来写。
+只抓 YouTube 和 Twitter/X 的视频。脚本负责抓取和核对。笔记由你来写。
 
-写完要过两道。（A）嘴里的话落成文字，并且过了质量检查。（B）本地 `note.md` 分析这段文稿。没有能用的文稿，就是没看完。标题、简介、帖子都不算看过。门槛不听音频。
+笔记要等嘴里的话落成文字，并且通过质量检查。标题、简介、链接旁边的帖子，都不算看过。门槛读的是文稿，不听音频。
 
-## 安装
+### 安装，然后跑一条
 
-抓视频之前，先问一次语言。选项是 `中文`、`英文`、`中英文对照`。在装好的 `SKILL.md` 旁边，把答案写成一行 `language.txt`。文件没有，或者不是这三样，就问。不要默认中英文对照。
+安装时先问一次语言，再抓视频。在装好的 `SKILL.md` 旁边，把一行写进 `language.txt`：`中文`、`英文`，或 `中英文对照`。那个目录不能写时，把同一行留在你自己的项目里。文件没有，或不是这三样，就问。不要默认中英文对照。不要提交 `language.txt`。
 
 ```text
 帮我安装这个skill：https://github.com/HappyDrunk/transcript-first-video
 ```
 
-或者自己克隆，文件夹名留着：
+不能从链接安装时，自己克隆，文件夹名留着：
 
 ```bash
 git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
 ```
 
-完整规矩在 [SKILL.md](SKILL.md) 的 [Language preference](SKILL.md#language-preference)。这页和那个文件要是说得不一样，以那个文件为准。
+一条有字幕的短视频。命令写下文稿和空白脚手架。写完的笔记由你来写。
 
-## 笔记长什么样
+```bash
+pip install -r requirements.txt
+python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
+```
 
-先写 `## 先记住一句话`。然后四节，按这个顺序：问题与做法、完整怎么做、翻车或别用、今天立刻动手一步。不要写 `课前`。
+这是 "Me at the zoo"（`jNQXAC9IVRw`），短，公开，有字幕。`ASR_BACKEND` 不设置就是关着。没有字幕，任务停在没看完。X 视频走同一道门槛：`python3 scripts/x_host.py "<状态链接>" --out artifacts`。
 
-本地 `note.md` 留着 YAML 前置字段，和 `verify_note.py` 要核对的引文。交给飞书或聊天时，去掉前置字段。
+装好之后，在对话里：
 
-中文交付正文默认是 **小白能懂**。用白话写为什么、是什么、好处。引文里的拉丁专名可以留着。标题和正文不要堆术语。不要加本地笔记没有落住的事实。语言是 `中文` 时，英文引文留在本地笔记里。`英文` 只交付英文正文。`中英文对照` 在各节下面加上连续的原文引文。这不是第二道安装提问。
+```text
+用 transcript-first-video，把这个视频看完再写笔记：<url>
+```
 
-## 读感旋钮
+```text
+链接 → 文稿 → 笔记 → verify → coverage
+```
 
-常量是骨架和硬门槛：开头标题、四节、R01–R17、Coverage C。变量是读感。安装时不问。只有人开口要改，才动。它们不放宽忠实度。
+### 笔记
+
+先写 `## 先记住一句话`，再按顺序写四节：问题与做法、完整怎么做、翻车或别用、今天立刻动手一步。开头不要用 `课前`。
+
+`verify_note.py` 按文稿核对这个形状。翻车或别用、今天立刻动手一步，在口播里没有那一块时，可以写一行 `本节不适用：` 加原因。前两节要写下内容。四节都是这一行时，核对会删掉 `note.md`。
+
+本地 `note.md` 留着引文。中文交付默认 **小白能懂**：用白话写为什么、是什么、好处。引文里的拉丁专名可以留着。交出去的每件事，都要已经落在本地笔记上。`中文` 和 `英文` 把引文块留在 `note.md`，交付正文只用那一种语言。`中英文对照` 才在各节下面加上原文引文。这就是上面那个语言文件，不是第二道提问。
+
+飞书是可选的，在你自己的项目里。这份 skill 不调用飞书。交给聊天或飞书时，去掉 YAML 前置字段。
+
+写完的例子：[references/note-examples.md](references/note-examples.md)。
+
+### 读感旋钮
+
+开头标题、四节、R01–R17、Coverage C 保持不动。下面只改读感。安装时不问。有人开口要改，才动。改旋钮之后，R01–R17 和 Coverage C 仍然有效。交付时的措辞留在交付正文里，不回写 `note.md`。
 
 | 旋钮 | 改什么 |
 | :--- | :--- |
@@ -108,24 +188,35 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 | 类比 | 只用引文已经撑得住的类比 |
 | 专名 | 拉丁专名按引文保留，除非明确要求改写成解释 |
 
-## 怎么跑
+### 核对
 
 ```bash
-pip install -r requirements.txt
-python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
-python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_<id>
 python3 scripts/coverage_check.py --job artifacts/youtube_<id>
 ```
 
-主机写下的是脚手架，不是分析。`verify_note.py` 是 R01–R17。`coverage_check.py` 在它之后跑，标完成或交付之前一定要跑。超过五分钟的视频要查清单、时间四分位，和清单命中。`--delivery` 用来拒绝飞书或聊天里过薄的正文。`ASR_BACKEND` 不设置就是关着。离线核对：`bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
+`verify_note.py` 是 R01–R17。`coverage_check.py` 在它之后跑，标完成之前和交付之前都要跑。超过五分钟，它核对分块清单、引文至少盖住三个时间四分位，以及清单覆盖。具体门槛在 [scripts/README.md](scripts/README.md)。不超过五分钟，这道命令仍然要跑。`--delivery` 核对飞书或聊天正文。每条规则拒绝什么：[references/rules.md](references/rules.md)。
 
-## 证据
+离线，在本仓库的克隆里：
 
-CI 打分的是夹具表，不是给摘要质量打分：[evals/results/gate-evidence.md](evals/results/gate-evidence.md)。公开网址的回执，旧模板笔记已撤回：[evals/results/live/](evals/results/live/)。人读拒绝样本：[evals/results/spotcheck.md](evals/results/spotcheck.md)。`v1.0.0` 的 Hall J 回执在 [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)。那次用的是分布内的笔记。不是留出集上的 9 分。
+```bash
+bash scripts/smoke.sh
+```
 
-怎么改这个仓库：[CONTRIBUTING.md](CONTRIBUTING.md)，[CHANGELOG.md](CHANGELOG.md)。
+`bash scripts/smoke.sh --live` 会再试上面那条短字幕视频，不会打开 ASR。怎么改这个仓库：[CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 许可
+### 延伸阅读
 
-MIT。Copyright (c) 2026 HappyDrunk。全文见 [LICENSE](LICENSE)。
+- [SKILL.md](SKILL.md) — Agent 加载的规矩。这一页和那个文件不一致时，以那个文件为准。
+- [scripts/README.md](scripts/README.md) — 两个主机、Coverage C、环境变量的名字。
+- [references/rules.md](references/rules.md) — R01–R17 各自拒绝什么。
+- [references/pitfalls.md](references/pitfalls.md) — 笔记看着写完了，其实没有。
+- [evals/results/gate-evidence.md](evals/results/gate-evidence.md) — CI 打分的夹具表。不是给摘要打分。
+- [evals/results/live/](evals/results/live/) — 公开网址的回执。旧的模板笔记已撤回。
+- [evals/results/spotcheck.md](evals/results/spotcheck.md) — 人读的记录。CI 不打分。
+- [evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md) — 1.0.0 那次的分布内回执。不是留出集上的结果。
+- [CHANGELOG.md](CHANGELOG.md)
+
+### 许可
+
+[MIT](LICENSE)。Copyright (c) 2026 HappyDrunk。
