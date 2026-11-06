@@ -17,6 +17,9 @@ import quality_gate
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 _STAMP = re.compile(r"^\[(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*")
 _DIGIT = re.compile(r"\d+(?:\.\d+)?%?")
+_ZH_NUMERAL = "零〇一二两三四五六七八九十百千万亿"
+_ZH_NUMBER = re.compile(rf"[{_ZH_NUMERAL}]+")
+_ZH_FUZZY = re.compile(r"几十万|几百万|几千万|几亿|几十|几百|几千|几万")
 _LATIN_WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")
 _BOOK = re.compile(r"《([^》]{1,40})》")
@@ -119,6 +122,159 @@ def _compact(text: str) -> str:
 
 def _fold(text: str) -> str:
     return _compact(text).casefold()
+
+
+def _chinese_integer(text: str) -> int:
+    digits = {
+        "\u96f6": 0, "\u3007": 0, "\u4e00": 1, "\u4e8c": 2,
+        "\u4e24": 2, "\u4e09": 3, "\u56db": 4, "\u4e94": 5,
+        "\u516d": 6, "\u4e03": 7, "\u516b": 8, "\u4e5d": 9,
+    }
+    if not any(char in "\u5341\u767e\u5343\u4e07\u4ebf" for char in text):
+        return int("".join(str(digits[char]) for char in text))
+    total = section = pending = 0
+    for char in text:
+        if char in digits:
+            pending = digits[char]
+        elif char in "\u5341\u767e\u5343":
+            unit = {"\u5341": 10, "\u767e": 100, "\u5343": 1000}[char]
+            section += (pending or 1) * unit
+            pending = 0
+        elif char == "\u4e07":
+            total += (section + pending) * 10_000
+            section = pending = 0
+        elif char == "\u4ebf":
+            total = (total + section + pending) * 100_000_000
+            section = pending = 0
+    return total + section + pending
+
+
+_EN_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17,
+    "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+    "eighty": 80, "ninety": 90,
+}
+
+
+def _english_integer(text: str) -> float:
+    total = section = 0
+    for word in re.findall(r"[a-z]+", text.casefold()):
+        if word == "and":
+            continue
+        if word in _EN_NUMBER_WORDS:
+            section += _EN_NUMBER_WORDS[word]
+        elif word == "couple":
+            section += 2
+        elif word == "hundred":
+            section = max(section, 1) * 100
+        elif word in {"dozen", "dozens"}:
+            section = max(section, 1) * 12
+        elif word in {"decade", "decades"}:
+            section = max(section, 1) * 10
+        elif word in {"thousand", "million", "billion"}:
+            scale = {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}[word]
+            total += max(section, 1) * scale
+            section = 0
+    return float(total + section)
+
+
+def body_number_mentions(text: str) -> list[tuple[float, float, str]]:
+    """Arabic digits and qualifying Chinese numeric claims in note prose."""
+    mentions: list[tuple[float, float, str]] = []
+    occupied: list[tuple[int, int]] = []
+    fuzzy_ranges = {
+        "\u51e0\u5341\u4e07": (100_000, 999_999),
+        "\u51e0\u767e\u4e07": (1_000_000, 9_999_999),
+        "\u51e0\u5343\u4e07": (10_000_000, 99_999_999),
+        "\u51e0\u4ebf": (100_000_000, 999_999_999),
+        "\u51e0\u5341": (10, 99), "\u51e0\u767e": (100, 999),
+        "\u51e0\u5343": (1_000, 9_999), "\u51e0\u4e07": (10_000, 99_999),
+    }
+    for match in _ZH_FUZZY.finditer(text):
+        low, high = fuzzy_ranges[match.group()]
+        mentions.append((low, high, match.group()))
+        occupied.append(match.span())
+    for match in _EN_SOURCE_NUMBER.finditer(text):
+        if any(start < match.end() and end > match.start() for start, end in occupied):
+            continue
+        value = _arabic_number_value(match.group())
+        mentions.append((value, value, match.group()))
+        occupied.append(match.span())
+    for match in _ZH_NUMBER.finditer(text):
+        token = match.group()
+        if any(start < match.end() and end > match.start() for start, end in occupied):
+            continue
+        has_unit = any(char in "\u5341\u767e\u5343\u4e07\u4ebf" for char in token)
+        value = _chinese_integer(token)
+        if value < 10 and not has_unit:
+            continue
+        mentions.append((float(value), float(value), token))
+        occupied.append(match.span())
+    return mentions
+
+
+_EN_SOURCE_NUMBER = re.compile(
+    r"(?<![A-Za-z0-9])(?:\d+(?:,\d{3})*(?:\.\d+)?%?"
+    r"(?:[ -]+(?:hundred|thousand|million|billion|dozen|dozens|decade|decades))?%?)(?![A-Za-z])",
+    re.IGNORECASE,
+)
+
+
+def _arabic_number_value(raw: str) -> float:
+    parsed = re.match(r"(\d+(?:\.\d+)?)(?:[ -]+([a-z]+))?", raw.replace(",", ""), re.IGNORECASE)
+    assert parsed is not None
+    value = float(parsed.group(1))
+    scale = (parsed.group(2) or "").casefold()
+    return value * {
+        "hundred": 100, "thousand": 1_000, "million": 1_000_000,
+        "billion": 1_000_000_000, "dozen": 12, "dozens": 12,
+        "decade": 10, "decades": 10,
+    }.get(scale, 1)
+
+
+_EN_NUMBER_WORD_PATTERN = (
+    r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+    r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
+    r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
+    r"couple|hundred|thousand|million|billion|dozens?|decades?"
+)
+_EN_NUMBER = re.compile(
+    rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:[ -]+(?:(?:and)[ -]+)?(?:{_EN_NUMBER_WORD_PATTERN}))*\b",
+    re.IGNORECASE,
+)
+
+
+def source_number_mentions(text: str) -> list[tuple[float, float, str]]:
+    """Arabic digits and English number phrases found in a transcript or quote."""
+    mentions: list[tuple[float, float, str]] = []
+    occupied: list[tuple[int, int]] = []
+    for match in _EN_SOURCE_NUMBER.finditer(text):
+        if any(start < match.end() and end > match.start() for start, end in occupied):
+            continue
+        value = _arabic_number_value(match.group())
+        mentions.append((value, value, match.group()))
+        occupied.append(match.span())
+    for match in _EN_NUMBER.finditer(text):
+        if any(start < match.end() and end > match.start() for start, end in occupied):
+            continue
+        value = _english_integer(match.group())
+        mentions.append((value, value, match.group().strip()))
+        occupied.append(match.span())
+    return mentions
+
+
+def number_is_supported(
+    mention: tuple[float, float, str], source: str
+) -> bool:
+    low, high, _label = mention
+    return any(
+        source_low <= high and source_high >= low
+        for source_low, source_high, _ in source_number_mentions(source)
+    )
 
 
 def parse_stamp(text: str) -> tuple[int | None, str]:
@@ -417,18 +573,24 @@ def r02_frontmatter(ctx: RuleContext) -> tuple[str, bool, str]:
             window = _compact(str(fields.get("quoted_window", "")))
             _stamp, window_text = parse_stamp(window)
             window_text = window_text or window
-            folded = _fold(_speech(ctx))
+            folded = _verbatim_haystack(ctx.segments, _speech(ctx))
             if len(_compact(window_text)) < QUOTE_WINDOW or _fold(window_text) not in folded:
                 parts.append(
                     "frontmatter quoted_window is not a contiguous transcript quote "
                     f"of at least {QUOTE_WINDOW} characters"
                 )
-        cited_path = str(fields.get("transcript_path") or "").replace("\\", "/")
-        forms = {form.replace("\\", "/") for form in _citation_forms(ctx.transcript_path)}
-        if cited_path and cited_path not in forms:
+        cited_path = str(fields.get("transcript_path") or "")
+        try:
+            expected_path = ctx.transcript_path.resolve(strict=False)
+            cited_absolute = Path(cited_path).resolve(strict=False)
+            paths_match = cited_absolute == expected_path
+        except (OSError, RuntimeError, ValueError):
+            expected_path = ctx.transcript_path.absolute()
+            paths_match = False
+        if cited_path and not paths_match:
             parts.append(
                 "frontmatter transcript_path does not match the transcript file "
-                f"{ctx.transcript_path.as_posix()}"
+                f"{expected_path.as_posix()}"
             )
     if parts:
         return ("R02", False, "; ".join(parts))
@@ -606,7 +768,7 @@ def r06_distinct_quotes(ctx: RuleContext) -> tuple[str, bool, str]:
 
 
 def r07_numbers(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Digits and percents in prose also appear in the transcript."""
+    """Arabic digits and qualifying Chinese numbers also appear in speech."""
     if ctx.gate is None or not ctx.gate.passed:
         return ("R07", True, "skipped because the transcript is not usable")
     speech = _speech(ctx)
@@ -614,9 +776,9 @@ def r07_numbers(ctx: RuleContext) -> tuple[str, bool, str]:
     for section in ctx.sections:
         if section.inapplicable:
             continue
-        for token in _DIGIT.findall(section.prose):
-            if token not in speech and token.rstrip("%") not in speech:
-                missing.append(token)
+        for number in body_number_mentions(section.prose):
+            if not number_is_supported(number, speech):
+                missing.append(number[2])
     if missing:
         shown = ", ".join(f'"{token}"' for token in missing[:6])
         return ("R07", False, f"prose number not in the transcript: {shown}")
@@ -907,17 +1069,6 @@ def _imperatives(speech: str) -> list[str]:
     return kept
 
 
-def _starts_with_verb(prose: str) -> bool:
-    text = prose.strip()
-    latin = _LATIN_WORD.findall(text)
-    if latin and not _CJK_RUN.search(text[:8]):
-        return latin[0].casefold() in _EN_VERBS
-    for prefix in _ZH_VERB_PREFIX:
-        if text.startswith(prefix):
-            return True
-    return False
-
-
 def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     """今天立刻动手一步 starts with a verb, stays within two sentences, and overlaps an imperative."""
     if ctx.gate is None or not ctx.gate.passed:
@@ -926,9 +1077,9 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     if section is None or section.inapplicable:
         return ("R13", True, "today step is absent or marked inapplicable")
     prose = section.prose.strip()
-    if not _starts_with_verb(prose):
-        return ("R13", False, "今天立刻动手一步 does not start with a verb")
     sentences = [part for part in _SENTENCE_SPLIT.split(prose) if part.strip()]
+    if not sentences:
+        return ("R13", False, "today step has no actionable sentence")
     if len(sentences) > 2:
         return ("R13", False, f"今天立刻动手一步 has {len(sentences)} sentences; maximum is 2")
     action = sentences[0]
@@ -948,6 +1099,8 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
         hits = [token for token in set(today) if token in imperative]
         overlap = len(hits) / len(set(today))
         best = max(best, overlap)
+    if best < 0.30 and any(_fold(action) in _fold(quote.text) for quote in section.quotes):
+        return ("R13", True, "today step is supported by its verbatim section quote")
     if best < 0.30:
         return (
             "R13",
@@ -1085,7 +1238,8 @@ def _cross_script(prose: str, quote: str) -> bool:
 def r17_same_section_overlap(ctx: RuleContext) -> tuple[str, bool, str]:
     """Prose must share content tokens with that section's own quotes.
 
-    A number in the prose has to appear in those quotes. Same-script prose
+    An Arabic digit or qualifying Chinese number in the prose has to appear
+    in those quotes. Same-script prose
     also needs at least three content tokens in common (a Latin word of four
     letters, or a CJK pair). Chinese prose on a Latin quote skips the token
     floor, same as R16, and still checks numbers. Cross-section quotes fail.
@@ -1097,10 +1251,10 @@ def r17_same_section_overlap(ctx: RuleContext) -> tuple[str, bool, str]:
         if section.inapplicable or not section.quotes:
             continue
         quote = " ".join(item.text for item in section.quotes)
-        for number in _DIGIT.findall(section.prose):
-            if number not in quote:
+        for number in body_number_mentions(section.prose):
+            if not number_is_supported(number, quote):
                 parts.append(
-                    f"section {section.heading} number {number} "
+                    f"section {section.heading} number {number[2]} "
                     "is absent from that section's quotes"
                 )
         if _cross_script(section.prose, quote):

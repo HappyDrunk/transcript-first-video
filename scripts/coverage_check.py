@@ -440,7 +440,8 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
         if not delivery.is_file():
             reasons.append("C04 FAIL: delivery file is missing")
         elif note_path.is_file():
-            delivery_letters = prose_letters(_read(delivery))
+            delivery_text = _read(delivery)
+            delivery_letters = prose_letters(delivery_text)
             if note_letters <= 0:
                 reasons.append("C04 FAIL: note prose has no CJK or Latin letters to compare")
             else:
@@ -450,6 +451,19 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
                         "C04 FAIL: delivery prose letters "
                         f"{delivery_letters} are under {DELIVERY_RATIO} × "
                         f"note prose letters {note_letters}"
+                    )
+            note_prose = "\n".join(
+                line for line in strip_yaml(note_text).splitlines()
+                if not line.lstrip().startswith(">")
+            )
+            delivery_prose = "\n".join(
+                line for line in strip_yaml(delivery_text).splitlines()
+                if not line.lstrip().startswith(">")
+            )
+            for number in verify_rules.body_number_mentions(delivery_prose):
+                if not verify_rules.number_is_supported(number, note_prose):
+                    reasons.append(
+                        f"C04 FAIL: delivery number {number[2]} is absent from note prose"
                     )
     skipped = not long and not any(reason.startswith("C00") for reason in reasons)
     return {
