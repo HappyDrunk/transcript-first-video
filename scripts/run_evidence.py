@@ -361,8 +361,8 @@ def host_cases() -> list[dict]:
         usable["expect"] = "gate pass writes a scaffold, not a finished note"
         results.append(usable)
         stale = host_settle("usable-en", "evals/fixtures/empty_transcript.txt", "en", out)
-        stale["id"] = "stale-deposit-removed"
-        stale["expect"] = "rerun with empty text deletes the previous scaffold and transcript"
+        stale["id"] = "stale-deposit-preserved"
+        stale["expect"] = "failed rerun records the attempt and preserves the prior scaffold and transcript"
         results.append(stale)
         empty = host_settle("empty-asr", "evals/fixtures/empty_transcript.txt", "en", out)
         empty["expect"] = "empty transcript writes status only"
@@ -564,10 +564,12 @@ def host_settle_ok(cases: list[dict]) -> bool:
             and case["transcript_exists"] is True
             and case["exit_code"] == 0
         ),
-        "stale-deposit-removed": lambda case: (
+        "stale-deposit-preserved": lambda case: (
             case["note_exists"] is False
-            and case["scaffold_exists"] is False
-            and case["transcript_exists"] is False
+            and case["scaffold_exists"] is True
+            and case["transcript_exists"] is True
+            and case["status"] == "not_finished"
+            and case["exit_code"] == 2
         ),
         "empty-asr": lambda case: (
             case["finished"] is False and case["note_exists"] is False and case["scaffold_exists"] is False

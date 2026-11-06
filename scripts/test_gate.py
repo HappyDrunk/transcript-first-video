@@ -682,10 +682,10 @@ class HostTests(unittest.TestCase):
             )
             self.assertEqual(refused["exit_code"], 2)
             self.assertFalse(note_path.exists())
-            self.assertFalse(scaffold_path.exists())
-            self.assertFalse(transcript_path.exists())
-            self.assertFalse(segments_path.exists())
-            self.assertFalse(chunk_path.exists())
+            self.assertTrue(scaffold_path.is_file())
+            self.assertTrue(transcript_path.is_file())
+            self.assertTrue(segments_path.is_file())
+            self.assertTrue(chunk_path.is_file())
             self.assertTrue((out / "youtube_usable-en" / "status.json").is_file())
 
             blocked = youtube_host.finalize_job(
@@ -954,8 +954,8 @@ class XHostTests(unittest.TestCase):
             )
             self.assertEqual(blocked["exit_code"], 2)
             self.assertFalse(note_path.exists())
-            self.assertFalse(scaffold_path.exists())
-            self.assertFalse(transcript_path.exists())
+            self.assertTrue(scaffold_path.is_file())
+            self.assertTrue(transcript_path.is_file())
             self.assertTrue((job / "status.json").is_file())
             self.assertNotIn("title", blocked)
 

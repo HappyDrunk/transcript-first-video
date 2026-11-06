@@ -9,7 +9,7 @@ A note is allowed only when all of these hold:
   问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步.
 - Each section quotes the transcript and adds analysis that is not a stub.
 - A section may instead be one line, ``本节不适用：`` plus a reason, and one quote.
-- Four sections in that form are not a deposit. ``--job`` deletes note.md and
+- Four sections in that form are not a deposit. ``--job`` archives note.md and
   sets status ``no-extractable-content``.
 
 A path, a status line, or a blockquote alone is not a finished note.
@@ -23,9 +23,12 @@ Exit 0 allowed. Exit 2 refused. Exit 1 usage or read error.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -148,10 +151,136 @@ def verify(
 
 
 NO_EXTRACTABLE = "no-extractable-content"
+REPAIR_LIMIT_MESSAGE = "未交：已超过 2 轮"
+
+
+def read_job_status(job: Path) -> dict:
+    status_path = job / "status.json"
+    if not status_path.is_file():
+        return {}
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_job_status(job: Path, data: dict) -> None:
+    (job / "status.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def repair_lock(status: dict) -> bool:
+    repair_rounds = status.get("repair_rounds", 0)
+    edit_rounds = status.get("edit_rounds", 0)
+    return (
+        status.get("status") == "not_deposited"
+        or (isinstance(repair_rounds, int) and not isinstance(repair_rounds, bool) and repair_rounds > 2)
+        or (isinstance(edit_rounds, int) and not isinstance(edit_rounds, bool) and edit_rounds > 2)
+    )
+
+
+def current_skill_version() -> str:
+    root = Path(__file__).resolve().parents[1]
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+        )
+        version = result.stdout.strip()
+        if version:
+            return version
+    except (OSError, subprocess.SubprocessError):
+        pass
+    version_file = root / "VERSION"
+    if version_file.is_file():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if version:
+            return version
+    return "unknown"
+
+
+def record_note_revision(job: Path, note: str) -> dict:
+    """Count distinct note revisions so repeated edits cannot bypass the shared cap."""
+    data = read_job_status(job)
+    digest = hashlib.sha256(note.encode("utf-8")).hexdigest()
+    previous = data.get("note_digest")
+    rounds = data.get("edit_rounds", 0)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
+        rounds = 0
+    if digest != previous:
+        rounds += 1
+        data["note_digest"] = digest
+        data["edit_rounds"] = rounds
+        data["finished"] = False
+        data["coverage"] = {"allowed": False, "reasons": ["note changed after verification"]}
+        if data.get("status") == "finished":
+            data["status"] = "transcript_ready"
+        if rounds > 2:
+            data["status"] = "not_deposited"
+            data["locked"] = True
+            data["reason"] = REPAIR_LIMIT_MESSAGE
+    write_job_status(job, data)
+    return data
+
+
+def record_gate_result(job: Path, gate: str, allowed: bool, reasons: list[str]) -> dict:
+    """Persist one verify or coverage outcome and the shared repair budget."""
+    data = read_job_status(job)
+    rounds = data.get("repair_rounds", 0)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
+        rounds = 0
+    data["repair_rounds"] = rounds
+    data["finished"] = False
+    if gate == "verify":
+        data["verifier"] = {
+            "allowed": allowed,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "skill_version": current_skill_version(),
+            **({"reasons": reasons} if reasons else {}),
+        }
+        if not allowed:
+            data["coverage"] = {"allowed": False, "reasons": ["verify failed"]}
+    else:
+        data["coverage"] = {"allowed": allowed, "reasons": reasons}
+    if not allowed:
+        data["repair_rounds"] = rounds + 1
+        data["failure_lines"] = reasons
+        if data["repair_rounds"] > 2:
+            data["status"] = "not_deposited"
+            data["locked"] = True
+            data["reason"] = REPAIR_LIMIT_MESSAGE
+        elif data.get("status") == "finished":
+            data["status"] = "transcript_ready"
+    elif gate == "coverage" and (data.get("verifier") or {}).get("allowed") is True:
+        data["finished"] = True
+        data["status"] = "finished"
+        data.pop("failure_lines", None)
+    write_job_status(job, data)
+    return data
+
+
+def archive_file(path: Path) -> Path | None:
+    """Keep a replaced document under a stable .prev name, adding a number as needed."""
+    if not path.is_file():
+        return None
+    first = path.with_name(f"{path.stem}.prev{path.suffix}")
+    target = first
+    number = 2
+    while target.exists():
+        target = path.with_name(f"{path.stem}.prev.{number}{path.suffix}")
+        number += 1
+    path.replace(target)
+    return target
 
 
 def apply_no_extractable(job: Path, reason: str) -> dict:
-    """Record that the note must not be deposited, and delete note.md."""
+    """Record that the note must not be deposited, archiving prior documents."""
     status_path = job / "status.json"
     data: dict = {}
     if status_path.is_file():
@@ -162,16 +291,31 @@ def apply_no_extractable(job: Path, reason: str) -> dict:
         if isinstance(loaded, dict):
             data = loaded
     note_path = job / "note.md"
-    if note_path.is_file():
-        note_path.unlink()
+    archive_file(note_path)
+    archive_file(job / "delivery.md")
     data["status"] = NO_EXTRACTABLE
     data["finished"] = False
+    rounds = data.get("repair_rounds", 0)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
+        rounds = 0
+    data["repair_rounds"] = rounds + 1
     data["note"] = None
+    data["delivery"] = None
+    data["note_stale"] = True
     data["reason"] = reason
     data["next_step"] = "stop"
-    data["verifier"] = {"allowed": False, "reasons": [reason]}
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    status_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    data["verifier"] = {
+        "allowed": False,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "skill_version": current_skill_version(),
+        "reasons": [reason],
+    }
+    data["failure_lines"] = [reason]
+    if data["repair_rounds"] > 2:
+        data["status"] = "not_deposited"
+        data["locked"] = True
+        data["reason"] = REPAIR_LIMIT_MESSAGE
+    write_job_status(job, data)
     return data
 
 
@@ -226,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--job",
         type=Path,
-        help="Job directory. Uses transcript.txt and note.md. All-N/A deletes note.md.",
+        help="Job directory. Uses transcript.txt and note.md. All-N/A archives the documents.",
     )
     parser.add_argument("--transcript", type=Path)
     parser.add_argument(
@@ -246,13 +390,23 @@ def main(argv: list[str] | None = None) -> int:
             message = f"job directory does not exist: {job}"
             _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
             return 1
+        current_status = read_job_status(job)
+        if repair_lock(current_status):
+            return _emit_verify(
+                {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json
+            )
         transcript = job / "transcript.txt"
         note_path = job / "note.md" if note_arg is None else Path(note_arg)
         if note_path.is_file():
             note = note_path.read_text(encoding="utf-8", errors="replace")
             if knowledge_note.all_sections_inapplicable(note):
                 reason = knowledge_note.ALL_INAPPLICABLE_REASON
-                apply_no_extractable(job, reason)
+                updated = apply_no_extractable(job, reason)
+                if repair_lock(updated):
+                    return _emit_verify(
+                        {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]},
+                        as_json=args.json,
+                    )
                 return _emit_verify(
                     {
                         "allowed": False,
@@ -264,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
         elif note_arg is None:
             message = f"note.md is missing in {job}"
+            record_gate_result(job, "verify", False, [message])
             return _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
         else:
             note_arg = str(note_path)
@@ -292,6 +447,12 @@ def main(argv: list[str] | None = None) -> int:
         message = str(exc)
         _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
         return 1
+    if args.job is not None:
+        status = record_note_revision(args.job, note)
+        if repair_lock(status):
+            return _emit_verify(
+                {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json
+            )
     result = verify(
         transcript,
         note,
@@ -299,6 +460,13 @@ def main(argv: list[str] | None = None) -> int:
         confidence=args.confidence,
         job_status=status_name,
     )
+    if args.job is not None:
+        status = record_gate_result(
+            args.job, "verify", bool(result.get("allowed")), result.get("reasons") or []
+        )
+        if repair_lock(status):
+            result["allowed"] = False
+            result["reasons"] = [REPAIR_LIMIT_MESSAGE]
     return _emit_verify(result, as_json=args.json)
 
 

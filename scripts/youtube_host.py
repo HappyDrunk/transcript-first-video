@@ -172,16 +172,6 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def clear_deposit(job_dir: Path) -> None:
-    for name in ("transcript.txt", "note.md", "note.scaffold.md", "segments.json"):
-        target = job_dir / name
-        if target.is_file():
-            target.unlink()
-    chunks = job_dir / "chunks"
-    if chunks.is_dir():
-        shutil.rmtree(chunks)
-
-
 def ytdlp_base() -> list[str] | None:
     found = shutil.which("yt-dlp")
     if found:
@@ -792,16 +782,31 @@ def finalize_job(
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    clear_deposit(job_dir)
     gate_lang = quality_gate.normalize_lang(expected_lang) or quality_gate.normalize_lang(caption_language)
-    result = quality_gate.assess(text, expected_lang=gate_lang, confidence=confidence)
+    with tempfile.TemporaryDirectory(prefix=".tfv-fetch-", dir=job_dir) as temp_dir:
+        candidate = Path(temp_dir) / "transcript.txt"
+        candidate.write_text(text, encoding="utf-8")
+        result = quality_gate.assess(
+            candidate.read_text(encoding="utf-8"),
+            expected_lang=gate_lang,
+            confidence=confidence,
+        )
     trust = quality_gate.caption_trust(caption_kind, caption_language, expected_lang)
     transcript_path = job_dir / "transcript.txt"
     segments_path = job_dir / "segments.json"
     chunks_dir = job_dir / "chunks"
     note_path = job_dir / "note.md"
+    delivery_path = job_dir / "delivery.md"
     scaffold_path = job_dir / "note.scaffold.md"
     status_path = job_dir / "status.json"
+    previous: dict = {}
+    if status_path.is_file():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                previous = loaded
+        except (OSError, json.JSONDecodeError):
+            pass
     base = {
         "schema_version": 1,
         "skill_version": skill_version(),
@@ -836,43 +841,64 @@ def finalize_job(
                 "exit_code": 2,
             }
         )
-        write_json(status_path, {key: value for key, value in base.items() if key != "exit_code"})
+        stored = {**previous, **{key: value for key, value in base.items() if key != "exit_code"}}
+        stored["finished"] = False
+        stored["note"] = cite_path(note_path) if note_path.is_file() else previous.get("note")
+        stored["repair_rounds"] = previous.get("repair_rounds", 0)
+        stored["edit_rounds"] = previous.get("edit_rounds", 0)
+        write_json(status_path, stored)
         return base
 
     segments = quality_gate.prepare_segments(text)
     transcript_body = quality_gate.format_transcript(segments) or result.text
-    transcript_path.write_text(transcript_body.rstrip() + "\n", encoding="utf-8")
-    segments_path.write_text(
-        json.dumps([segment.to_dict() for segment in segments], ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
     groups = quality_gate.chunk_segments(segments)
-    chunks_dir.mkdir(parents=True, exist_ok=True)
-    for index, group in enumerate(groups, start=1):
-        chunk_body = quality_gate.format_transcript(group)
-        (chunks_dir / f"{index:02d}.txt").write_text(chunk_body.rstrip() + "\n", encoding="utf-8")
-    cite = cite_path(transcript_path)
-    # ``verify`` is accepted so existing callers keep working. The scaffold is
-    # not a deposit, so the host does not run verify_note on it and does not
-    # treat a passing gate as a finished knowledge note.
-    del verify
-    scaffold_body = render_scaffold(
-        job_id=job_id,
-        video_id=video_id,
-        source=source,
-        acquisition=acquisition,
-        caption_language=caption_language or gate_lang,
-        caption_kind=caption_kind,
-        caption_trust=trust,
-        transcript_cite=cite,
-    )
-    scaffold_path.write_text(scaffold_body, encoding="utf-8")
-    if note_path.exists():
-        note_path.unlink()
+    with tempfile.TemporaryDirectory(prefix=".tfv-attempt-", dir=job_dir) as temp_dir:
+        staged = Path(temp_dir)
+        staged_transcript = staged / "transcript.txt"
+        staged_segments = staged / "segments.json"
+        staged_chunks = staged / "chunks"
+        staged_scaffold = staged / "note.scaffold.md"
+        staged_transcript.write_text(transcript_body.rstrip() + "\n", encoding="utf-8")
+        staged_segments.write_text(
+            json.dumps([segment.to_dict() for segment in segments], ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        staged_chunks.mkdir()
+        for index, group in enumerate(groups, start=1):
+            chunk_body = quality_gate.format_transcript(group)
+            (staged_chunks / f"{index:02d}.txt").write_text(chunk_body.rstrip() + "\n", encoding="utf-8")
+        cite = cite_path(transcript_path)
+        # ``verify`` remains accepted for existing callers. The scaffold is
+        # not a deposit, so the host does not run verify_note on it.
+        del verify
+        scaffold_body = render_scaffold(
+            job_id=job_id,
+            video_id=video_id,
+            source=source,
+            acquisition=acquisition,
+            caption_language=caption_language or gate_lang,
+            caption_kind=caption_kind,
+            caption_trust=trust,
+            transcript_cite=cite,
+        )
+        staged_scaffold.write_text(scaffold_body, encoding="utf-8")
+        os.replace(staged_transcript, transcript_path)
+        os.replace(staged_segments, segments_path)
+        if chunks_dir.exists():
+            shutil.rmtree(chunks_dir)
+        os.replace(staged_chunks, chunks_dir)
+        os.replace(staged_scaffold, scaffold_path)
+    note_exists = note_path.is_file()
+    delivery_exists = delivery_path.is_file()
     base.update(
         {
             "status": "transcript_ready",
             "finished": False,
+            "repair_rounds": 0,
+            "edit_rounds": 0,
+            "note_digest": None,
+            "locked": False,
+            "note_stale": note_exists,
             "reason": (
                 "transcript passed the quality gate; "
                 "note.scaffold.md is a blank form, not a finished knowledge note"
@@ -883,7 +909,8 @@ def finalize_job(
             "chunks": cite_path(chunks_dir),
             "chunk_count": len(groups),
             "duration_seconds": quality_gate.duration_seconds(segments),
-            "note": None,
+            "note": cite_path(note_path) if note_exists else None,
+            "delivery": cite_path(delivery_path) if delivery_exists else None,
             "scaffold": cite_path(scaffold_path),
             "verifier": None,
             "exit_code": 0,
@@ -907,7 +934,15 @@ def write_refusal(
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    clear_deposit(job_dir)
+    status_path = job_dir / "status.json"
+    previous: dict = {}
+    if status_path.is_file():
+        try:
+            loaded = json.loads(status_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                previous = loaded
+        except (OSError, json.JSONDecodeError):
+            pass
     payload = {
         "schema_version": 1,
         "skill_version": skill_version(),
@@ -933,7 +968,13 @@ def write_refusal(
     }
     if extra:
         payload.update(extra)
-    write_json(job_dir / "status.json", payload)
+    payload = {**previous, **payload}
+    payload["finished"] = False
+    if (job_dir / "note.md").is_file():
+        payload["note"] = cite_path(job_dir / "note.md")
+    payload["repair_rounds"] = previous.get("repair_rounds", 0)
+    payload["edit_rounds"] = previous.get("edit_rounds", 0)
+    write_json(status_path, payload)
     payload["exit_code"] = 2
     return payload
 

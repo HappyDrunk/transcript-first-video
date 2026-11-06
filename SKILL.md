@@ -72,7 +72,7 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
      If an analyzer times out, retry or hand-write from the full transcript.
 5. If every section is 本节不适用
      python3 scripts/verify_note.py --job <dir>
-     That sets status to no-extractable-content, deletes note.md, and leaves the transcript.
+     That sets status to no-extractable-content, archives note.md, and leaves the transcript.
      Tell the user there was nothing to extract. Stop.
 6. python3 scripts/verify_note.py --job <dir>
      If it refuses, the note is 未交 (not deposited). Edit note.md from the reasons.
@@ -82,11 +82,10 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
      It is not a flag and not opt-in.
      A video longer than 5 minutes must pass C01–C03. At or under 5 minutes those
      three are skipped, and the command still runs.
-     FAIL is 未交. verify and coverage share at most 2 repair rounds.
-     One round is an edit, then both commands again.
+     FAIL is 未交. Each note revision and gate failure uses one of 2 rounds.
 8. If round 2 still refuses
      Tell the user which Rxx or Cxx line failed. Treat as 未交.
-     Do not set finished. Do not deposit the note. Do not deliver.
+     Do not deposit the note. Do not deliver.
 9. When you deliver
      Do this only after language.txt is valid, verify has allowed the note,
      and coverage_check.py has allowed it.
@@ -102,10 +101,10 @@ Chinese delivery prose is 小白能懂 unless the user later says otherwise. Exp
        python3 scripts/coverage_check.py --job <dir> --delivery <body>
      C04 FAIL is 未交. It uses the same 2 repair rounds. Do not send.
      A folder of note.md files is a complete sink. That file stays the verify artifact.
-     finished stays false until verify and coverage have both allowed the note.
+     Scripts set finished true only after both gates pass.
 ```
 
-`transcript_ready` means the transcript passed the gate. `finished` stays false until verify and coverage have both allowed the note. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
+`transcript_ready` means the transcript passed the gate. Scripts set `finished` true only after both gates pass. `not_finished` and `quality_gate_failed` are stops. `no-extractable-content` is the all-N/A stop.
 
 Commands and env var names: `scripts/README.md`.
 

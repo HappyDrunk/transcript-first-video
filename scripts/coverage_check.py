@@ -49,7 +49,8 @@ the start of the first ``segments.json`` cue whose text overlaps it by 40
 characters, or the same overlap against a stamped transcript or chunk line
 when ``segments.json`` has no timed cues.
 
-Exit 0 when allowed. Exit 1 on FAIL. Exit 2 on usage. A failure line is
+``check_job`` only reads the job; the CLI records coverage, finished, and repair
+state in ``status.json``. Exit 0 when allowed. Exit 1 on FAIL. Exit 2 on usage. A failure line is
 ``Cxx FAIL: ...``. A ``C WARN`` line may follow a pass or a fail. It is not
 a ``Cxx FAIL``. This script only reads the job. It does not write a file.
 """
@@ -66,6 +67,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_rules  # noqa: E402
+import verify_note  # noqa: E402
 
 LONG_AFTER = 300
 OVERLAP = 40
@@ -482,7 +484,39 @@ def main(argv: list[str] | None = None) -> int:
     if not job.is_dir():
         print(f"C00 FAIL: job directory is missing: {job}", file=sys.stderr)
         return 2
+    status = verify_note.read_job_status(job)
+    if verify_note.repair_lock(status):
+        result = {
+            "ok": False,
+            "reasons": [verify_note.REPAIR_LIMIT_MESSAGE],
+            "warnings": [],
+        }
+        if args.json:
+            print(json.dumps(result, ensure_ascii=False))
+        else:
+            print(verify_note.REPAIR_LIMIT_MESSAGE)
+        return 1
+    note_path = job / "note.md"
+    if note_path.is_file():
+        status = verify_note.record_note_revision(job, _read(note_path))
+        if verify_note.repair_lock(status):
+            result = {
+                "ok": False,
+                "reasons": [verify_note.REPAIR_LIMIT_MESSAGE],
+                "warnings": [],
+            }
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False))
+            else:
+                print(verify_note.REPAIR_LIMIT_MESSAGE)
+            return 1
     result = check_job(job, args.delivery)
+    status = verify_note.record_gate_result(
+        job, "coverage", bool(result["ok"]), result.get("reasons") or []
+    )
+    if verify_note.repair_lock(status):
+        result["ok"] = False
+        result["reasons"] = [verify_note.REPAIR_LIMIT_MESSAGE]
     if args.json:
         print(json.dumps(result, ensure_ascii=False))
     elif result["reasons"]:

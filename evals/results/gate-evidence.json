@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-05T12:11:36Z",
+  "generated_at": "2026-11-06T02:14:09Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -215,11 +215,11 @@
       "reason": "empty or unusable transcript (no speech text after cleanup)",
       "next_step": "stop",
       "note_exists": false,
-      "scaffold_exists": false,
-      "transcript_exists": false,
+      "scaffold_exists": true,
+      "transcript_exists": true,
       "verifier": null,
-      "id": "stale-deposit-removed",
-      "expect": "rerun with empty text deletes the previous scaffold and transcript"
+      "id": "stale-deposit-preserved",
+      "expect": "failed rerun records the attempt and preserves the prior scaffold and transcript"
     },
     {
       "video_id": "empty-asr",
