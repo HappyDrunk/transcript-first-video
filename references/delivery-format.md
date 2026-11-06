@@ -49,6 +49,8 @@ tags: [video-note]
 
 术语块里不要再塞一个没解释的新术语。优先删掉非必要的行话；必要的词可用 Claude 补充给出简短、可靠的通俗定义，并明确这是解释，不是视频原话。不要据此推断讲者没有说过的原因、效果或细节。专名无法可靠辨认时，删去不必要的名称；若必须保留，就说明文稿能确认的类别和它在这段话里的作用，不替它编背景。每个术语只在首次出现时解释，后文直接用已经说明的说法。类比和字幕更正仍只能用上面对应的块，不能临时发明第四种标记。
 
+落笔时先写出术语第一次出现的那句论点，在这句后紧接对应的 `[!note]` 块，再继续解释后续步骤。不要把核心术语只放进标题、清单名或文章末尾的词汇表。
+
 #### 把论点之间的关系讲清楚
 
 不要只留下术语、数字或步骤名称，让读者自己猜它们为什么放在一起。写清谁做了什么、事情怎样变化，以及段落里讲者明确给出的先后、对照、条件或结果。讲步骤时保留讲者的顺序，并说明这一步如何接到下一步；讲比较时说清在和什么比、比的是什么；讲效果时说清是谁报告的效果、证据到哪一步。只有原文明确表达因果时，才写“因为”“所以”或“导致”。原文没有给比较对象、条件或验证方式时，直接说明文稿没有交代，或把内容标成讲者的说法，不要替它补齐。
@@ -84,6 +86,8 @@ tags: [video-note]
 2. 〈论点。〉 ⏱ 00:00
 
 讲者列出的〈清单名称〉共〈数量〉项：〈逐项列出〉。 〈若略项，在此写明略去的项目编号和范围。〉 ⏱ 00:00
+
+讲者的具名案例：〈公司/项目名〉此前〈情况〉；讲者〈做法〉后，〈之后的情况〉；文稿报告〈量化结果、单位、比较对象和条件〉。 ⏱ 00:00
 ```
 
 #### 访谈、对谈
@@ -95,6 +99,10 @@ tags: [video-note]
 
 ### 〈话题〉
 〈按原文可确认的方式归属观点；没有明确身份时写“对话中提到”。〉 ⏱ 00:00
+
+对话中列出的〈清单/问题/步骤〉共〈数量〉项：1.〈项目〉；2.〈项目〉；3.〈项目〉。若略写，明确写“本文略去第〈编号〉项〈项目〉”。 ⏱ 00:00
+
+嘉宾的具名案例：〈公司/项目名〉此前〈情况〉；嘉宾〈做法〉后，〈之后的情况〉；文稿报告〈量化结果、单位、比较对象和条件〉。 ⏱ 00:00
 
 ## 意见不一致的地方
 
@@ -110,10 +118,14 @@ tags: [video-note]
 
 〈发布内容或主张。〉 ⏱ 00:00
 
+讲者列出的〈发布步骤/主张/功能〉共〈数量〉项：1.〈项目〉；2.〈项目〉；3.〈项目〉。若略写，明确写出略去的编号或项目。 ⏱ 00:00
+
 ## 有证据的 / 只是说法
 
 ### 演示过或给出数据
 〈现场演示或明确给出的数据，并说明证据是什么。〉 ⏱ 00:00
+
+〈若讲者给出具名案例，保留〈公司/项目名〉、此前状态、讲者做法、之后状态和报告的量化结果；标明这些内容是台上展示、讲者报告的数据，还是未展示的说法。〉 ⏱ 00:00
 
 ### 只是口头声称
 〈明确标成讲者的说法；不可写成已证实结果。〉 ⏱ 00:00
@@ -126,7 +138,9 @@ tags: [video-note]
 ```markdown
 ## 演示了什么
 
-〈按演示顺序说明操作和屏幕上可见的结果。〉 ⏱ 00:00
+讲者列出或演示的步骤：1.〈完整步骤〉；2.〈完整步骤〉；3.〈完整步骤〉。若略写，明确标出略去的项目编号。每步各附对应时间点。
+
+〈具名产品/项目〉此前〈操作前状态〉；演示者〈操作〉后，屏幕/结果变为〈之后状态〉；文稿给出的量化结果为〈数值、单位、比较对象和条件〉。 ⏱ 00:00
 
 ## 关键数字与条件
 
@@ -225,7 +239,7 @@ tags: [video-note]
 ## 话题
 
 ### 从最近一次经历开始
-对话中提到，先请对方讲最近一次遇到问题的经过，再追问当时做了什么。 ⏱ 01:14
+对话中提到，访谈者依次问三件事：最近一次问题何时发生、对方接着做了什么、后来发生了什么。 ⏱ 01:14
 
 ### 记录原话，不急着推荐方案
 对话中提到，访谈者应先记下对方自己的说法；如果听到不确定的地方，就请对方举一个实际例子。 ⏱ 03:27
@@ -256,7 +270,7 @@ tags: [video-note]
 
 ```markdown
 ## 完整怎么做
-> [01:14] Ask them to walk you through the last time this happened, then ask what they did next.
+> [01:14] Ask them to walk me through the last time this happened: when did it happen, what did they do next, and what happened after that?
 > [03:27] Write down their own words first. If a part is unclear, ask for one real example.
 > [05:52] “I would use that someday” is a wish, not an action they have already taken.
 > [06:48] At Green Bud Bookshop, we used to get three calls asking about order status. After we sent a status text first, we usually got one call.
@@ -288,7 +302,7 @@ tags: [video-note]
 大会演讲；发布日期：2026-06-18。适合想了解查找资料的工具如何展示来源、也想分清演示与证据的人。
 
 ## 发布或主张了什么
-演讲者发布了“逐步显示资料来源”的查找界面，并主张它能让团队更容易发现答案从哪里来。 ⏱ 00:48
+演讲者发布了“逐步显示资料来源”的查找界面，并列出三步：输入问题、显示资料、标出支持答案的原文段落。 ⏱ 00:48
 
 > [!note] 术语：资料来源
 > 资料来源就是回答时参考的材料；这里界面还标出了材料中支持答案的原文段落。（Claude 补充，非视频内容）
@@ -317,7 +331,7 @@ tags: [video-note]
 
 ```markdown
 ## 问题与做法
-> [00:48] We are launching a search view that shows the source step by step. We believe this will make it easier for teams to see where an answer came from.
+> [00:48] We are launching a search view that shows the source in three steps: type a question, show the documents, and highlight the paragraphs that support the answer. We believe this will make it easier for teams to see where an answer came from.
 > [02:11] I type one question. The screen now shows two documents and highlights the paragraphs used in the answer.
 > [03:02] At Floating Bridge Archive, after using the new search view to check ten questions, the average time to verify one answer fell from twenty minutes to twelve minutes. We did not show the timing records here.
 > [03:36] We think this will cut the time teams spend checking answers.
@@ -327,11 +341,11 @@ tags: [video-note]
 
 ## 合成示例四：产品演示（≤10 分钟）
 
-建议文件路径：`纸飞机产品间/2026-07-09 纸飞机产品间 - 给会议录音加章节.md`
+建议文件路径：`纸飞机产品间/2026-07-09 纸飞机产品间 - 给会议录音按话题分段.md`
 
 ```markdown
 ---
-title: 给会议录音加章节
+title: 给会议录音按话题分段
 source: https://example.invalid/videos/chapters-demo
 channel: 纸飞机产品间
 published: 2026-07-09
@@ -345,14 +359,18 @@ tags: [video-note]
 ## 先记住一句话
 演示者把一段会议录音切成章节，并逐项修改标题。
 
+> [!note] 术语：章节
+> 章节是按话题分出的录音片段；点它的标题可以直接跳到录音相应位置。（Claude 补充，非视频内容）
+
 ## 这场在谈什么、谁
 产品演示；发布日期：2026-07-09；视频时长为 6 分 20 秒。适合想整理会议录音、希望读者能快速跳到相关部分的人。
 
 ## 演示了什么
 
-演示者用白鹭项目的会议录音作例子：以前手动拖动进度条，约四分钟才能找到预算讨论；点击“生成章节”后，十八秒出现三个章节标题。 ⏱ 00:34
+演示按顺序展示三步：1. 打开白鹭项目的录音，过去手动找预算讨论约需四分钟。 ⏱ 00:34
+2. 点击“生成章节”，十八秒后出现三个标题。 ⏱ 00:34
 
-随后演示者把第二个标题改成“预算讨论”，并从该章节跳到录音对应位置。 ⏱ 02:05
+3. 把第二个标题改成“预算讨论”，再点标题跳到录音对应位置。 ⏱ 02:05
 
 > [!warning] 字幕更正
 > 字幕写作“章结”，实为“章节”：按话题分开的录音片段，点标题可以跳到录音对应位置。 ⏱ 00:34
@@ -376,7 +394,7 @@ tags: [video-note]
 
 ```markdown
 ## 完整怎么做
-> [00:34] 这是白鹭项目的一段六分二十秒录音。以前我们手动拖进度条，约四分钟才能找到预算讨论；现在点“生成章结”，十八秒后屏幕给出三个章结标题。
+> [00:34] 这是白鹭项目的一段六分二十秒录音。以前我们手动拖进度条，约四分钟才能找到预算讨论；第一步是打开录音，第二步点“生成章结”，十八秒后屏幕给出三个章结标题。
 > [02:05] 我把第二个章结标题改成“预算讨论”，再点这个标题，录音就跳到对应的位置。
 ```
 
