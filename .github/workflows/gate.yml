@@ -22,6 +22,14 @@ jobs:
       - name: Frozen regression samples (other work packages pending)
         run: python3 scripts/test_regressions.py
         continue-on-error: true
+      - name: Phase 1A status lifecycle
+        run: python3 scripts/test_phase1a.py
+      - name: RED-1 accepted note survives successful settle
+        run: python3 scripts/test_regressions.py RegressionTests.test_red1_successful_settle_preserves_accepted_note
+      - name: RED-2 old deposit survives failed settle
+        run: python3 scripts/test_regressions.py RegressionTests.test_red2_failed_settle_preserves_all_existing_deposit_files
+      - name: RED-10 third edit is locked
+        run: python3 scripts/test_regressions.py RegressionTests.test_red10_third_consecutive_edit_is_locked_as_not_delivered
       - name: RED-12 installation regression
         run: python3 scripts/test_regressions.py RegressionTests.test_red12_partial_install_reports_missing_script_file
       - name: No video-specific tokens
