@@ -30,6 +30,12 @@ jobs:
         run: python3 scripts/test_regressions.py RegressionTests.test_red2_failed_settle_preserves_all_existing_deposit_files
       - name: RED-10 third edit is locked
         run: python3 scripts/test_regressions.py RegressionTests.test_red10_third_consecutive_edit_is_locked_as_not_delivered
+      - name: Phase 1B required regressions
+        run: >-
+          python3 -m unittest
+          scripts.test_regressions.RegressionTests.test_red3_r02_cross_cue_window
+          scripts.test_regressions.RegressionTests.test_red7_normal_imperative_openers_are_verbs
+          scripts.test_regressions.RegressionTests.test_red11_chinese_number_without_transcript_support_fails_r07
       - name: RED-12 installation regression
         run: python3 scripts/test_regressions.py RegressionTests.test_red12_partial_install_reports_missing_script_file
       - name: No video-specific tokens

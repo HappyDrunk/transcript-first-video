@@ -1,6 +1,6 @@
 # Gate evidence
 
-Generated 2026-11-06T02:14:09Z by `python3 scripts/run_evidence.py`.
+Generated 2026-11-06T02:41:17Z by `python3 scripts/run_evidence.py`.
 
 Two bars, both required. (A) No note without a usable transcript: the file has to exist and pass the quality gate. (B) A finished note has to analyze that transcript into reusable knowledge. The four sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, and each one quotes a 40-character window of the transcript. A path, a status, or a quote with no analysis is refused.
 
@@ -34,7 +34,7 @@ Reasons:
 - `missing-citation`: R02 FAIL: note does not cite transcript path evals/fixtures/usable_en_transcript.txt; note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步; R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)
 - `path-only`: R02 FAIL: note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window); R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步; R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)
 - `quote-stub`: R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步
-- `boilerplate-sections`: R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi; R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim; R13 FAIL: 今天立刻动手一步 does not start with a verb; R17 FAIL: section 问题与做法 shares 0 content tokens with its quotes; need 3; section 完整怎么做 shares 0 content tokens with its quotes; need 3; section 翻车或别用 shares 0 content tokens with its quotes; need 3; section 今天立刻动手一步 shares 0 content tokens with its quotes; need 3
+- `boilerplate-sections`: R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi; R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim; R13 FAIL: 今天立刻动手一步 overlaps an imperative in the transcript by 0%; need 30%; R17 FAIL: section 问题与做法 shares 0 content tokens with its quotes; need 3; section 完整怎么做 shares 0 content tokens with its quotes; need 3; section 翻车或别用 shares 0 content tokens with its quotes; need 3; section 今天立刻动手一步 shares 0 content tokens with its quotes; need 3
 
 ## Host deposit behavior
 
