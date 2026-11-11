@@ -81,11 +81,18 @@ DELIVERY_TIME_TOLERANCE = 15
 THIN_SECONDS_PER_LINE = 600
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", re.MULTILINE)
-_LIST_ITEM = re.compile(r"^\s*(?:\d+[.)]|[-+*])[ \t]+")
+_LIST_ITEM = re.compile(r"^\s*(?:[-+*][ \t]+(?:\d+[.)][ \t]+)?|\d+[.)][ \t]+)")
 _INLINE_LIST_ITEM = re.compile(r"([：:；;])[ \t]*\d+[.)][ \t]+")
 _DELIVERY_TIME = re.compile(r"⏱\ufe0f?[ \t]+((?:\d{1,2}:)?\d{1,2}:[0-5]\d)(?![\d:])")
 _CALLOUT = re.compile(r"^>\s*\[!(note|tip|warning)\]\s*(.*)$")
 _TERM_TITLE = re.compile(r"^术语\s*[:：]\s*(.*)$")
+_TERM_ALIAS_SEPARATOR = re.compile(r"[/／()（）]")
+_HYPHEN = re.compile(r"[-\u2010\u2011]")
+_CAPTION_CORRECTION = re.compile(r"^字幕写作\s*[:：]?\s*(.+?)[，,]\s*实为\s*[:：]?\s*(.+)$")
+_CORRECTION_TARGET = re.compile(
+    r'^(?:`[^`]+`|“[^”]+”|「[^」]+」|"[^"]+")|^.+?(?=[，,。；;！？（(]|\.(?:\s|$)|$)'
+)
+_CORRECTION_QUOTES = "`“”「」\""
 _ANALOGY_LIMIT = re.compile(r"^不成立的地方\s*[:：]\s*\S")
 _NAMED_ZH_TERM = re.compile(
     r"(?:名为|名叫|公司|项目|品牌|机构)[ \t]*[“「]([^”」]+)[”」]"
@@ -490,17 +497,23 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
             issues.append(f"expected H2 sections in order: {' / '.join(expected)}")
     parent = ""
     children: list[str] = []
+    middle_headings = expected_middle or ()
     for index, section in enumerate(sections[1:], 1):
         if section.level == 2:
             parent = section.heading
-        elif section.level != 3 or parent not in {"话题", "有证据的 / 只是说法"}:
+        elif section.level != 3 or parent not in middle_headings:
             issues.append(f"unexpected heading: {section.heading}")
-        elif parent == "有证据的 / 只是说法":
+        elif parent == "有证据的 / 只是说法" and section.heading in _CONFERENCE_SUBHEADINGS:
             children.append(section.heading)
-        if section.level == 2 and section.heading in {"话题", "有证据的 / 只是说法"}:
-            if index + 1 == len(sections) or sections[index + 1].level != 3:
-                issues.append(f"section needs subheadings: {section.heading}")
-        elif not any(char.isalnum() for char in _DELIVERY_TIME.sub("", "\n".join(section.prose))):
+        has_subheading = (
+            section.level == 2 and section.heading in middle_headings
+            and index + 1 < len(sections) and sections[index + 1].level == 3
+        )
+        if section.level == 2 and section.heading in {"话题", "有证据的 / 只是说法"} and not has_subheading:
+            issues.append(f"section needs subheadings: {section.heading}")
+        elif not has_subheading and not any(
+            char.isalnum() for char in _DELIVERY_TIME.sub("", "\n".join(section.prose))
+        ):
             issues.append(f"empty section: {section.heading}")
         if section.heading == _C04_END[-1] and len(section.prose) > 1:
             orphan = section.prose[1].splitlines()[0]
@@ -532,7 +545,7 @@ def delivery_trace(
         if parent not in _C04_MIDDLE.get(kind, ()):
             continue
         for index, claim in enumerate(section.prose, 1):
-            if section.heading == "意见不一致的地方" and re.fullmatch(
+            if parent == "意见不一致的地方" and re.fullmatch(
                 r"不适用(?:[（(][^）)]+[）)])?[。.]?", claim,
             ):
                 continue
@@ -558,8 +571,32 @@ def term_occurs(term: str, source: str) -> bool:
     return bool(re.search(pattern, source, re.IGNORECASE))
 
 
-def explanation_issues(blocks: list[list[str]], transcript: str) -> list[str]:
+def caption_corrections(blocks: list[list[str]], transcript: str) -> list[str]:
+    """Return corrected spellings from marked blocks backed by the transcript."""
+    corrections: list[str] = []
+    for header, *lines in blocks:
+        match = _CALLOUT.fullmatch(header)
+        if match is None or match.groups() != ("warning", "字幕更正"):
+            continue
+        for line in lines:
+            correction = _CAPTION_CORRECTION.fullmatch(line)
+            if correction is None:
+                continue
+            original = correction[1].strip().strip(_CORRECTION_QUOTES).strip()
+            target = _CORRECTION_TARGET.match(correction[2].strip())
+            if not original or target is None or not term_occurs(original, transcript):
+                continue
+            corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip()
+            if corrected:
+                corrections.append(corrected)
+    return corrections
+
+
+def explanation_issues(
+    blocks: list[list[str]], transcript: str, corrections: list[str],
+) -> list[str]:
     issues: list[str] = []
+    sources = [_HYPHEN.sub(" ", text) for text in (transcript, *corrections)]
     for header, *lines in blocks:
         match = _CALLOUT.fullmatch(header)
         if match is None:
@@ -569,7 +606,8 @@ def explanation_issues(blocks: list[list[str]], transcript: str) -> list[str]:
         term = _TERM_TITLE.fullmatch(title)
         if kind == "note" and term and term[1].strip():
             word = term[1].strip()
-            if not term_occurs(word, transcript):
+            aliases = _TERM_ALIAS_SEPARATOR.split(_HYPHEN.sub(" ", word))
+            if not any(term_occurs(alias, source) for alias in map(str.strip, aliases) if alias for source in sources):
                 issues.append(f"term {word!r} is absent from the transcript")
         elif kind == "tip" and title in {"类比（Claude 补充）", "类比"}:
             if not any(_ANALOGY_LIMIT.match(line) for line in lines):
@@ -609,7 +647,9 @@ def number_mentions(text: str) -> list[tuple[float, float, str]]:
     return mentions + verify_rules.body_number_mentions(text) + verify_rules.source_number_mentions(text)
 
 
-def delivery_grounding(prose: str, note_text: str, quotes: list[QuoteHit]) -> list[str]:
+def delivery_grounding(
+    prose: str, note_text: str, quotes: list[QuoteHit], corrections: list[str],
+) -> list[str]:
     note_body = "\n".join(
         line for line in strip_yaml(note_text).splitlines() if not line.lstrip().startswith(">")
     )
@@ -619,11 +659,16 @@ def delivery_grounding(prose: str, note_text: str, quotes: list[QuoteHit]) -> li
         *(fields.get(field, "") for field in ("title", "channel", "published", "duration_seconds")),
     ])
     support = number_mentions(source)
+    for corrected in corrections:
+        support.extend(number_mentions(corrected))
     missing_numbers = {
         label for low, high, label in number_mentions(prose)
         if not any(source_low <= high and source_high >= low for source_low, source_high, _ in support)
     }
-    missing_names = {name for name in proper_names(prose) if name and not term_occurs(name, source)}
+    missing_names = {
+        name for name in proper_names(prose)
+        if name and not any(term_occurs(name, evidence) for evidence in (source, *corrections))
+    }
     return [
         *(f"number {label!r} is absent from note.md" for label in sorted(missing_numbers)),
         *(f"name {name!r} is absent from note.md" for name in sorted(missing_names)),
@@ -639,7 +684,8 @@ def check_delivery(
     note_times = {quote.stamp for quote in quotes if quote.stamp is not None}
     prose = "\n".join(part for section in sections for part in section.prose)
     blocks = [block for section in sections for block in section.blocks]
-    issues_d = explanation_issues(blocks, transcript)
+    corrections = caption_corrections(blocks, transcript)
+    issues_d = explanation_issues(blocks, transcript, corrections)
     prose_for_grounding = _INLINE_LIST_ITEM.sub(r"\1", _DELIVERY_TIME.sub("", prose))
     marked_headings = {*_C04_START, *_C04_END, *_C04_MIDDLE.get(kind, ()), *_CONFERENCE_SUBHEADINGS}
     prose_for_grounding += "\n" + "\n".join(
@@ -655,7 +701,7 @@ def check_delivery(
     checks = (
         ("C04a", delivery_structure(sections, kind)),
         ("C04b", delivery_trace(sections, note_times, kind)),
-        ("C04c", delivery_grounding(prose_for_grounding, note, quotes)),
+        ("C04c", delivery_grounding(prose_for_grounding, note, quotes, corrections)),
         ("C04d", issues_d),
         ("C04e", issues_e),
     )
