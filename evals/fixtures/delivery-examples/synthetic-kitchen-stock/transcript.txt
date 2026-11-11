@@ -1,0 +1,5 @@
+> [00:34] First, enter the arrival date for each new box of greens.
+> [01:20] Next, print the date label and put it on the front of the box.
+> [02:05] When taking greens, use the box with the earlier arrival date first. We call this first in, first out.
+> [04:18] At South Bridge Kitchen, we used to throw away about seven kilograms of leafy greens each week. With date labels and using the older box first, the average for the last four weeks was about three kilograms per week.
+> [05:02] This screen sorts boxes by arrival date. We only tracked leafy greens in this example.
