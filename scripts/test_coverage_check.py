@@ -235,20 +235,29 @@ class CoverageCheckTests(unittest.TestCase):
         self.assertEqual(failed["inventory_hits"], 8)
 
     def test_thin_delivery_fails_and_full_delivery_passes(self) -> None:
-        prose = "测" * 100
-        note = _note([stamp for stamp, _excerpt in ARCS], prose)
+        stamp, excerpt = ARCS[0]
+        clock = f"{stamp // 60:02d}:{stamp % 60:02d}"
+        note = _note([stamp], excerpt)
+        thin_prose = f"导出文件。 ⏱ {clock}\n"
+        compliant = (
+            "---\ntype: 讲座\n---\n\n"
+            "## 先记住一句话\n\n在晨会开始前导出隔夜文件。\n\n"
+            "## 这场在谈什么、谁\n\n讲者介绍晨会前的文件准备。\n\n"
+            f"## 主线论点\n\n在晨会开始前完成导出。 ⏱ {clock}\n\n"
+            "## 可复用做法\n\n把导出安排在晨会前。\n\n"
+            "## 翻车或别用\n\n本节没有补充中间部分之外的情况。\n\n"
+            "## 今天立刻动手一步\n\n导出隔夜文件，赶在晨会开始前完成（改写讲者做法）。\n"
+        )
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            job = _write_job(root, note=note, inventory=_inventory_text())
+            job = _write_job(root, note=note, duration=60, transcript=f"[{clock}] {excerpt}\n")
             thin = root / "thin.md"
             full = root / "full.md"
             yaml_trap = root / "yaml.md"
-            thin.write_text("先记住这一句。\n", encoding="utf-8")
-            full.write_text(note, encoding="utf-8")
+            thin.write_text(thin_prose, encoding="utf-8")
+            full.write_text(compliant, encoding="utf-8")
             yaml_trap.write_text(
-                "---\n"
-                + ("title: " + ("alphabet" * 40) + "\n")
-                + "---\n短\n",
+                f"---\ntype: 讲座\ntitle: {'alphabet' * 40}\n---\n" + thin_prose,
                 encoding="utf-8",
             )
             thin_result = cov.check_job(job, thin)
@@ -256,30 +265,40 @@ class CoverageCheckTests(unittest.TestCase):
             yaml_result = cov.check_job(job, yaml_trap)
         self.assertTrue(any(line.startswith("C04 FAIL:") for line in thin_result["reasons"]))
         self.assertFalse(thin_result["ok"])
-        self.assertLess(thin_result["delivery_ratio"], 0.9)
-        self.assertTrue(full_result["ok"], full_result["reasons"])
-        self.assertGreaterEqual(full_result["delivery_ratio"], 0.9)
         self.assertTrue(any(line.startswith("C04 FAIL:") for line in yaml_result["reasons"]))
+        self.assertFalse(yaml_result["ok"])
+        self.assertTrue(full_result["ok"], full_result["reasons"])
 
     def test_delivery_ratio_boundary(self) -> None:
-        note = "测" * 100 + "\n> [00:10] " + ("hello " * 20)
+        note = _note([stamp for stamp, _excerpt in ARCS], "The speaker lists practical steps.")
+        header = (
+            "---\ntype: 讲座\n---\n\n"
+            "## 先记住一句话\n\nThe speaker lists practical steps.\n\n"
+            "## 这场在谈什么、谁\n\nThe lecture covers the steps below.\n\n"
+            "## 主线论点\n\n"
+        )
+        footer = (
+            "\n\n## 可复用做法\n\nExport the overnight file before the standup.\n\n"
+            "## 翻车或别用\n\nThe speaker gives no further limits.\n\n"
+            "## 今天立刻动手一步\n\nExport the file before the standup (adapted from the lecture).\n"
+        )
+        claims = [
+            f"{excerpt} ⏱ {stamp // 60:02d}:{stamp % 60:02d}"
+            for stamp, excerpt in ARCS
+        ]
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            job = root / "job"
-            job.mkdir()
-            (job / "transcript.txt").write_text("[00:10] hello from a short clip\n", encoding="utf-8")
-            (job / "status.json").write_text(json.dumps({"duration_seconds": 20}), encoding="utf-8")
-            (job / "note.md").write_text(note, encoding="utf-8")
+            job = _write_job(root, note=note, inventory=_inventory_text())
             at = root / "at.md"
             under = root / "under.md"
-            at.write_text("测" * 90, encoding="utf-8")
-            under.write_text("测" * 89, encoding="utf-8")
+            at.write_text(header + "\n\n".join(claims[:9]) + footer, encoding="utf-8")
+            under.write_text(header + "\n\n".join(claims[:8]) + footer, encoding="utf-8")
             at_result = cov.check_job(job, at)
             under_result = cov.check_job(job, under)
-        self.assertTrue(at_result["skipped"])
         self.assertTrue(at_result["ok"], at_result["reasons"])
-        self.assertFalse(under_result["ok"])
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in under_result["reasons"]))
+        self.assertFalse(under_result["ok"], under_result["reasons"])
+        self.assertTrue(under_result["reasons"])
+        self.assertTrue(all(line.startswith("C04 FAIL: C04e ") for line in under_result["reasons"]))
 
     def test_missing_inventory_fails_and_inventory_file_satisfies(self) -> None:
         note = _note([stamp for stamp, _excerpt in ARCS], "covered")

@@ -171,13 +171,30 @@ class RegressionTests(unittest.TestCase):
         self.assertTrue(result["quartiles"])
 
     def test_red5_chinese_translation_of_english_note_passes_c04(self) -> None:
-        english = "The speaker explains how the team divides a large codebase into modular components, tests each part independently, and uses repeated review to improve the work. " * 3
-        chinese = "\u8bb2\u8005\u8bf4\u660e\u56e2\u961f\u5982\u4f55\u628a\u5e9e\u5927\u7684\u4ee3\u7801\u5e93\u62c6\u6210\u6a21\u5757\uff0c\u8ba9\u5404\u4e2a\u90e8\u5206\u80fd\u72ec\u7acb\u5f00\u53d1\u548c\u6d4b\u8bd5\uff0c\u518d\u901a\u8fc7\u53cd\u590d\u5ba1\u67e5\u6539\u8fdb\u5de5\u4f5c\u3002" * 3
+        quote = "The team tests each module independently and reviews the results before moving on."
+        note = (
+            "## Local note\n\n"
+            "Divide a large codebase into modules that can be tested independently.\n\n"
+            "The speaker explains this method in a lecture for teams maintaining large codebases.\n\n"
+            "The team tests each module independently and reviews the results before moving on.\n\n"
+            f"> [00:30] {quote}\n\n"
+            "Start with a module that already has a clear boundary.\n\n"
+            "The approach is harder to apply when modules still share state.\n\n"
+            "Adapted from the speaker's method: choose a module and run its tests on their own.\n"
+        )
+        chinese = (
+            "---\ntype: 讲座\n---\n\n"
+            "## 先记住一句话\n\n把大型代码库拆成可独立测试的模块。\n\n"
+            "## 这场在谈什么、谁\n\n讲者在面向大型代码库维护团队的讲座中介绍了这种做法。\n\n"
+            "## 主线论点\n\n团队逐个独立测试模块，审查结果后再继续。 ⏱ 00:30\n\n"
+            "## 可复用做法\n\n从边界已经明确的模块开始。\n\n"
+            "## 翻车或别用\n\n模块之间仍共享状态时，这种做法更难实施。\n\n"
+            "## 今天立刻动手一步\n\n改写讲者做法：选一个模块，单独运行它的测试。\n"
+        )
         with tempfile.TemporaryDirectory() as tmp:
-            note = "## Local note\n\n" + english
-            job = _short_job(Path(tmp), note)
+            job = _short_job(Path(tmp), note, f"[00:30] {quote}\n")
             delivery = Path(tmp) / "delivery.md"
-            delivery.write_text("## \u4ea4\u4ed8\n\n" + chinese, encoding="utf-8")
+            delivery.write_text(chinese, encoding="utf-8")
             result = coverage_check.check_job(job, delivery)
         self.assertFalse(any(line.startswith("C04 FAIL:") for line in result["reasons"]))
 
