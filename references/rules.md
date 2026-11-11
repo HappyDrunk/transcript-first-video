@@ -10,6 +10,8 @@ Coverage gate C is not one of these rules and does not loosen them. It lives in 
 
 C checks the note against the inventory the job already wrote (the rows exist, quartile spread, and at least 9/10 of those rows in the note). It does not prove that inventory was complete against the full transcript. A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it," not "under-extracted at inventory time." A `C WARN` line when the row count is implausibly low versus duration or chunk count is a notice only. It does not loosen C01–C04, and the absence of that warning is not a completeness proof. Operators: `scripts/README.md`.
 
+Known C04c gap. The check may miss Chinese proper names that appear without explicit name markers in the delivery prose.
+
 | Rule | Refusal |
 | :--- | :--- |
 | R01 | The transcript is missing or fails the quality gate, including an essay about a failed transcription. |
