@@ -1,38 +1,46 @@
 ---
-title: "fixture_usable-en"
-source_url: "fixture"
-video_id: "usable-en"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/fixtures/usable_en_transcript.txt"
-quoted_window: |-
-  Today we are repotting a root-bound pothos.
+title: Repotting a pothos
+source: https://example.invalid/videos/pothos
+channel: Garden class
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: evals/fixtures/usable_en_timed_transcript.txt
+tags: [video-note]
 ---
 
-# fixture_usable-en
+## 先记住一句话
 
-Transcript: `evals/fixtures/usable_en_transcript.txt`.
+Protect the firm roots and let the new pot drain.
 
-## 问题与做法
+## 这场在谈什么、谁
 
-A root-bound pothos is stuck in the old pot. Hunger is the wrong opening story: yellow leaves, later in the speech, are tied to soil that stayed wet. The move is to get the plant out and loosen the soil before any feed. The speech says: Today we are repotting a root-bound pothos.
+The speaker demonstrates how to repot a root-bound pothos.
 
-> Today we are repotting a root-bound pothos.
+## 主线论点
 
-## 完整怎么做
+Slide the plant out of the old pot and loosen the soil with your fingers. ⏱ 00:00
 
-Do these in spoken order, and do not start at the fertilizer. Get the plant out of the old pot and loosen the soil. Cut the black mushy roots and keep the firm white ones. Put bark in the new pot so water can leave. Set the plant in the middle, fill to about two centimeters under the rim, water until it runs out the bottom, then leave it in bright shade for three days. The speech says: Slide the plant out of the old pot and loosen the soil with your fingers.
+Snip the black, mushy roots and keep the firm white ones. Put bark in the new pot so water can drain. ⏱ 00:30
 
-> Slide the plant out of the old pot and loosen the soil with your fingers.
+Water until it runs out the bottom, then leave the pot in bright shade for three days. ⏱ 01:00
+
+## 可复用做法
+
+Fill around the plant with fresh mix, stopping two centimeters below the rim. ⏱ 00:30
 
 ## 翻车或别用
 
-Do not feed this plant this week. When leaves are yellow, treat the cause as soil that stayed wet, not as hunger. If the soil is not wet, this speech does not name another cause, so do not invent a deficiency. The speech says: Do not feed it this week. Yellow leaves usually mean the soil stayed wet, not that the plant is hungry.
-
-> Do not feed it this week. Yellow leaves usually mean the soil stayed wet, not that the plant is hungry.
+Yellow leaves usually mean the soil stayed wet. Do not feed the plant this week. ⏱ 01:00
 
 ## 今天立刻动手一步
 
-Water the pot until it runs out the bottom, then stop. Leave the shade and any feed until that watering is finished, because the speech treats wet soil as the failure mode.
+Slide the plant out of the old pot and loosen the soil with your fingers. ⏱ 00:00
 
-> Water until it runs out the bottom, then leave the pot in bright shade for three days.
+本文略去｜无
+
+## 原文依据
+> [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen the soil with your fingers.
+> [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new pot so water can drain. Set the plant in the middle and fill around it with fresh mix, stopping two centimeters below the rim.
+> [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do not feed it this week. Yellow leaves usually mean the soil stayed wet, not that the plant is hungry.

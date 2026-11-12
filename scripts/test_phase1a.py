@@ -18,11 +18,12 @@ class Phase1AStatusTests(unittest.TestCase):
     def _job(self, root: Path) -> Path:
         job = root / "job"
         job.mkdir()
-        transcript = (FIXTURES / "usable_en_transcript.txt").read_text(encoding="utf-8")
+        transcript = (FIXTURES / "usable_en_timed_transcript.txt").read_text(encoding="utf-8")
         note = (FIXTURES / "usable_en_note.md").read_text(encoding="utf-8")
         (job / "transcript.txt").write_text(transcript, encoding="utf-8")
-        note = note.replace("evals/fixtures/usable_en_transcript.txt", (job / "transcript.txt").as_posix())
+        note = note.replace("evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt")
         (job / "note.md").write_text(note, encoding="utf-8")
+        (job / "selection.md").write_bytes((FIXTURES / "usable_selection.md").read_bytes())
         (job / "status.json").write_text(
             json.dumps({"status": "transcript_ready", "duration_seconds": 120}),
             encoding="utf-8",
@@ -66,10 +67,14 @@ class Phase1AStatusTests(unittest.TestCase):
             (job / "note.md").write_text("bad note", encoding="utf-8")
             outcomes = [self._run("verify_note.py", job) for _ in range(2)]
             self.assertTrue(all(result.returncode != 0 for result in outcomes))
-            coverage = self._run("coverage_check.py", job, "--delivery", "missing-delivery.md")
+            (job / "selection.md").unlink()
+            coverage = self._run("coverage_check.py", job)
             self.assertNotEqual(coverage.returncode, 0)
             status = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(status["repair_rounds"], 3)
+            self.assertTrue(
+                any(reason.startswith("S01 FAIL:") for reason in status["failure_lines"]), status,
+            )
             self.assertEqual(status["status"], "not_deposited")
             locked_verify = self._run("verify_note.py", job)
             self.assertNotEqual(locked_verify.returncode, 0)

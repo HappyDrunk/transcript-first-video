@@ -1,37 +1,52 @@
 ---
-# expect: FAIL R17
-title: "swap-en-2"
-source_url: "fixture"
-video_id: "swap-en-2"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/corpus/pricing_en.txt"
-quoted_window: |-
-  Ask three customers what they pay today before you publish a number.
-expected_lang: "en"
+# expect: FAIL C04b
+# fixture_transcript: evals/corpus/pricing_en_timed.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/short.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
-## 问题与做法
+## 先记住一句话
 
-Keep three, customers, publish, and number in this claim. That order is the claim worth keeping, and skipping it makes the later figure a guess.
+Use the buyer’s outcome to guide pricing.
 
-> Ask three customers what they pay today before you publish a number.
+## 这场在谈什么、谁
 
-## 完整怎么做
+The speaker discusses how to set a price for buyers.
 
-Keep copy, competitor, page, and call in this claim. Follow only the stages this line names, and refuse a phase the speech never spoke.
+## 主线论点
 
-> Do not copy a competitor page and call that research.
+Publish the first price only after buyer conversations. ⏱ 01:15
+
+Avoid copying a competitor page and calling it research. ⏱ 01:40
+
+Ask three customers what they pay today before you publish a number. ⏱ 00:50
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Keep publish, first, price, and those in this claim. The limit stays in force while this line is true, so filing the method without it changes the meaning.
-
-> Keep the cheap plan for teams that are still small and learning.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Keep the cheap plan for teams that are still small and learning. Do that step today and leave unrelated edits alone.
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:25
 
-> Publish the first price only after those three conversations.
+本文略去｜无
+
+## 原文依据
+> [00:25] Write the outcome the buyer gets before you name a plan.
+> [00:50] Ask three customers what they pay today before you publish a number.
+> [01:15] Do not copy a competitor page and call that research.
+> [01:40] Publish the first price only after those three conversations.

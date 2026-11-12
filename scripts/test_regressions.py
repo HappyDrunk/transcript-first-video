@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import coverage_check  # noqa: E402
-import knowledge_note  # noqa: E402
 import verify_note  # noqa: E402
-import verify_rules  # noqa: E402
 import youtube_host  # noqa: E402
+from test_coverage_check import _article, _selection, _transcript, _write_job  # noqa: E402
+from verify_report import failed_ids  # noqa: E402
 
 
 def _fixture(name: str) -> str:
@@ -31,15 +31,15 @@ def _rule(result: dict, rule_id: str) -> dict:
     return next(rule for rule in result["rules"] if rule["id"] == rule_id)
 
 
-def _short_job(root: Path, note: str, transcript: str | None = None) -> Path:
-    job = root / "job"
-    job.mkdir(parents=True)
-    (job / "note.md").write_text(note, encoding="utf-8")
-    (job / "transcript.txt").write_text(
-        transcript or _fixture("usable_en_transcript.txt"), encoding="utf-8"
+def _usable(lang: str) -> tuple[Path, str]:
+    return (
+        ROOT / "evals" / "fixtures" / f"usable_{lang}_timed_transcript.txt",
+        _fixture(f"usable_{lang}_note.md"),
     )
-    (job / "status.json").write_text('{"duration_seconds": 120}\n', encoding="utf-8")
-    return job
+
+
+def _verify(path: Path, note: str, lang: str = "en") -> dict:
+    return verify_note.verify(path, note, expected_lang=lang)
 
 
 class RegressionTests(unittest.TestCase):
@@ -91,136 +91,91 @@ class RegressionTests(unittest.TestCase):
             self.assertEqual((chunks / "01.txt").read_text(encoding="utf-8"), "old chunk\n")
 
     def test_red3_r02_cross_cue_window(self) -> None:
-        quote = "The first cue has a carefully chosen opening phrase and the second cue completes this contiguous quote for testing."
+        first = "Slide the plant out of the old pot"
+        second = "and loosen the soil with your fingers."
+        quote = f"{first} {second}"
+        transcript, note = _usable("en")
+        raw = transcript.read_text(encoding="utf-8")
+        split = raw.replace(quote, first + "\n[00:08] " + second, 1)
+        self.assertNotEqual(split, raw)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "transcript.txt"
-            transcript = _fixture("usable_en_transcript.txt").rstrip() + "\n[00:20] The first cue has a carefully chosen opening phrase\n[00:21] and the second cue completes this contiguous quote for testing.\n"
-            path.write_text(transcript, encoding="utf-8")
-            note = knowledge_note.render_scaffold(
-                job_id="cross-cue",
-                video_id="cross-cue",
-                source="fixture",
-                acquisition="fixture",
-                transcript_cite=path.as_posix(),
-                caption_language="en",
-            )
-            lines = note.splitlines()
-            for index, line in enumerate(lines):
-                if line.startswith("quoted_window:"):
-                    lines[index:index + 2] = ["quoted_window: |-", "  " + quote]
-                    break
-            note = "\n".join(lines) + "\n"
-            result = verify_note.verify(path, note, expected_lang="en")
-        self.assertTrue(_rule(result, "R02")["ok"], _rule(result, "R02")["message"])
+            path.write_text(split, encoding="utf-8")
+            note = note.replace("evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt")
+            result = _verify(path, note)
+        for rule in ("R04", "R05"):
+            self.assertTrue(_rule(result, rule)["ok"], _rule(result, rule)["message"])
 
     def test_red4_unstamped_long_chunks_get_quartile_coverage(self) -> None:
+        # This is a C02 diagnostic input, deliberately without a reliable clock.
+        # Final verification must separately refuse untimed delivery.
+        excerpts = [
+            f"Write the observation for stage {index} and compare it against the expected result. "
+            f"The reviewer notes whether stage {index} reduces delays or adds handoffs."
+            for index in range(1, 5)
+        ]
         with tempfile.TemporaryDirectory() as tmp:
-            job = Path(tmp) / "job"
+            job = Path(tmp)
             chunks = job / "chunks"
-            chunks.mkdir(parents=True)
-            for index in range(1, 5):
-                (chunks / f"{index:02d}.txt").write_text(
-                    f"Write the observation for stage {index} and compare it against the expected result. "
-                    f"The reviewer notes whether stage {index} reduces delays or adds handoffs.\n",
-                    encoding="utf-8",
-                )
-                (chunks / f"{index:02d}.notes.md").write_text(
-                    f"- [00:0{index}] Write the observation for stage {index} and compare it against the expected result. "
-                    f"| Stage {index} records the observation and the comparison.\n",
-                    encoding="utf-8",
-                )
-            (job / "note.md").write_text(
-                "---\n"
-                "title: \"red4\"\n"
-                "source_url: \"fixture\"\n"
-                "video_id: \"red4\"\n"
-                "acquisition: \"fixture\"\n"
-                "gate_passed: true\n"
-                "transcript_path: \"transcript.txt\"\n"
-                "quoted_window: |-\n"
-                "  Write the observation for stage 1 and compare it against the expected result.\n"
-                "---\n\n"
-                "Transcript: `transcript.txt`.\n\n"
-                "## \u95ee\u9898\u4e0e\u505a\u6cd5\n\n"
-                "The reviewer checks whether the first stage reduces waiting or creates extra handoffs. "
-                "This records an outcome the team can compare before changing its routine.\n\n"
-                "> The reviewer notes whether stage 1 reduces delays or adds handoffs.\n\n"
-                "## \u5b8c\u6574\u600e\u4e48\u505a\n\n"
-                "The reviewer checks the stage for delays and added handoffs. "
-                "This keeps the team focused on the same outcome before it changes the broader workflow. "
-                "The observation also shows whether the adjustment helps the next decision.\n\n"
-                "> The reviewer notes whether stage 2 reduces delays or adds handoffs.\n\n"
-                "## \u7ffb\u8f66\u6216\u522b\u7528\n\n"
-                "The reviewer checks the stage for delays and extra handoffs. "
-                "This keeps the evidence tied to the work instead of an assumption. "
-                "The team can discuss the outcome before it changes another step.\n\n"
-                "> The reviewer notes whether stage 3 reduces delays or adds handoffs.\n\n"
-                "## \u4eca\u5929\u7acb\u523b\u52a8\u624b\u4e00\u6b65\n\n"
-                "Write down the observation and compare it with the expected result before choosing whether to keep the change. "
-                "This gives the team a clear reason for its next step.\n\n"
-                + "\n".join(
-                    f"> Write the observation for stage {index} and compare it against the expected result. "
-                    f"The reviewer notes whether stage {index} reduces delays or adds handoffs."
-                    for index in range(1, 5)
-                ),
-                encoding="utf-8",
-            )
-            result = coverage_check.check_job(job)
-        c02 = [line for line in result["reasons"] if line.startswith("C02 FAIL:")]
-        self.assertFalse(c02, "\n".join(c02))
-        self.assertTrue(result["quartiles"])
+            chunks.mkdir()
+            for index, excerpt in enumerate(excerpts, 1):
+                (chunks / f"{index:02d}.txt").write_text(excerpt + "\n", encoding="utf-8")
+            note = job / "note.md"
+            note.write_text("## 原文依据\n" + "".join(f"> {excerpt}\n" for excerpt in excerpts), encoding="utf-8")
+            spread = coverage_check.check_job(job)
+            self.assertTrue(spread["long"])
+            self.assertIsNone(spread["duration_seconds"])
+            self.assertEqual(spread["quartiles"], [0, 1, 2, 3], spread["reasons"])
+            self.assertNotIn("C02", failed_ids(spread), spread["reasons"])
+            note.write_text("## 原文依据\n> " + excerpts[0] + "\n", encoding="utf-8")
+            sparse = coverage_check.check_job(job)
+        self.assertEqual(sparse["quartiles"], [0])
+        self.assertIn("C02", failed_ids(sparse), sparse["reasons"])
+        self.assertTrue(any("character" in line or "字符" in line for line in sparse["reasons"] if line.startswith("C02 FAIL:")), sparse["reasons"])
 
     def test_red5_chinese_translation_of_english_note_passes_c04(self) -> None:
-        quote = "The team tests each module independently and reviews the results before moving on."
-        note = (
-            "## Local note\n\n"
-            "Divide a large codebase into modules that can be tested independently.\n\n"
-            "The speaker explains this method in a lecture for teams maintaining large codebases.\n\n"
-            "The team tests each module independently and reviews the results before moving on.\n\n"
-            f"> [00:30] {quote}\n\n"
-            "Start with a module that already has a clear boundary.\n\n"
-            "The approach is harder to apply when modules still share state.\n\n"
-            "Adapted from the speaker's method: choose a module and run its tests on their own.\n"
+        rows = [
+            (0, "Divide a large codebase into modules that can be tested independently."),
+            (30, "The team tests each module independently and reviews the results before moving on."),
+            (60, "Start with a module that already has a clear boundary before testing other modules."),
+        ]
+        middle = (
+            "## 主线论点\n\n把大型代码库拆成可独立测试的模块。 ⏱ 00:00\n\n"
+            "团队逐个独立测试模块，审查结果后再继续。 ⏱ 00:30"
         )
-        chinese = (
-            "---\ntype: 讲座\n---\n\n"
-            "## 先记住一句话\n\n把大型代码库拆成可独立测试的模块。\n\n"
-            "## 这场在谈什么、谁\n\n讲者在面向大型代码库维护团队的讲座中介绍了这种做法。\n\n"
-            "## 主线论点\n\n团队逐个独立测试模块，审查结果后再继续。 ⏱ 00:30\n\n"
-            "## 可复用做法\n\n从边界已经明确的模块开始。\n\n"
-            "## 翻车或别用\n\n模块之间仍共享状态时，这种做法更难实施。\n\n"
-            "## 今天立刻动手一步\n\n改写讲者做法：选一个模块，单独运行它的测试。\n"
+        note = _article(
+            middle, rows, lead="先把代码拆成能各自测试的模块。",
+            action="选一个边界明确的模块，单独运行它的测试。（改写讲者做法） ⏱ 01:00",
         )
         with tempfile.TemporaryDirectory() as tmp:
-            job = _short_job(Path(tmp), note, f"[00:30] {quote}\n")
-            delivery = Path(tmp) / "delivery.md"
-            delivery.write_text(chinese, encoding="utf-8")
-            result = coverage_check.check_job(job, delivery)
-        self.assertFalse(any(line.startswith("C04 FAIL:") for line in result["reasons"]))
+            job = _write_job(Path(tmp) / "job", note, _transcript(rows), _selection(90, [0, 30, 60]), 90)
+            verified = _verify(job / "transcript.txt", note)
+            covered = coverage_check.check_job(job)
+        self.assertFalse(any(line.startswith("C04 FAIL:") for line in verified["reasons"]))
+        self.assertTrue(verified["allowed"], verified["reasons"])
+        self.assertTrue(covered["ok"], covered["reasons"])
 
     def test_red6a_unrelated_long_delivery_fails_c04(self) -> None:
-        grounded = "The speaker describes a practical method, explains why the team uses it, and names the checks that keep the work reliable. " * 8
+        transcript, control = _usable("en")
         unrelated = "A distant garden contains blue stones, quiet rivers, and several birds resting beneath the trees. " * 10
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _short_job(Path(tmp), "## Note\n\n" + grounded)
-            delivery = Path(tmp) / "delivery.md"
-            delivery.write_text("## Delivery\n\n" + unrelated, encoding="utf-8")
-            result = coverage_check.check_job(job, delivery)
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in result["reasons"]), result["reasons"])
+        start = control.index("## 主线论点")
+        end = control.index("## 可复用做法")
+        attack = control[:start] + "## Delivery\n\n" + unrelated + "\n\n" + control[end:]
+        result = _verify(transcript, attack)
+        self.assertIn("C04a", failed_ids(result), result["reasons"])
+        self.assertTrue(_verify(transcript, control)["allowed"])
 
     def test_red6b_orphan_paragraph_in_observed_delivery_fails_c04(self) -> None:
         source = ROOT / "evals" / "fixtures" / "red6b"
-        with tempfile.TemporaryDirectory() as tmp:
-            job = Path(tmp) / "youtube_LVEfFyijQ2c"
-            job.mkdir()
-            for name in ("note.md", "transcript.txt", "status.json", "segments.json"):
-                shutil.copyfile(source / name, job / name)
-            delivery = Path(tmp) / "delivery.md"
-            shutil.copyfile(source / "delivery.md", delivery)
-            result = coverage_check.check_job(job, delivery)
-        c04 = [line for line in result["reasons"] if line.startswith("C04 FAIL:")]
-        self.assertTrue(c04, result["reasons"])
-        self.assertTrue(any("orphan" in line.casefold() or "\u6e38\u79bb" in line for line in c04), c04)
+        historical = (source / "delivery.md").read_text(encoding="utf-8")
+        orphan = next(line for line in historical.splitlines() if line.startswith("补充："))
+        note = (source / "note.md").read_text(encoding="utf-8")
+        self.assertIn(orphan, note)
+        result = _verify(source / "transcript.txt", note)
+        self.assertIn("C04a", failed_ids(result), result["reasons"])
+        self.assertTrue(any("orphan" in line.casefold() or "游离" in line for line in result["reasons"]), result["reasons"])
+        control = _verify(source / "transcript.txt", note.replace(orphan + "\n\n", ""))
+        self.assertTrue(control["allowed"], control["reasons"])
 
     def test_red7_normal_imperative_openers_are_verbs(self) -> None:
         cases = (
@@ -231,37 +186,46 @@ class RegressionTests(unittest.TestCase):
         )
         for lang, action, quote in cases:
             with self.subTest(action=action):
-                base = _fixture(f"usable_{lang}_note.md")
-                raw = _fixture(f"usable_{lang}_transcript.txt")
+                source, base = _usable(lang)
+                raw = source.read_text(encoding="utf-8")
+                # Both original prose variants remain real evidence. The added action
+                # has its own timed cue and is the only change to the action section.
+                padding = (
+                    " Keep a written record so that the next person can compare the results."
+                    if lang == "en" else "把记录放在手边，方便回来检查结果。"
+                )
+                quote += padding
                 with tempfile.TemporaryDirectory() as tmp:
                     transcript = Path(tmp) / "transcript.txt"
-                    transcript.write_text(raw.rstrip() + "\n" + quote + "\n", encoding="utf-8")
-                    note = base.replace(f"evals/fixtures/usable_{lang}_transcript.txt", transcript.as_posix())
-                    heading = knowledge_note.SECTIONS[-1]
-                    marker = "## " + heading
-                    start = note.rfind(marker)
-                    self.assertGreaterEqual(start, 0)
-                    note = note[:start] + marker + "\n\n" + action + "\n\n> " + quote + "\n"
-                    result = verify_note.verify(transcript, note, expected_lang=lang)
+                    transcript.write_text(raw.rstrip() + "\n[01:30] " + quote + "\n", encoding="utf-8")
+                    note = base.replace(f"evals/fixtures/usable_{lang}_timed_transcript.txt", "transcript.txt")
+                    start = note.index("## 今天立刻动手一步")
+                    end = note.index("本文略去", start)
+                    note = note[:start] + "## 今天立刻动手一步\n\n" + action + " ⏱ 01:30\n\n" + note[end:]
+                    note += f"> [01:30] {quote}\n"
+                    result = _verify(transcript, note, lang)
                 self.assertTrue(_rule(result, "R13")["ok"], _rule(result, "R13")["message"])
 
     def test_red9_missing_lead_sentence_section_fails_verify(self) -> None:
-        note = _fixture("usable_en_note.md")
-        self.assertNotIn("## \u5148\u8bb0\u4f4f\u4e00\u53e5\u8bdd", note)
-        result = verify_note.verify(ROOT / "evals/fixtures/usable_en_transcript.txt", note, expected_lang="en")
+        transcript, control = _usable("en")
+        start, end = control.index("## 先记住一句话"), control.index("## 这场在谈什么、谁")
+        result = _verify(transcript, control[:start] + control[end:])
         self.assertFalse(result["allowed"])
-        self.assertTrue(any("\u5148\u8bb0\u4f4f\u4e00\u53e5\u8bdd" in line for line in result["reasons"]), result["reasons"])
+        self.assertIn("C04a", failed_ids(result), result["reasons"])
+        self.assertTrue(any("先记住一句话" in line for line in result["reasons"]), result["reasons"])
+        self.assertTrue(_verify(transcript, control)["allowed"])
 
     def test_red10_third_consecutive_edit_is_locked_as_not_delivered(self) -> None:
-        note = _fixture("usable_en_note.md")
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
+        transcript, note = _usable("en")
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job"
             job.mkdir()
             transcript_path = job / "transcript.txt"
             (job / "transcript.txt").write_text(transcript.read_text(encoding="utf-8"), encoding="utf-8")
-            note = note.replace("evals/fixtures/usable_en_transcript.txt", transcript_path.as_posix())
+            note = note.replace("evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt")
             (job / "note.md").write_text(note, encoding="utf-8")
+            (job / "selection.md").write_text(_fixture("usable_selection.md"), encoding="utf-8")
+            (job / "status.json").write_text('{"status":"transcript_ready","duration_seconds":120}\n', encoding="utf-8")
             outcomes = []
             for attempt in range(1, 4):
                 if attempt > 1:
@@ -277,13 +241,14 @@ class RegressionTests(unittest.TestCase):
         self.assertIn("locked", json.dumps(status).casefold())
 
     def test_red11_chinese_number_without_transcript_support_fails_r07(self) -> None:
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        note = _fixture("usable_en_note.md")
-        heading = "## " + knowledge_note.SECTIONS[0]
-        note = note.replace(heading, heading + "\n\nThe repository contains \u56db\u5343\u4e07 lines.", 1)
-        self.assertIn("\u56db\u5343\u4e07", note)
-        result = verify_note.verify(transcript, note, expected_lang="en")
-        self.assertFalse(_rule(result, "R07")["ok"], _rule(result, "R07")["message"])
+        transcript, control = _usable("en")
+        note = control.replace("loosen the soil with your fingers. ⏱ 00:00",
+                               "loosen the soil with your fingers. 这批文件有四千万行。 ⏱ 00:00", 1)
+        self.assertIn("四千万", note)
+        result = _verify(transcript, note)
+        self.assertIn("C04c", failed_ids(result), result["reasons"])
+        self.assertTrue(any("四千万" in line or "40000000" in line for line in result["reasons"]), result["reasons"])
+        self.assertTrue(_verify(transcript, control)["allowed"])
 
     def test_red12_partial_install_reports_missing_script_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,32 +272,25 @@ class RegressionTests(unittest.TestCase):
         self.assertIn("missing", output.casefold())
 
     def test_red14_delivery_timestamp_must_trace_to_note_quote(self) -> None:
-        prose = "The team divides the large repository into smaller modules and tests each part independently. " * 4
-        quote = "The team divides the large repository into smaller modules and tests each part independently."
-        heading = knowledge_note.SECTIONS[0]
-        note = "## " + heading + "\n\n" + prose + "\n> [00:30] " + quote + "\n"
-        delivery = "## " + heading + "\n\n" + prose + "\n[09:59] This central claim does not appear in the local note."
-        transcript = "[00:30] " + quote + "\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _short_job(Path(tmp), note, transcript)
-            body = Path(tmp) / "delivery.md"
-            body.write_text(delivery, encoding="utf-8")
-            result = coverage_check.check_job(job, body)
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in result["reasons"]), result["reasons"])
+        transcript, control = _usable("en")
+        attack = control.replace(" ⏱ 00:00", " ⏱ 00:00 ⏱ 09:59", 1)
+        result = _verify(transcript, attack)
+        self.assertEqual(failed_ids(result), {"C04b"}, result["reasons"])
+        self.assertTrue(any("09:59" in line for line in result["reasons"]), result["reasons"])
+        self.assertTrue(_verify(transcript, control)["allowed"])
 
     def test_red15_unmarked_name_or_number_absent_from_note_fails_c04(self) -> None:
-        prose = "The team divides the large repository into smaller modules and tests each part independently. " * 4
-        quote = "The team divides the large repository into smaller modules and tests each part independently."
-        heading = knowledge_note.SECTIONS[0]
-        note = "## " + heading + "\n\n" + prose + "\n> [00:30] " + quote + "\n"
-        delivery = "## " + heading + "\n\n" + prose + "\nThe new policy was tested on Project Zephyr 2048."
-        transcript = "[00:30] " + quote + "\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _short_job(Path(tmp), note, transcript)
-            body = Path(tmp) / "delivery.md"
-            body.write_text(delivery, encoding="utf-8")
-            result = coverage_check.check_job(job, body)
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in result["reasons"]), result["reasons"])
+        transcript, control = _usable("en")
+        for detail in ("Project Zephyr", "2048"):
+            with self.subTest(detail=detail):
+                attack = control.replace(
+                    "loosen the soil with your fingers. ⏱ 00:00",
+                    f"loosen the soil with your fingers. The trial involved {detail}. ⏱ 00:00", 1,
+                )
+                result = _verify(transcript, attack)
+                self.assertEqual(failed_ids(result), {"C04c"}, result["reasons"])
+                self.assertTrue(any(detail.casefold() in line.casefold() or detail.split()[-1].casefold() in line.casefold() for line in result["reasons"]), result["reasons"])
+        self.assertTrue(_verify(transcript, control)["allowed"])
 
 
 if __name__ == "__main__":

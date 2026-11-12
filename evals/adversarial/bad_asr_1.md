@@ -1,37 +1,52 @@
 ---
 # expect: FAIL R01
-title: "bad_asr_1"
-source_url: "fixture"
-video_id: "bad_asr_1"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/fixtures/gibberish_transcript.txt"
-quoted_window: |-
-  Most founders set a public price only after they talk to three buyers.
-expected_lang: "en"
+# fixture_transcript: evals/fixtures/gibberish_transcript.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/short.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
-## 问题与做法
+## 先记住一句话
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
+Use the buyer’s outcome to guide pricing.
 
-> Most founders set a public price only after they talk to three buyers.
+## 这场在谈什么、谁
 
-## 完整怎么做
+The speaker discusses how to set a price for buyers.
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
+## 主线论点
 
-> Write the outcome the buyer gets before you name a plan.
+Most founders set a public price after speaking with three buyers. ⏱ 00:00
+
+Ask three customers what they pay today before you publish a number. ⏱ 00:50
+
+Publish the first price only after those three conversations. ⏱ 01:40
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
-
-> Ask three customers what they pay today before you publish a number.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Write the buyer outcome before any plan name. Keep that order even when a teammate wants a public figure first.
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:25
 
-> Do not copy a competitor page and call that research.
+本文略去｜无
+
+## 原文依据
+> [00:00] Most founders set a public price only after they talk to three buyers.
+> [00:25] Write the outcome the buyer gets before you name a plan.
+> [00:50] Ask three customers what they pay today before you publish a number.
+> [01:40] Publish the first price only after those three conversations.

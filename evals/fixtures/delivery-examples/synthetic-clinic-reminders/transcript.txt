@@ -1,2 +1,4 @@
-> [01:14] We use three steps: send a text the day before, ask the patient to confirm, and if someone cancels, call the next person on the waiting list.
-> [04:26] At Stonebridge Clinic, we used to have about eight no-shows for every forty appointments. After the day-before reminder and filling cancelled slots from the waiting list, last month we had about three for every forty.
+[00:00] It was hard to find the entrance to this building this morning.
+[01:14] We use three steps: send a text the day before, ask the patient to confirm, and if someone cancels, call the next person on the waiting list.
+[02:20] When a confirmation comes in, mark the appointment as confirmed on the schedule so staff can see which patients have replied.
+[04:26] At Stonebridge Clinic, we used to have about eight no-shows for every forty appointments. After the day-before reminder and filling cancelled slots from the waiting list, last month we had about three for every forty.
