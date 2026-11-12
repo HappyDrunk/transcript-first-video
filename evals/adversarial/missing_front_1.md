@@ -1,32 +1,41 @@
-# expect: FAIL R02
+# expect: FAIL C04a
+# fixture_transcript: evals/corpus/pricing_en_timed.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/short.selection
 
-transcript_path: evals/corpus/pricing_en.txt
-expected_lang: en
+## 先记住一句话
 
-Transcript: `evals/corpus/pricing_en.txt`.
+Use the buyer’s outcome to guide pricing.
 
-# note
+## 这场在谈什么、谁
 
-## 问题与做法
+The speaker discusses how to set a price for buyers.
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
+## 主线论点
 
-> Most founders set a public price only after they talk to three buyers.
+Most founders set a public price after speaking with three buyers. ⏱ 00:00
 
-## 完整怎么做
+Ask three customers what they pay today before you publish a number. ⏱ 00:50
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
+Publish the first price only after those three conversations. ⏱ 01:40
 
-> Write the outcome the buyer gets before you name a plan.
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Begin with what the buyer walks away holding, and only then choose a plan name. The useful claim is the order of the decisions, which is a judgment rather than a slogan. That order is the claim, and a missing stage must stay missing.
-
-> Ask three customers what they pay today before you publish a number.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Write the buyer outcome before any plan name. Keep that order even when a teammate wants a public figure first.
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:25
 
-> Do not copy a competitor page and call that research.
+本文略去｜无
+
+## 原文依据
+> [00:00] Most founders set a public price only after they talk to three buyers.
+> [00:25] Write the outcome the buyer gets before you name a plan.
+> [00:50] Ask three customers what they pay today before you publish a number.
+> [01:40] Publish the first price only after those three conversations.

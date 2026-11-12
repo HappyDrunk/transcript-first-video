@@ -1,41 +1,52 @@
 ---
 # expect: PASS
-title: "good-long-1"
-source_url: "fixture"
-video_id: "good-long-1"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/corpus/pricing_en_long.txt"
-quoted_window: |-
-  Write the outcome the buyer gets before you name a plan.
-expected_lang: "en"
+# fixture_transcript: evals/corpus/pricing_en_long.txt
+# fixture_duration: 660
+# fixture_lang: en
+# fixture_selection: evals/corpus/long.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
 ## 先记住一句话
 
-Write the outcome the buyer gets before you name a plan.
+Use the buyer’s outcome to guide pricing.
 
-## 问题与做法
+## 这场在谈什么、谁
 
-Write the outcome the buyer gets before you name a plan. The plan's name follows the outcome the buyer gets.
+The speaker discusses how to set a price for buyers.
 
-> [00:00] Write the outcome the buyer gets before you name a plan.
+## 主线论点
 
-## 完整怎么做
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:00
 
-Publish the first price only after those three conversations. Those three conversations come before the first price is published.
+Publish the first price only after those three conversations. ⏱ 04:00
 
-> [04:00] Publish the first price only after those three conversations.
+Stop the trial when the buyer will not name a budget. ⏱ 08:00
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Stop the trial if the buyer will not name a budget at all. A buyer who will not name a budget ends the trial.
-
-> [08:00] Stop the trial if the buyer will not name a budget at all.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Review the three conversations before you change the page again. The page change follows that review.
+Review the three conversations before you change the page again. ⏱ 09:20
 
+本文略去｜无
+
+## 原文依据
+> [00:00] Write the outcome the buyer gets before you name a plan.
+> [04:00] Publish the first price only after those three conversations.
+> [08:00] Stop the trial if the buyer will not name a budget at all.
 > [09:20] Review the three conversations before you change the page again.

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Coverage gate C on synthetic jobs. No network. No language model.
-
-A thin note can quote a real stretch and still fail. A note that carries the
-inventory across quartiles passes. Delivery under 9/10 of the local prose fails.
-"""
+"""Coverage and single-note contract tests. No network or model calls."""
 
 from __future__ import annotations
 
@@ -16,10 +12,10 @@ import unittest
 from pathlib import Path
 
 import coverage_check as cov
+import verify_note
+from verify_report import ADVERSARIAL, check_sample, failed_ids
 
-# Ten method arcs. Each excerpt is longer than 40 characters and shares no
-# 40-character fold with the others. Stamps sit in all four quartiles of a
-# 1200s talk (boundaries at 300, 600, and 900).
+ROOT = Path(__file__).resolve().parents[1]
 ARCS = [
     (30, "Export the overnight file before the standup meeting starts today."),
     (90, "Name the owner of that file before anyone else opens the folder."),
@@ -33,124 +29,110 @@ ARCS = [
     (1140, "Close the board only after the limit is written where people look."),
 ]
 DURATION = 1200
+NO_ADDITIONAL_CASE = "本节没有补充中间部分之外的情况。"
+FRONT = """---
+title: 合成示例
+source: https://example.invalid/videos/fixture
+channel: 合成课堂
+published: 2026-01-01
+type: {kind}
+caption_kind: manual
+skill_version: fixture
+transcript_path: {path}
+tags: [video-note]
+---"""
 
 
-def _inventory_text() -> str:
-    lines = []
-    for stamp, excerpt in ARCS:
-        minutes, seconds = divmod(stamp, 60)
-        lines.append(f"[{minutes:02d}:{seconds:02d}] {excerpt} | restatement of that line only")
-    return "\n".join(lines) + "\n"
+def _clock(stamp: int) -> str:
+    return f"{stamp // 60:02d}:{stamp % 60:02d}"
 
 
-def _transcript() -> str:
-    lines = []
-    for stamp, excerpt in ARCS:
-        minutes, seconds = divmod(stamp, 60)
-        lines.append(f"[{minutes:02d}:{seconds:02d}] {excerpt}")
-    return "\n".join(lines) + "\n"
+def _transcript(rows: list[tuple[int, str]]) -> str:
+    return "".join(f"[{_clock(stamp)}] {speech}\n" for stamp, speech in rows)
 
 
-def _quote_block(stamps: list[int]) -> str:
-    by_stamp = {stamp: excerpt for stamp, excerpt in ARCS}
-    parts = []
-    for stamp in stamps:
-        minutes, seconds = divmod(stamp, 60)
-        parts.append(f"> [{minutes:02d}:{seconds:02d}] {by_stamp[stamp]}")
-    return "\n".join(parts)
-
-
-def _note(stamps: list[int], prose: str) -> str:
-    quotes = _quote_block(stamps)
-    return "\n".join(
-        [
-            "---",
-            'title: "fixture"',
-            "gate_passed: true",
-            "---",
-            "",
-            "## 先记住一句话",
-            "",
-            prose,
-            "",
-            quotes,
-            "",
-            "## 问题与做法",
-            "",
-            prose,
-            "",
-            quotes,
-            "",
-        ]
+def _selection(duration: int, boundaries: list[int], omitted_from: int | None = None) -> str:
+    return "".join(
+        f"{_clock(start)}–{_clock(end)} | 内容 | "
+        f"{'略' if omitted_from is not None and start >= omitted_from else '留'} | 供核对素材取舍\n"
+        for start, end in zip(boundaries, [*boundaries[1:], duration], strict=True)
     )
+
+
+def _article(
+    middle: str,
+    rows: list[tuple[int, str]],
+    *,
+    kind: str = "讲座",
+    lead: str = "先检查方法，再记录结果。",
+    action: str = "检查状态后写下结果。（改写讲者做法） ⏱ 00:30",
+    omitted: str = "无",
+    path: str = "transcript.txt",
+) -> str:
+    evidence = "".join(f"> [{_clock(stamp)}] {speech}\n" for stamp, speech in rows)
+    return (
+        f"{FRONT.format(kind=kind, path=path)}\n\n"
+        f"## 先记住一句话\n\n{lead}\n\n"
+        "## 这场在谈什么、谁\n\n讲者介绍操作顺序。\n\n"
+        f"{middle.rstrip()}\n\n"
+        f"## 可复用做法\n\n{NO_ADDITIONAL_CASE}\n\n"
+        f"## 翻车或别用\n\n{NO_ADDITIONAL_CASE}\n\n"
+        f"## 今天立刻动手一步\n\n{action}\n\n"
+        f"本文略去｜{omitted}\n\n## 原文依据\n{evidence}"
+    )
+
+
+def _arc_note(rows: list[tuple[int, str]], *, omitted: str = "无") -> str:
+    middle = "## 主线论点\n\n" + "\n\n".join(
+        f"{speech} ⏱ {_clock(stamp)}" for stamp, speech in rows
+    )
+    action = f"{rows[0][1]} ⏱ {_clock(rows[0][0])}"
+    return _article(middle, rows, action=action, omitted=omitted)
 
 
 def _write_job(
-    root: Path,
-    *,
-    note: str,
-    inventory: str | None = None,
-    duration: int = DURATION,
-    transcript: str | None = None,
+    job: Path, note: str, transcript: str, selection: str | None, duration: int | None,
 ) -> Path:
-    job = root / "job"
     job.mkdir(parents=True)
-    (job / "transcript.txt").write_text(
-        _transcript() if transcript is None else transcript,
-        encoding="utf-8",
-    )
-    (job / "status.json").write_text(
-        json.dumps({"duration_seconds": duration}),
-        encoding="utf-8",
-    )
+    (job / "transcript.txt").write_text(transcript, encoding="utf-8")
     (job / "note.md").write_text(note, encoding="utf-8")
-    if inventory is not None:
-        (job / "inventory.md").write_text(inventory, encoding="utf-8")
+    (job / "status.json").write_text(
+        json.dumps({"status": "transcript_ready", "expected_lang": "en", "duration_seconds": duration}),
+        encoding="utf-8",
+    )
+    if selection is not None:
+        (job / "selection.md").write_text(selection, encoding="utf-8")
     return job
 
 
-def _sparse_job(
-    root: Path,
-    *,
-    duration: int,
-    rows: list[tuple[int, str]],
-    quoted: list[int],
-    chunks: int = 0,
-) -> Path:
-    by_stamp = {stamp: excerpt for stamp, excerpt in rows}
-    inventory_lines = []
-    transcript_lines = []
-    for stamp, excerpt in rows:
-        minutes, seconds = divmod(stamp, 60)
-        clock = f"[{minutes:02d}:{seconds:02d}]"
-        inventory_lines.append(f"{clock} {excerpt} | restatement of that line only")
-        transcript_lines.append(f"{clock} {excerpt}")
-    quote_lines = []
-    for stamp in quoted:
-        minutes, seconds = divmod(stamp, 60)
-        quote_lines.append(f"> [{minutes:02d}:{seconds:02d}] {by_stamp[stamp]}")
-    note = "\n".join(["## 先记住一句话", "", "The note keeps each quoted line.", "", *quote_lines, ""])
-    job = root / "job"
-    job.mkdir(parents=True)
-    (job / "transcript.txt").write_text("\n".join(transcript_lines) + "\n", encoding="utf-8")
-    (job / "status.json").write_text(
-        json.dumps({"duration_seconds": duration}),
-        encoding="utf-8",
+def _check_note(job: Path) -> dict:
+    return verify_note.verify(
+        job / "transcript.txt", (job / "note.md").read_text(encoding="utf-8"), expected_lang="en",
     )
-    (job / "note.md").write_text(note, encoding="utf-8")
-    (job / "inventory.md").write_text("\n".join(inventory_lines) + "\n", encoding="utf-8")
-    if chunks:
-        folder = job / "chunks"
-        folder.mkdir()
-        for index in range(1, chunks + 1):
-            (folder / f"{index:02d}.txt").write_text(
-                "chunk text without a stamp\n",
-                encoding="utf-8",
-            )
-    return job
+
+
+def _c04_reasons(result: dict) -> set[str]:
+    return {rule for rule in failed_ids(result) if rule.startswith("C04")}
 
 
 class CoverageCheckTests(unittest.TestCase):
+    def _check(
+        self,
+        indexes: list[int],
+        *,
+        rows: list[tuple[int, str]] = ARCS,
+        duration: int = DURATION,
+        boundaries: list[int] | None = None,
+        omitted_from: int | None = None,
+    ) -> dict:
+        selected = [rows[index] for index in indexes]
+        selection = _selection(duration, boundaries or [0, *(stamp for stamp, _ in rows[1:])], omitted_from)
+        omitted = f"旁支（{_clock(omitted_from)}–{_clock(duration)}）" if omitted_from is not None else "无"
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", _arc_note(selected, omitted=omitted),
+                             _transcript(rows), selection, duration)
+            return cov.check_job(job)
+
     def test_script_reads_only_and_calls_no_model(self) -> None:
         source = Path(cov.__file__).read_text(encoding="utf-8")
         self.assertIn("from pathlib import Path", source)
@@ -161,410 +143,138 @@ class CoverageCheckTests(unittest.TestCase):
         self.assertNotIn("C:\\", source)
         self.assertNotIn("C:/", source)
 
-    def test_hits_required_is_nine_tenths_at_least_three(self) -> None:
-        self.assertEqual(cov.hits_required(10), 9)
-        self.assertEqual(cov.hits_required(4), 4)
-        self.assertEqual(cov.hits_required(1), 3)
-        self.assertEqual(cov.DELIVERY_RATIO, 0.9)
-
     def test_thin_stub_fails_quartiles_and_depth(self) -> None:
-        """Four grounded claims, one early stamp. Faithful on that line, not covered."""
-        early = ARCS[0][1]
-        prose = "Export the overnight file before the standup meeting starts today."
-        note = _note([30, 30, 30, 30], prose)
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(Path(tmp), note=note, inventory=_inventory_text())
-            transcript = (job / "transcript.txt").read_text(encoding="utf-8")
-            self.assertIn(early, transcript)
-            result = cov.check_job(job)
-        codes = [line.split()[0] for line in result["reasons"]]
-        self.assertIn("C02", codes)
-        self.assertIn("C03", codes)
+        result = self._check([0])
         self.assertFalse(result["ok"])
-        self.assertEqual(result["inventory_hits"], 1)
-        self.assertEqual(result["inventory_need"], 9)
+        self.assertEqual(failed_ids(result), {"C02", "S01"}, result["reasons"])
         self.assertEqual(result["quartiles"], [0])
 
     def test_spread_without_depth_still_fails(self) -> None:
-        """Three quartiles and four facts are still under the 9/10 inventory bar."""
-        prose = "The talk names a file, a tab, a feed, and a limit."
-        note = _note([30, 330, 630, 930], prose)
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(Path(tmp), note=note, inventory=_inventory_text())
-            result = cov.check_job(job)
+        result = self._check([0, 3, 5, 7])
         self.assertFalse(result["ok"])
-        self.assertTrue(any(line.startswith("C03 FAIL:") for line in result["reasons"]))
-        self.assertFalse(any(line.startswith("C02 FAIL:") for line in result["reasons"]))
-        self.assertEqual(result["inventory_hits"], 4)
-        self.assertGreaterEqual(len(result["quartiles"]), 3)
+        self.assertEqual(failed_ids(result), {"S01"}, result["reasons"])
+        self.assertEqual(result["quartiles"], [0, 1, 2, 3])
 
     def test_full_arc_note_passes(self) -> None:
-        prose = (
-            "先把过夜的文件导出来，写上负责人，旁边留一份备份。"
-            "重复的表删掉，列加够就停。"
-            "土连续湿了三天就停浇，并把那盆标出来。"
-            "限额写在大家看得到的地方，念一遍，再收板。"
-        )
-        note = _note([stamp for stamp, _excerpt in ARCS], prose)
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(Path(tmp), note=note, inventory=_inventory_text())
-            result = cov.check_job(job)
-        self.assertEqual(result["reasons"], [], result["reasons"])
-        self.assertTrue(result["ok"])
+        result = self._check(list(range(10)))
+        self.assertTrue(result["ok"], result["reasons"])
         self.assertTrue(result["long"])
-        self.assertEqual(result["inventory_hits"], 10)
         self.assertEqual(result["quartiles"], [0, 1, 2, 3])
         self.assertEqual(result["warnings"], [])
 
     def test_nine_of_ten_passes_and_eight_fails(self) -> None:
-        prose = "Ten arcs, one left as a single banter line still quoted."
-        nine = [stamp for stamp, _excerpt in ARCS[:9]]
-        eight = [stamp for stamp, _excerpt in ARCS[:8]]
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            passed = cov.check_job(
-                _write_job(root / "a", note=_note(nine, prose), inventory=_inventory_text())
-            )
-            failed = cov.check_job(
-                _write_job(root / "b", note=_note(eight, prose), inventory=_inventory_text())
-            )
+        passed = self._check(list(range(9)))
+        failed = self._check(list(range(8)))
         self.assertTrue(passed["ok"], passed["reasons"])
-        self.assertEqual(passed["inventory_hits"], 9)
-        self.assertEqual(passed["warnings"], [])
         self.assertFalse(failed["ok"])
-        self.assertTrue(any(line.startswith("C03 FAIL:") for line in failed["reasons"]))
-        self.assertEqual(failed["inventory_hits"], 8)
+        self.assertEqual(failed_ids(failed), {"S01"}, failed["reasons"])
 
-    def test_thin_delivery_fails_and_full_delivery_passes(self) -> None:
-        stamp, excerpt = ARCS[0]
-        clock = f"{stamp // 60:02d}:{stamp % 60:02d}"
-        note = _note([stamp], excerpt)
-        thin_prose = f"导出文件。 ⏱ {clock}\n"
-        compliant = (
-            "---\ntype: 讲座\n---\n\n"
-            "## 先记住一句话\n\n在晨会开始前导出隔夜文件。\n\n"
-            "## 这场在谈什么、谁\n\n讲者介绍晨会前的文件准备。\n\n"
-            f"## 主线论点\n\n在晨会开始前完成导出。 ⏱ {clock}\n\n"
-            "## 可复用做法\n\n把导出安排在晨会前。\n\n"
-            "## 翻车或别用\n\n本节没有补充中间部分之外的情况。\n\n"
-            "## 今天立刻动手一步\n\n导出隔夜文件，赶在晨会开始前完成（改写讲者做法）。\n"
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            job = _write_job(root, note=note, duration=60, transcript=f"[{clock}] {excerpt}\n")
-            thin = root / "thin.md"
-            full = root / "full.md"
-            yaml_trap = root / "yaml.md"
-            thin.write_text(thin_prose, encoding="utf-8")
-            full.write_text(compliant, encoding="utf-8")
-            yaml_trap.write_text(
-                f"---\ntype: 讲座\ntitle: {'alphabet' * 40}\n---\n" + thin_prose,
-                encoding="utf-8",
-            )
-            thin_result = cov.check_job(job, thin)
-            full_result = cov.check_job(job, full)
-            yaml_result = cov.check_job(job, yaml_trap)
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in thin_result["reasons"]))
-        self.assertFalse(thin_result["ok"])
-        self.assertTrue(any(line.startswith("C04 FAIL:") for line in yaml_result["reasons"]))
-        self.assertFalse(yaml_result["ok"])
-        self.assertTrue(full_result["ok"], full_result["reasons"])
-
-    def test_delivery_ratio_boundary(self) -> None:
-        note = _note([stamp for stamp, _excerpt in ARCS], "The speaker lists practical steps.")
-        header = (
-            "---\ntype: 讲座\n---\n\n"
-            "## 先记住一句话\n\nThe speaker lists practical steps.\n\n"
-            "## 这场在谈什么、谁\n\nThe lecture covers the steps below.\n\n"
-            "## 主线论点\n\n"
-        )
-        footer = (
-            "\n\n## 可复用做法\n\nExport the overnight file before the standup.\n\n"
-            "## 翻车或别用\n\nThe speaker gives no further limits.\n\n"
-            "## 今天立刻动手一步\n\nExport the file before the standup (adapted from the lecture).\n"
-        )
-        claims = [
-            f"{excerpt} ⏱ {stamp // 60:02d}:{stamp % 60:02d}"
-            for stamp, excerpt in ARCS
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            job = _write_job(root, note=note, inventory=_inventory_text())
-            at = root / "at.md"
-            under = root / "under.md"
-            at.write_text(header + "\n\n".join(claims[:9]) + footer, encoding="utf-8")
-            under.write_text(header + "\n\n".join(claims[:8]) + footer, encoding="utf-8")
-            at_result = cov.check_job(job, at)
-            under_result = cov.check_job(job, under)
-        self.assertTrue(at_result["ok"], at_result["reasons"])
-        self.assertFalse(under_result["ok"], under_result["reasons"])
-        self.assertTrue(under_result["reasons"])
-        self.assertTrue(all(line.startswith("C04 FAIL: C04e ") for line in under_result["reasons"]))
-
-    def test_missing_inventory_fails_and_inventory_file_satisfies(self) -> None:
-        note = _note([stamp for stamp, _excerpt in ARCS], "covered")
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bare = root / "bare"
-            bare.mkdir()
-            (bare / "transcript.txt").write_text(_transcript(), encoding="utf-8")
-            (bare / "status.json").write_text(
-                json.dumps({"duration_seconds": DURATION}),
-                encoding="utf-8",
-            )
-            (bare / "note.md").write_text(note, encoding="utf-8")
-            (bare / "chunks").mkdir()
-            (bare / "chunks" / "01.txt").write_text("[00:30] early\n", encoding="utf-8")
-            (bare / "chunks" / "02.txt").write_text("[15:30] late\n", encoding="utf-8")
-            missing = cov.check_job(bare)
-            held = root / "held"
-            job = _write_job(held, note=note, inventory=_inventory_text())
-            (job / "chunks").mkdir()
-            (job / "chunks" / "01.txt").write_text("[00:30] early\n", encoding="utf-8")
-            present = cov.check_job(job)
-        self.assertTrue(any(line.startswith("C01 FAIL:") for line in missing["reasons"]))
-        self.assertNotIn("C01", [line.split()[0] for line in present["reasons"]])
-        self.assertTrue(present["ok"], present["reasons"])
-
-    def test_chunk_notes_cover_a_long_job(self) -> None:
-        note = _note([stamp for stamp, _excerpt in ARCS], "chunk notes stand in for inventory.md")
-        first = "\n".join(_inventory_text().splitlines()[:5]) + "\n"
-        second = "\n".join(_inventory_text().splitlines()[5:]) + "\n"
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(Path(tmp), note=note, inventory=None)
-            chunks = job / "chunks"
-            chunks.mkdir()
-            (chunks / "01.txt").write_text("chunk one\n", encoding="utf-8")
-            (chunks / "02.txt").write_text("chunk two\n", encoding="utf-8")
-            (chunks / "01.notes.md").write_text(first, encoding="utf-8")
-            (chunks / "02.notes.md").write_text(second, encoding="utf-8")
-            result = cov.check_job(job)
-        self.assertTrue(result["ok"], result["reasons"])
-        self.assertEqual(result["inventory_lines"], 10)
-        self.assertEqual(result["warnings"], [])
-
-    def test_two_chunks_without_a_clock_count_as_long(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            job = Path(tmp) / "job"
-            chunks = job / "chunks"
-            chunks.mkdir(parents=True)
-            (chunks / "01.txt").write_text("no stamp here at all\n", encoding="utf-8")
-            (chunks / "02.txt").write_text("still no clock in the second chunk\n", encoding="utf-8")
-            (job / "note.md").write_text("a note\n", encoding="utf-8")
-            result = cov.check_job(job)
-        self.assertTrue(result["long"])
-        self.assertTrue(any(line.startswith("C01 FAIL:") for line in result["reasons"]))
+    def test_selection_needs_at_least_three_covered_units(self) -> None:
+        result = self._check([0, 3, 5, 7], boundaries=[0, 600])
+        self.assertFalse(result["ok"])
+        self.assertEqual(failed_ids(result), {"S01"}, result["reasons"])
 
     def test_unstamped_quotes_use_segments(self) -> None:
-        segments = []
-        quote_lines = ["## 先记住一句话", ""]
-        for index, (stamp, excerpt) in enumerate(ARCS):
-            segments.append({"start": stamp, "end": stamp + 20, "text": excerpt})
-            quote_lines.append(f"> {excerpt}")
-        segments[-1]["end"] = DURATION
-        note = "\n".join(quote_lines) + "\n"
+        # No clocks in transcript text; the real timed sidecar places the quotes.
+        rows = [ARCS[i] for i in (0, 3, 5, 7)]
         with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(Path(tmp), note=note, inventory=_inventory_text())
-            (job / "segments.json").write_text(json.dumps(segments), encoding="utf-8")
+            job = _write_job(
+                Path(tmp) / "job", _arc_note(rows), "\n".join(speech for _, speech in rows) + "\n",
+                _selection(DURATION, [0, 300, 600, 900]), DURATION,
+            )
+            (job / "segments.json").write_text(
+                json.dumps([{"start": stamp, "end": stamp + 4, "text": speech} for stamp, speech in rows]),
+                encoding="utf-8",
+            )
             result = cov.check_job(job)
         self.assertTrue(result["ok"], result["reasons"])
         self.assertEqual(result["quartiles"], [0, 1, 2, 3])
 
-    def test_short_video_still_runs_and_skips_arc_checks(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _write_job(
-                Path(tmp),
-                note="Short note with one quote.\n\n> [00:30] " + ARCS[0][1] + "\n",
-                inventory=None,
-                duration=120,
-                transcript="[00:30] " + ARCS[0][1] + "\n",
-            )
-            result = cov.check_job(job)
+    def test_short_video_still_checks_selection_and_skips_quartiles(self) -> None:
+        result = self._check([0, 1, 2], rows=ARCS[:3], duration=180)
         self.assertTrue(result["ok"], result["reasons"])
-        self.assertTrue(result["skipped"])
         self.assertFalse(result["long"])
-        self.assertEqual(result["warnings"], [])
+        self.assertEqual(result["quartiles"], [])
 
-    def test_thin_warning_does_not_loosen_thresholds(self) -> None:
-        """A sparse inventory can still pass. The warning is not a new fail."""
-        self.assertEqual(cov.HIT_RATE_NUMERATOR, 9)
-        self.assertEqual(cov.HIT_RATE_DENOMINATOR, 10)
-        self.assertEqual(cov.MIN_HITS, 3)
-        self.assertEqual(cov.DELIVERY_RATIO, 0.9)
-        self.assertEqual(cov.THIN_SECONDS_PER_LINE, 600)
-        self.assertEqual(cov.hits_required(10), 9)
-        self.assertEqual(cov.hits_required(3), 3)
-        self.assertIsNone(cov.inventory_thin_warning(3, 1800, 0))
-        self.assertIsNone(cov.inventory_thin_warning(6, 3600, 0))
-        self.assertIsNone(cov.inventory_thin_warning(10, DURATION, 2))
-        self.assertIsNone(cov.inventory_thin_warning(0, 3600, 8))
-        duration_only = cov.inventory_thin_warning(3, 3600, 0)
-        self.assertIsNotNone(duration_only)
-        assert duration_only is not None
-        self.assertTrue(duration_only.startswith("C WARN:"))
-        self.assertNotIn("FAIL", duration_only)
-        both = cov.inventory_thin_warning(3, 3600, 8)
-        self.assertIsNotNone(both)
-        assert both is not None
-        self.assertIn("3600s", both)
-        self.assertIn("8 chunks", both)
-
-    def test_sparse_inventory_warns_and_still_passes(self) -> None:
-        """Three lines on a one-hour talk clear C03 and still warn."""
+    def test_omitted_duration_warning_does_not_loosen_thresholds(self) -> None:
+        # Three retained units; duration is exactly half, then just over half.
         rows = [
-            (120, ARCS[0][1]),
-            (1500, ARCS[3][1]),
-            (3000, ARCS[7][1]),
+            (0, ARCS[0][1]), (40, ARCS[1][1]), (80, ARCS[2][1]),
+            (210, "Thanks for coming to today's recording. Remember to follow our channel."),
         ]
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _sparse_job(Path(tmp), duration=3600, rows=rows, quoted=[120, 1500, 3000])
-            result = cov.check_job(job)
-            script = Path(cov.__file__)
-            completed = subprocess.run(
-                [sys.executable, str(script), "--job", str(job), "--json"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        self.assertTrue(result["ok"], result["reasons"])
-        self.assertEqual(result["reasons"], [])
-        self.assertEqual(result["inventory_lines"], 3)
-        self.assertEqual(result["inventory_hits"], 3)
-        self.assertEqual(result["inventory_need"], 3)
-        self.assertGreaterEqual(len(result["quartiles"]), 3)
-        self.assertEqual(len(result["warnings"]), 1)
-        self.assertIn("under one line per 10 minutes", result["warnings"][0])
-        self.assertEqual(completed.returncode, 0)
-        payload = json.loads(completed.stdout)
-        self.assertTrue(payload["ok"])
-        self.assertEqual(payload["warnings"], result["warnings"])
-        self.assertNotIn("FAIL", completed.stdout)
-
-    def test_sparse_inventory_that_misses_rows_still_fails(self) -> None:
-        """The warning does not clear a C03 miss, and it does not loosen 9/10."""
-        rows = [
-            (120, ARCS[0][1]),
-            (1500, ARCS[3][1]),
-            (3000, ARCS[7][1]),
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _sparse_job(Path(tmp), duration=3600, rows=rows, quoted=[120])
-            result = cov.check_job(job)
-        self.assertFalse(result["ok"])
-        self.assertTrue(any(line.startswith("C03 FAIL:") for line in result["reasons"]))
-        self.assertEqual(result["inventory_hits"], 1)
-        self.assertEqual(result["inventory_need"], 3)
-        self.assertTrue(result["warnings"])
-        self.assertTrue(result["warnings"][0].startswith("C WARN:"))
-
-    def test_fewer_lines_than_chunks_warns_without_failing(self) -> None:
-        rows = [
-            (30, ARCS[0][1]),
-            (400, ARCS[3][1]),
-            (1000, ARCS[7][1]),
-        ]
-        with tempfile.TemporaryDirectory() as tmp:
-            job = _sparse_job(
-                Path(tmp),
-                duration=DURATION,
-                rows=rows,
-                quoted=[30, 400, 1000],
-                chunks=4,
-            )
-            result = cov.check_job(job)
-            plain = subprocess.run(
-                [sys.executable, str(Path(cov.__file__)), "--job", str(job)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        self.assertTrue(result["ok"], result["reasons"])
-        self.assertEqual(result["reasons"], [])
-        self.assertEqual(len(result["warnings"]), 1)
-        self.assertIn("fewer lines than chunk files", result["warnings"][0])
-        self.assertNotIn("under one line per 10 minutes", result["warnings"][0])
-        self.assertEqual(plain.returncode, 0)
-        self.assertIn("coverage ok", plain.stdout)
-        self.assertIn("C WARN:", plain.stdout)
-        self.assertNotIn("FAIL", plain.stdout)
+        for end, warns in [(140, False), (139, True)]:
+            with self.subTest(retained_seconds=end):
+                result = self._check([0, 1, 2], rows=rows, duration=280, boundaries=[0, 40, 80, end], omitted_from=end)
+                self.assertTrue(result["ok"], result["reasons"])
+                self.assertEqual(bool(result["warnings"]), warns, result["warnings"])
+                self.assertEqual(result["quartiles"], [])
 
     def test_cli_exit_codes(self) -> None:
-        prose = "Export the overnight file before the standup meeting starts today."
-        note = _note([30], prose)
-        script = Path(cov.__file__)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            job = _write_job(root, note=note, inventory=_inventory_text())
-            failed = subprocess.run(
-                [sys.executable, str(script), "--job", str(job)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            missing = subprocess.run(
-                [sys.executable, str(script), "--job", str(root / "nope")],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        self.assertEqual(failed.returncode, 1)
-        self.assertIn("C02 FAIL:", failed.stdout)
-        self.assertIn("C03 FAIL:", failed.stdout)
-        self.assertEqual(missing.returncode, 2)
+            for name, indexes, expected in (("thin", [0], 1), ("full", list(range(10)), 0)):
+                job = _write_job(root / name, _arc_note([ARCS[i] for i in indexes]), _transcript(ARCS),
+                                 _selection(DURATION, [0, *(stamp for stamp, _ in ARCS[1:])]), DURATION)
+                run = subprocess.run(
+                    [sys.executable, str(ROOT / "scripts/coverage_check.py"), "--job", str(job), "--json"],
+                    capture_output=True, encoding="utf-8", check=False,
+                )
+                self.assertEqual(run.returncode, expected, run.stdout + run.stderr)
+                self.assertEqual(json.loads(run.stdout)["ok"], expected == 0)
 
 
 class DeliveryContractTests(unittest.TestCase):
-    def _c04_reasons(self, result: dict) -> list[str]:
-        self.assertGreater(result.get("note_quote_times") or 0, 0, result)
-        return [reason for reason in result["reasons"] if reason.startswith("C04 FAIL:")]
-
     def _check_delivery(
-        self,
-        middle: str,
-        *,
-        quote: str = "Check the status before recording the result.",
-        kind: str = "讲座",
-    ) -> list[str]:
-        transcript = f"[00:30] {quote}\n"
-        note = f"## 问题与做法\n\n{quote}\n\n> {transcript}"
-        article = (
-            f"---\ntype: {kind}\n---\n\n"
-            "## 先记住一句话\n\n先检查状态。\n\n"
-            "## 这场在谈什么、谁\n\n讲者介绍检查方法。\n\n"
-            f"{middle}\n\n"
-            "## 可复用做法\n\n检查后记录结果。\n\n"
-            "## 翻车或别用\n\n本节没有补充中间部分之外的情况。\n\n"
-            "## 今天立刻动手一步\n\n检查状态并写下结果。（改写讲者做法）\n"
+        self, middle: str, *, quote: str = "Check the status before recording the result.", kind: str = "讲座",
+    ) -> set[str]:
+        rows = [
+            (0, "The speaker first explains how the team writes down the expected result."),
+            (30, quote),
+            (60, "Keep the status visible until everyone has recorded the result."),
+        ]
+        article = _article(middle, rows, kind=kind).replace(
+            f"## 可复用做法\n\n{NO_ADDITIONAL_CASE}",
+            "## 可复用做法\n\n先把预期结果写下来，记录结果之前保留状态。 ⏱ 00:00 ⏱ 01:00",
         )
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            job = _write_job(root, note=note, duration=60, transcript=transcript)
-            delivery = root / "delivery.md"
-            delivery.write_text(article, encoding="utf-8")
-            return self._c04_reasons(cov.check_job(job, delivery))
+            job = _write_job(Path(tmp) / "job", article, _transcript(rows), _selection(90, [0, 30, 60]), 90)
+            result = _check_note(job)
+        return _c04_reasons(result)
+
+    def test_thin_delivery_fails_and_full_delivery_passes(self) -> None:
+        rows = ARCS[:3]
+        article = _arc_note(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", article, _transcript(rows), _selection(180, [0, 90, 150]), 180)
+            self.assertTrue(_check_note(job)["allowed"], _check_note(job)["reasons"])
+            for thin in ("导出隔夜文件。 ⏱ 00:30", FRONT.format(kind="讲座", path="transcript.txt").replace("合成示例", "alphabet" * 40) + "\n导出隔夜文件。 ⏱ 00:30"):
+                (job / "note.md").write_text(thin, encoding="utf-8")
+                result = _check_note(job)
+                self.assertFalse(result["allowed"])
+                self.assertIn("C04a", _c04_reasons(result), result["reasons"])
 
     def test_delivery_format_examples_pass_c04(self) -> None:
-        root = Path(__file__).resolve().parents[1]
-        reference = (root / "references/delivery-format.md").read_text(encoding="utf-8")
+        reference = (ROOT / "references/delivery-format.md").read_text(encoding="utf-8")
         examples = re.split(r"^## 合成示例[一二三四]：", reference, flags=re.MULTILINE)[1:]
-        job_ids = (
-            "synthetic-cold-dough",
-            "synthetic-clinic-reminders",
-            "synthetic-cold-chain",
-            "synthetic-kitchen-stock",
-        )
-        self.assertEqual(len(examples), len(job_ids))
-        with tempfile.TemporaryDirectory() as tmp:
-            for job_id, example in zip(job_ids, examples, strict=True):
-                with self.subTest(example=job_id):
-                    article, excerpts, _ = re.findall(
-                        r"^```markdown\n(.*?)^```$", example, re.MULTILINE | re.DOTALL,
-                    )
-                    job = root / "evals/fixtures/delivery-examples" / job_id
-                    self.assertEqual((job / "transcript.txt").read_text(encoding="utf-8"), excerpts)
-                    delivery = Path(tmp) / f"{job_id}.md"
-                    delivery.write_text(article, encoding="utf-8")
-                    self.assertEqual(self._c04_reasons(cov.check_job(job, delivery)), [])
+        names = ("cold-dough", "clinic-reminders", "cold-chain", "kitchen-stock")
+        self.assertEqual(len(examples), len(names))
+        for name, example in zip(names, examples, strict=True):
+            with self.subTest(example=name):
+                job = ROOT / "evals/fixtures/delivery-examples" / f"synthetic-{name}"
+                blocks = re.findall(
+                    r"^```(?:markdown|text)\n(.*?)^```$", example, re.MULTILINE | re.DOTALL,
+                )
+                self.assertEqual(len(blocks), 2, "expected the frozen single-note and selection blocks")
+                article, selection = blocks
+                self.assertEqual((job / "note.md").read_text(encoding="utf-8"), article)
+                self.assertEqual((job / "selection.md").read_text(encoding="utf-8"), selection)
+                transcript = (job / "transcript.txt").read_text(encoding="utf-8").splitlines()
+                evidence = re.findall(r"^> (\[\d\d:\d\d\].*)$", article, re.MULTILINE)
+                omitted_cues = re.findall(r"`(\[\d\d:\d\d\] [^`]+)`", example)
+                self.assertEqual(transcript, sorted(set(evidence + omitted_cues)))
+                verified, covered = _check_note(job), cov.check_job(job)
+                self.assertTrue(verified["allowed"], verified["reasons"])
+                self.assertTrue(covered["ok"], covered["reasons"])
 
     def test_term_block_accepts_aliases_and_hyphen_spacing(self) -> None:
         cases = (
@@ -577,26 +287,26 @@ class DeliveryContractTests(unittest.TestCase):
         middle = (
             "## 主线论点\n\n讲者解释如何判断做法是否有效。 ⏱ 00:30\n\n"
             "> [!note] 术语：{term}\n"
-            "> 在这里用来判断做法是否有效。"
+            "> 在这里用来判断做法是否有效。（Claude 补充，非视频内容）"
         )
         for label, spoken in cases:
             with self.subTest(label=label, spoken=spoken):
                 quote = f"The speaker uses the term {spoken} to discuss whether the method works."
-                self.assertEqual(self._check_delivery(middle.format(term=spoken), quote=quote), [])
-                self.assertEqual(self._check_delivery(middle.format(term=label), quote=quote), [])
+                self.assertEqual(self._check_delivery(middle.format(term=spoken), quote=quote), set())
+                self.assertEqual(self._check_delivery(middle.format(term=label), quote=quote), set())
 
     def test_list_item_opening_ordinals_are_not_body_numbers(self) -> None:
         heading = "## 主线论点\n\n"
         bullets = "- 检查状态。 ⏱ 00:30\n- 记录结果。 ⏱ 00:30"
         numbered_bullets = "- 3. 检查状态。 ⏱ 00:30\n- 4. 记录结果。 ⏱ 00:30"
-        self.assertEqual(self._check_delivery(heading + bullets), [])
-        self.assertEqual(self._check_delivery(heading + numbered_bullets), [])
+        self.assertEqual(self._check_delivery(heading + bullets), set())
+        self.assertEqual(self._check_delivery(heading + numbered_bullets), set())
 
     def test_each_delivery_type_accepts_claim_subheadings(self) -> None:
         claim = "检查状态后再记录结果。 ⏱ 00:30\n"
         cases = (
             ("讲座", "## 主线论点\n\n", ""),
-            ("访谈", f"## 话题\n\n### 方法\n\n{claim}\n## 意见不一致的地方\n\n", ""),
+            ("访谈", "## 话题\n\n### 方法\n\n", "\n## 意见不一致的地方\n\n不适用（文稿中未出现意见分歧）。\n"),
             ("大会", "## 发布或主张了什么\n\n", (
                 "\n## 有证据的 / 只是说法\n\n"
                 f"### 演示过或给出数据\n\n{claim}\n### 只是口头声称\n\n{claim}"
@@ -605,27 +315,74 @@ class DeliveryContractTests(unittest.TestCase):
         )
         for kind, before, after in cases:
             with self.subTest(kind=kind):
-                self.assertEqual(self._check_delivery(before + claim + after, kind=kind), [])
+                self.assertEqual(self._check_delivery(before + claim + after, kind=kind), set())
                 self.assertEqual(
-                    self._check_delivery(before + "### 检查步骤\n\n" + claim + after, kind=kind),
-                    [],
+                    self._check_delivery(before + "### 检查步骤\n\n" + claim + after, kind=kind), set(),
                 )
 
     def test_caption_correction_grounds_prose_and_term_block(self) -> None:
         middle = (
             "## 主线论点\n\n讲者用 QuasarLab 记录结果。 ⏱ 00:30\n\n"
             "> [!note] 术语：QuasarLab\n"
-            "> 这里用它记录检查结果。"
+            "> 这里用它记录检查结果。（Claude 补充，非视频内容）"
         )
         quote = "Record the results in QuazerLab after checking the status."
         correction = "\n\n> [!warning] 字幕更正\n> 字幕写作 QuazerLab，实为 QuasarLab。"
-        uncorrected = self._check_delivery(middle, quote=quote)
-        self.assertEqual(
-            {reason.split()[2] for reason in uncorrected},
-            {"C04c", "C04d"},
-            uncorrected,
+        self.assertEqual(self._check_delivery(middle, quote=quote), {"C04c", "C04d"})
+        self.assertEqual(self._check_delivery(middle + correction, quote=quote), set())
+
+
+class Phase2CAcceptanceTests(unittest.TestCase):
+    def _sample(self, name: str) -> str:
+        return (ADVERSARIAL / f"phase2c_{name}.md").read_text(encoding="utf-8")
+
+    def _assert_rejected(
+        self, text: str, control: str, rule: str, detail: str, *, coverage: bool = False,
+    ) -> None:
+        results = check_sample(text)
+        gate = results[int(coverage)]
+        actual = failed_ids(gate)
+        reasons = "\n".join(gate["reasons"])
+        expected = rf"(?im)^(?:{rule} FAIL:|C04 FAIL: {rule}:).*(?:{detail})"
+        self.assertRegex(
+            reasons, expected,
+            f"expected {rule} for this mutation, got {sorted(actual)}. Diagnostics:\n{reasons}",
         )
-        self.assertEqual(self._check_delivery(middle + correction, quote=quote), [])
+        self.assertFalse(gate["ok" if coverage else "allowed"], reasons)
+        self.assertNotIn("C04a", failed_ids(results[0]), results[0]["reasons"])
+        verified, covered = check_sample(control)
+        self.assertTrue(verified["allowed"], verified["reasons"])
+        self.assertTrue(covered["ok"], covered["reasons"])
+
+    def test_a_unmatched_body_timestamp(self) -> None:
+        text = self._sample("a_unmatched_link")
+        self._assert_rejected(text, text.replace(" ⏱ 03:00", ""), "C04b", r"03:00")
+
+    def test_b_nonverbatim_end_quote(self) -> None:
+        text = self._sample("b_nonverbatim_quote")
+        control = text.replace("still small and building rockets", "still small and learning")
+        self._assert_rejected(text, control, "R04", r"building rockets|02:05")
+
+    def test_c_unused_end_quote(self) -> None:
+        text = self._sample("c_unused_quote")
+        control = text.replace("> [02:05] Keep the cheap plan for teams that are still small and learning.\n", "")
+        self._assert_rejected(text, control, "C04b", r"(?:unused|未用|未引用).*02:05|02:05.*(?:unused|未用|未引用)")
+
+    def test_d_missing_or_used_omitted_selection(self) -> None:
+        text = self._sample("d_selection")
+        with self.subTest(case="missing"):
+            control = "# fixture_selection: evals/corpus/short.selection\n" + text
+            self._assert_rejected(text, control, "S01", r"selection\.md", coverage=True)
+        with self.subTest(case="uses an omitted unit"):
+            control = (
+                "# fixture_selection: evals/corpus/short-omitted.selection\n"
+                + text.replace("本文略去｜无", "本文略去｜旁支（02:05–03:20）")
+            )
+            attack = control.replace(
+                "## 可复用做法\n\n" + NO_ADDITIONAL_CASE,
+                "## 可复用做法\n\nKeep the cheap plan for teams that are still small and learning. ⏱ 02:05",
+            ) + "> [02:05] Keep the cheap plan for teams that are still small and learning.\n"
+            self._assert_rejected(attack, control, "S01", r"(?:omitted|略).*02:05|02:05.*(?:omitted|略)", coverage=True)
 
 
 if __name__ == "__main__":

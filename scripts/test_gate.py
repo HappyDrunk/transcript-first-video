@@ -21,6 +21,8 @@ import verify_note  # noqa: E402
 import verify_rules  # noqa: E402
 import x_host  # noqa: E402
 import youtube_host  # noqa: E402
+from test_coverage_check import FRONT, _article  # noqa: E402
+from verify_report import failed_ids  # noqa: E402
 
 os.chdir(ROOT)
 
@@ -199,163 +201,90 @@ class QualityGateTests(unittest.TestCase):
 
 
 class VerifierTests(unittest.TestCase):
+    def _verify_fixture(self, note: str, transcript: str, lang: str = "en") -> dict:
+        return verify_note.verify(
+            ROOT / "evals/fixtures" / f"{transcript}.txt",
+            (ROOT / "evals/fixtures" / f"{note}.md").read_text(encoding="utf-8"),
+            expected_lang=lang,
+        )
+
     def test_allow_when_cited_and_usable(self) -> None:
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        note = (ROOT / "evals/fixtures/usable_en_note.md").read_text(encoding="utf-8")
-        result = verify_note.verify(transcript, note, expected_lang="en")
-        self.assertTrue(result["allowed"], result["reasons"])
+        for lang in ("en", "zh"):
+            with self.subTest(lang=lang):
+                result = self._verify_fixture(f"usable_{lang}_note", f"usable_{lang}_timed_transcript", lang)
+                self.assertTrue(result["allowed"], result["reasons"])
 
     def test_refuse_empty_missing_citation_and_laundering(self) -> None:
-        empty = verify_note.verify(
-            ROOT / "evals/fixtures/empty_transcript.txt",
-            (ROOT / "evals/fixtures/empty_finished_note.md").read_text(encoding="utf-8"),
-            expected_lang="en",
-        )
-        self.assertFalse(empty["allowed"])
-        self.assertTrue(any("empty" in reason for reason in empty["reasons"]))
-
-        missing = verify_note.verify(
-            ROOT / "evals/fixtures/does_not_exist.txt",
-            (ROOT / "evals/fixtures/laundered_essay_note.md").read_text(encoding="utf-8"),
-            expected_lang="zh",
-        )
-        self.assertFalse(missing["allowed"])
-        self.assertTrue(any("missing transcript path" in reason for reason in missing["reasons"]))
-        self.assertTrue(any("analyzer-laundering" in reason for reason in missing["reasons"]))
-
-        uncited = verify_note.verify(
-            ROOT / "evals/fixtures/usable_en_transcript.txt",
-            (ROOT / "evals/fixtures/uncited_note.md").read_text(encoding="utf-8"),
-            expected_lang="en",
-        )
-        self.assertFalse(uncited["allowed"])
-        self.assertTrue(any("does not cite" in reason for reason in uncited["reasons"]))
-
-        laundered = verify_note.verify(
-            ROOT / "evals/fixtures/en_loop_transcript.txt",
-            (ROOT / "evals/fixtures/laundered_essay_note.md").read_text(encoding="utf-8"),
-            expected_lang="zh",
-        )
-        self.assertFalse(laundered["allowed"])
-        self.assertTrue(any("quality gate failed" in reason for reason in laundered["reasons"]))
-        self.assertTrue(any("analyzer-laundering" in reason for reason in laundered["reasons"]))
+        for note, transcript, lang, rule in [
+            ("empty_finished_note", "empty_transcript", "en", "R01"),
+            ("missing_transcript_note", "does_not_exist", "en", "R01"),
+            ("uncited_note", "usable_en_timed_transcript", "en", "C04a"),
+            ("laundered_essay_note", "en_loop_transcript", "zh", "R01"),
+        ]:
+            with self.subTest(transcript=transcript, note=note):
+                result = self._verify_fixture(note, transcript, lang)
+                self.assertFalse(result["allowed"])
+                self.assertIn(rule, failed_ids(result), result["reasons"])
 
     def test_basename_alone_is_not_a_citation(self) -> None:
-        note = "The transcript file is usable_en_transcript.txt and the plant was repotted."
         result = verify_note.verify(
-            ROOT / "evals/fixtures/usable_en_transcript.txt",
-            note,
+            ROOT / "evals/fixtures/usable_en_timed_transcript.txt",
+            "The transcript file is usable_en_timed_transcript.txt and the plant was repotted.",
             expected_lang="en",
         )
         self.assertFalse(result["allowed"])
-        self.assertTrue(any("does not cite" in reason for reason in result["reasons"]))
+        self.assertIn("C04a", failed_ids(result), result["reasons"])
 
     def test_refuse_path_and_title_without_quote(self) -> None:
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        note = (ROOT / "evals/fixtures/path_only_note.md").read_text(encoding="utf-8")
-        result = verify_note.verify(transcript, note, expected_lang="en")
+        result = self._verify_fixture("path_only_note", "usable_en_timed_transcript")
         self.assertFalse(result["allowed"], result["reasons"])
-        self.assertTrue(result["cited"])
-        self.assertFalse(result["quoted"])
-        self.assertTrue(any("does not quote" in reason for reason in result["reasons"]))
-        self.assertTrue(any("path or a title" in reason for reason in result["reasons"]))
+        self.assertIn("R04", failed_ids(result), result["reasons"])
 
     def test_quote_window_can_start_mid_transcript(self) -> None:
+        # The helper works on contiguous speech even if that span is not a note.
         transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
         compact = " ".join(transcript.read_text(encoding="utf-8").split())
         snippet = compact[17 : 17 + verify_note.QUOTE_WINDOW]
         self.assertEqual(len(snippet), verify_note.QUOTE_WINDOW)
         self.assertNotIn(compact[: verify_note.QUOTE_WINDOW], snippet)
         self.assertTrue(verify_note.quotes_transcript(snippet, compact))
-        # A mid-transcript snippet is a real quote, and it is still not a note.
-        bare = f"transcript: {transcript.as_posix()}\n\n{snippet}\n"
-        refused = verify_note.verify(transcript, bare, expected_lang="en")
-        self.assertFalse(refused["allowed"])
-        self.assertTrue(refused["quoted"])
-        self.assertTrue(any("knowledge section" in reason for reason in refused["reasons"]))
 
     def test_refuse_quote_stub_and_boilerplate_analysis(self) -> None:
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        stub = (ROOT / "evals/fixtures/quote_stub_note.md").read_text(encoding="utf-8")
-        refused = verify_note.verify(transcript, stub, expected_lang="en")
-        self.assertFalse(refused["allowed"], refused["reasons"])
-        self.assertTrue(refused["quoted"])
-        self.assertTrue(any("knowledge section" in reason for reason in refused["reasons"]))
-        boilerplate = (ROOT / "evals/fixtures/boilerplate_note.md").read_text(encoding="utf-8")
-        canned = verify_note.verify(transcript, boilerplate, expected_lang="en")
-        self.assertFalse(canned["allowed"], canned["reasons"])
-        self.assertTrue(any("boilerplate" in reason for reason in canned["reasons"]))
+        for note in ("quote_stub_note", "boilerplate_note"):
+            result = self._verify_fixture(note, "usable_en_timed_transcript")
+            self.assertFalse(result["allowed"], result["reasons"])
+            self.assertIn("C04a", failed_ids(result), result["reasons"])
 
     def test_scaffold_is_not_a_finished_note(self) -> None:
         self.assertFalse(hasattr(knowledge_note, "compose"))
         self.assertFalse(hasattr(knowledge_note, "render_note"))
-        text = (
-            "The warehouse team loses an hour every morning reconciling two spreadsheets. "
-            "Export the overnight file before standup. "
-            "Paste it into the shared workbook and delete the duplicate tab. "
-            "Do not email the raw export to the whole company. "
-            "Ask the shift lead to confirm the row count today."
+        source = ROOT / "evals/fixtures/usable_en_timed_transcript.txt"
+        note = knowledge_note.render_scaffold(
+            job_id="job_generic", video_id="generic", source="settle-transcript:generic",
+            acquisition="settle-transcript", transcript_cite=source.as_posix(),
         )
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "transcript.txt"
-            path.write_text(text + "\n", encoding="utf-8")
-            note = knowledge_note.render_scaffold(
-                job_id="job_generic",
-                video_id="generic",
-                source="settle-transcript:generic",
-                acquisition="settle-transcript",
-                transcript_cite=path.as_posix(),
-            )
-            self.assertTrue(note.startswith("---\n"))
-            self.assertIn("Scaffold only. This file is not a finished knowledge note.", note)
-            self.assertNotIn(text[:40], note)
-            bodies = dict(knowledge_note._section_bodies(note))
-            for heading in knowledge_note.SECTIONS:
-                self.assertIn(heading, bodies)
-                self.assertEqual(bodies[heading].strip(), "")
-            result = verify_note.verify(path, note, expected_lang="en")
-            self.assertFalse(result["allowed"], result["reasons"])
-            self.assertTrue(
-                any("does not analyze" in reason or "quoted_window" in reason for reason in result["reasons"])
-            )
-
-    def _speech_quote(self, transcript: Path, size: int = 80) -> str:
-        speech = " ".join(transcript.read_text(encoding="utf-8").split())
-        return speech[:size]
+        self.assertTrue(note.startswith("---\n"))
+        self.assertIn("not a finished knowledge note", note)
+        self.assertNotIn(source.read_text(encoding="utf-8").splitlines()[0][8:48], note)
+        result = verify_note.verify(source, note, expected_lang="en")
+        self.assertFalse(result["allowed"], result["reasons"])
+        self.assertIn("C04a", failed_ids(result), result["reasons"])
 
     def test_one_inapplicable_section_still_passes_shape(self) -> None:
-        transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        quote = self._speech_quote(transcript)
-        note = (ROOT / "evals/fixtures/usable_en_note.md").read_text(encoding="utf-8")
-        heading = "## 今天立刻动手一步"
-        note = note[: note.index(heading)] + (
-            f"{heading}\n\n本节不适用：原文没有可以今天就做的一步。\n\n> {quote}\n"
-        )
-        result = verify_note.verify(transcript, note, expected_lang="en")
+        job = ROOT / "evals/fixtures/delivery-examples/synthetic-clinic-reminders"
+        note = (job / "note.md").read_text(encoding="utf-8")
+        self.assertIn("不适用（文稿中未出现意见分歧）。", note)
+        result = verify_note.verify(job / "transcript.txt", note, expected_lang="en")
         self.assertTrue(result["allowed"], result["reasons"])
 
     def test_all_inapplicable_sections_are_not_a_deposit(self) -> None:
+        # An already-deposited 2B-era all-N/A note still uses the archival path.
         transcript = ROOT / "evals/fixtures/usable_en_transcript.txt"
-        quote = self._speech_quote(transcript)
-        original = (ROOT / "evals/fixtures/usable_en_note.md").read_text(encoding="utf-8")
-        front = original[: original.index("\n---\n", 4) + len("\n---\n")]
-        reasons = (
-            "原文没有单独的问题陈述。",
-            "原文没有分步骤的做法。",
-            "原文没有写出不能用的情形。",
-            "原文没有可以今天就做的一步。",
-        )
-        body = ["# fixture", ""]
-        for heading, reason in zip(knowledge_note.SECTIONS, reasons):
-            body.extend([f"## {heading}", "", f"本节不适用：{reason}", "", f"> {quote}", ""])
-        note = front + "\n" + "\n".join(body)
-        refused = verify_note.verify(transcript, note, expected_lang="en")
-        self.assertFalse(refused["allowed"], refused["reasons"])
-        self.assertTrue(
-            any(knowledge_note.ALL_INAPPLICABLE_REASON in reason for reason in refused["reasons"])
-        )
-        self.assertTrue(any(reason.startswith("R03 FAIL:") for reason in refused["reasons"]))
-
+        front = FRONT.format(kind="讲座", path="transcript.txt")
+        old_headings = ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步")
+        note = front + "\n\n" + "\n\n".join(
+            f"## {heading}\n\n本节不适用：原文没有涉及这一点。" for heading in old_headings
+        ) + "\n"
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job"
             job.mkdir()
@@ -385,17 +314,6 @@ class VerifierTests(unittest.TestCase):
             self.assertIsNone(status["note"])
             self.assertEqual(status["gate_lang"], "en")
 
-    def test_keyword_salad_fails_r09(self) -> None:
-        note_path = ROOT / "evals/adversarial/keyword_salad_en.md"
-        transcript = ROOT / "evals/adversarial/saas_pricing_transcript.txt"
-        text = note_path.read_text(encoding="utf-8")
-        self.assertIn("expect: FAIL R09", text)
-        self.assertNotIn("expected-fail-pending", text)
-        self.assertIn("Today, do only the first spoken move: Most, founders, set, price, too, low.", text)
-        result = verify_note.verify(transcript, text, expected_lang="en")
-        self.assertFalse(result["allowed"], result["reasons"])
-        self.assertTrue(any(reason.startswith("R09 FAIL:") for reason in result["reasons"]))
-
     def test_r04_r05_cross_cue_verbatim_span(self) -> None:
         """A ≥40-character quote may cross adjacent cues. Clocks are not speech.
 
@@ -422,31 +340,18 @@ class VerifierTests(unittest.TestCase):
             verify_rules._fold(plain_ctx.gate.text),
         )
 
-        def note(path: Path, quote: str, stamp: int | None) -> str:
-            cite = path.as_posix()
-            quoted = f"> {quality_gate.format_stamp(stamp)} {quote}" if stamp is not None else f"> {quote}"
-            return (
-                "---\n"
-                'title: "cross-cue"\n'
-                'source_url: "fixture"\n'
-                'video_id: "cross-cue"\n'
-                'acquisition: "fixture"\n'
-                "gate_passed: true\n"
-                f'transcript_path: "{cite}"\n'
-                "quoted_window: |-\n"
-                f"  {bark}\n"
-                "---\n"
-                "# note\n\n"
-                "## 问题与做法\n\n"
-                "Drainage is one continuous instruction across the two spoken cues.\n\n"
-                f"{quoted}\n\n"
-                "## 完整怎么做\n\n"
-                "Set bark in the pot before the plant goes in. That order is the method.\n\n"
-                f"> {bark}\n\n"
-                "## 翻车或别用\n\n"
-                "本节不适用：原文没有写出不能用的情形。\n\n"
-                "## 今天立刻动手一步\n\n"
-                "本节不适用：原文没有可以今天就做的一步。\n"
+        def note(path: Path, quote: str, stamp: int) -> str:
+            middle = "## 主线论点\n\n讲者说明新盆如何排水。 ⏱ 01:10"
+            article = _article(
+                middle, [(stamp, quote), (70, bark), (120, leave)], path=path.as_posix(),
+                action="在盆里铺一层树皮，让水能排出去。（改写讲者做法） ⏱ 01:10",
+            )
+            return article.replace(
+                "## 翻车或别用\n\n本节没有补充中间部分之外的情况。",
+                "## 翻车或别用\n\n换盆后这周不要施肥。 ⏱ 02:00",
+            ).replace(
+                "## 主线论点\n\n",
+                f"## 主线论点\n\n讲者把排水说明分成相邻两句。 ⏱ {stamp // 60:02d}:{stamp % 60:02d}\n\n",
             )
 
         def write(tmp: Path, kind: str) -> Path:
@@ -513,16 +418,6 @@ class VerifierTests(unittest.TestCase):
                 _ctx, _r04_near, r05_near = rules(path, bark, 85)
                 self.assertTrue(r05_near[1], f"{kind}: {r05_near[2]}")
 
-            stamped = write(root, "stamped")
-            held = verify_rules.build_context(stamped, note(stamped, span, 40), expected_lang="en")
-            for rule in (
-                verify_rules.r02_frontmatter,
-                verify_rules.r08_proper_nouns,
-                verify_rules.r13_today_step,
-                verify_rules.r16_quote_anchored_nouns,
-            ):
-                result = rule(held)
-                self.assertTrue(result[1], result)
 
 
 class HostTests(unittest.TestCase):
@@ -651,15 +546,11 @@ class HostTests(unittest.TestCase):
             self.assertIn(cite, note)
             self.assertTrue(note.startswith("---\n"))
             self.assertIn('title: "youtube_usable-en"', note)
-            self.assertIn('source_url: "settle-transcript:usable-en"', note)
             self.assertIn('video_id: "usable-en"', note)
             self.assertIn('acquisition: "settle-transcript"', note)
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'transcript_path: "{cite}"', note)
-            self.assertIn("quoted_window: |-", note)
             self.assertIn("not a finished knowledge note", note)
-            for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
-                self.assertIn(f"## {heading}", note)
             self.assertNotIn("## Quoted window", note)
             self.assertNotIn("The quoted window is copied", note)
             self.assertNotIn("root-bound", note)
@@ -927,16 +818,12 @@ class XHostTests(unittest.TestCase):
             self.assertIn("gate_passed: true", note)
             self.assertIn(f'video_id: "{status_id}"', note)
             self.assertIn("not a finished knowledge note", note)
-            for heading in ("问题与做法", "完整怎么做", "翻车或别用", "今天立刻动手一步"):
-                self.assertIn(f"## {heading}", note)
             self.assertNotIn("## Quoted window", note)
             checked = verify_note.verify(transcript_path, note, expected_lang="en")
             self.assertFalse(checked["allowed"], checked["reasons"])
             path_only = f"Title: done.\n\ntranscript: {youtube_host.cite_path(transcript_path)}\n"
             refused = verify_note.verify(transcript_path, path_only, expected_lang="en")
             self.assertFalse(refused["allowed"])
-            self.assertTrue(refused["cited"])
-            self.assertFalse(refused["quoted"])
             status = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertIsNone(status["note"])
             self.assertFalse(status["finished"])

@@ -14,7 +14,7 @@ claim that is not the quote itself. The quality gate still decides whether
 the transcript is usable. This module does not listen to audio, and it does
 not write that analysis.
 
-Hosts call ``render_scaffold``. ``verify_note`` calls ``knowledge_reasons``.
+Hosts call ``render_scaffold``. The old section parser remains for historical all-N/A notes.
 """
 
 from __future__ import annotations
@@ -63,19 +63,21 @@ _STUB = re.compile(
     re.IGNORECASE,
 )
 
-SCAFFOLD_QUOTED_WINDOW = (
-    f"FILL: paste one contiguous transcript quote of at least {QUOTE_WINDOW} characters"
-)
-
 _SCAFFOLD_INSTRUCTIONS = (
     "Scaffold only. This file is not a finished knowledge note. "
-    "Read every file in chunks/ and write the analysis in note.md. "
-    "Under each heading, after Pass-1 verbatim quotes are chosen, write claims grounded only in that section's quotes (compress/merge allowed; no outside facts, numbers, names, or causes) and quote a contiguous "
-    f"passage of the transcript, at least {QUOTE_WINDOW} characters. "
-    "When the transcript line has a clock, quote it as > [mm:ss] followed by the words. "
-    "Sections 翻车或别用 and 今天立刻动手一步 may be one line 本节不适用：<reason> without a proof quote. Sections 问题与做法 and 完整怎么做 must not be whole-section 不适用; if thin, still write grounded claims from quotes. "
-    "Leave that section unused rather than inventing a step the transcript does not contain. "
-    "If every section is 本节不适用, do not keep note.md."
+    "Read the full transcript, then write selection.md before note.md. "
+    "Use references/delivery-format.md to choose the middle headings, complete the metadata, "
+    "add body time links, and copy the corresponding verbatim evidence at the end. "
+    "If the transcript has no reliable clock, preserve it and obtain a timed transcription."
+)
+_SINGLE_NOTE_HEADINGS = (
+    "先记住一句话",
+    "这场在谈什么、谁",
+    "〈按视频类型填入中间小节〉",
+    "可复用做法",
+    "翻车或别用",
+    "今天立刻动手一步",
+    "原文依据",
 )
 
 
@@ -107,33 +109,35 @@ def render_scaffold(
     caption_language: str | None = None,
     caption_kind: str | None = None,
     caption_trust: str | None = None,
+    skill_version: str = "unknown",
 ) -> str:
-    """Frontmatter, four empty section headings, and fill instructions.
+    """Frontmatter, empty single-note headings, and fill instructions.
 
     The body does not analyze a transcript and does not copy one in.
     """
     lines = [
         "---",
         f"title: {yaml_double(job_id)}",
+        f"source: {yaml_double(source)}",
+        'channel: ""',
+        'published: ""',
+        'type: ""',
+        f"caption_kind: {yaml_double(caption_kind or '')}",
+        f"skill_version: {yaml_double(skill_version)}",
+        "tags: [video-note]",
         f"source_url: {yaml_double(source)}",
         f"video_id: {yaml_double(video_id)}",
         f"acquisition: {yaml_double(acquisition)}",
         "gate_passed: true",
         f"transcript_path: {yaml_double(transcript_cite)}",
-        "quoted_window: |-",
-        f"  {SCAFFOLD_QUOTED_WINDOW}",
     ]
     if caption_language:
         lines.append(f"caption_language: {yaml_double(caption_language)}")
-    if caption_kind:
-        lines.append(f"caption_kind: {yaml_double(caption_kind)}")
     if caption_trust:
         lines.append(f"caption_trust: {yaml_double(caption_trust)}")
     lines.extend(
         [
             "---",
-            "",
-            f"# {job_id}",
             "",
             _SCAFFOLD_INSTRUCTIONS,
             "",
@@ -141,7 +145,9 @@ def render_scaffold(
             "",
         ]
     )
-    for heading in SECTIONS:
+    for heading in _SINGLE_NOTE_HEADINGS:
+        if heading == "原文依据":
+            lines.extend(["本文略去｜〈略项和时间范围，或无〉", ""])
         lines.extend([f"## {heading}", ""])
     return "\n".join(lines).rstrip() + "\n"
 

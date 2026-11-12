@@ -1,41 +1,52 @@
 ---
 # expect: PASS
-title: "good-en-8"
-source_url: "fixture"
-video_id: "good-en-8"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/corpus/pricing_en.txt"
-quoted_window: |-
-  Review the three conversations before you change the page again.
-expected_lang: "en"
+# fixture_transcript: evals/corpus/pricing_en_timed.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/good_en_08.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
 ## 先记住一句话
 
-Review the three conversations before you change the page again.
+Use the buyer’s outcome to guide pricing.
 
-## 问题与做法
+## 这场在谈什么、谁
 
-Review the three conversations before you change the page again. The next change to the page follows that review of the three conversations.
+The speaker discusses how to set a price for buyers.
 
-> Review the three conversations before you change the page again.
+## 主线论点
 
-## 完整怎么做
+Review the three conversations before you change the page again. ⏱ 02:55
 
-Most founders set a public price only after they talk to three buyers. The public price follows the talk with three buyers.
+Most founders set a public price after speaking with three buyers. ⏱ 00:00
 
-> Most founders set a public price only after they talk to three buyers.
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:25
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Write the outcome the buyer gets before you name a plan. The plan's name follows the outcome the buyer gets.
-
-> Write the outcome the buyer gets before you name a plan.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Ask three customers what they pay today before you publish a number. The published number comes from what those three customers pay today.
+Ask three customers what they pay today before you publish a number. ⏱ 00:50
 
-> Ask three customers what they pay today before you publish a number.
+本文略去｜无
+
+## 原文依据
+> [00:00] Most founders set a public price only after they talk to three buyers.
+> [00:25] Write the outcome the buyer gets before you name a plan.
+> [00:50] Ask three customers what they pay today before you publish a number.
+> [02:55] Review the three conversations before you change the page again.

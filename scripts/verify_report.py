@@ -8,65 +8,88 @@ or when a refused note does not fail the rule named in its header.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import knowledge_note  # noqa: E402
+import coverage_check  # noqa: E402
 import verify_note  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 ADVERSARIAL = ROOT / "evals" / "adversarial"
 GOOD = ROOT / "evals" / "good"
 REPORT = ROOT / "evals" / "results" / "verify-report.md"
-_EXPECT = re.compile(r"expect:\s*(PASS|FAIL)(?:\s+(R\d{2}))?", re.IGNORECASE)
+_RULE_ID = r"(?:R\d{2}|C\d{2}[a-d]?|S\d{2})"
+_EXPECT = re.compile(rf"^# expect: (PASS|FAIL)(?: ({_RULE_ID}))?$", re.MULTILINE)
+_FIXTURE = re.compile(r"^# fixture_([a-z]+): (.+)$", re.MULTILINE)
+_FAILURE = re.compile(rf"^(?:C04 FAIL: (C04[a-d]):|({_RULE_ID}) FAIL:)")
 INTERCEPT_MIN = 0.95
 FALSE_POSITIVE_MAX = 0.10
 
 
 def expect_of(text: str) -> tuple[str, str | None]:
     match = _EXPECT.search(text)
-    if not match:
-        return ("", None)
-    kind = match.group(1).upper()
-    rule = match.group(2).upper() if match.group(2) else None
-    return (kind, rule)
+    if match is None or (match[1] == "FAIL") != bool(match[2]):
+        raise ValueError("each sample needs '# expect: PASS' or '# expect: FAIL <rule>'")
+    return match[1], match[2]
 
 
 def samples(directory: Path) -> list[Path]:
     return sorted(path for path in directory.glob("*.md") if path.is_file())
 
 
+def failed_ids(result: dict) -> set[str]:
+    ids = {item["id"] for item in result.get("rules", []) if not item["ok"]}
+    for reason in result["reasons"]:
+        match = _FAILURE.match(reason)
+        if match:
+            ids.add(match[1] or match[2])
+    return ids
+
+
+def check_sample(text: str) -> tuple[dict, dict]:
+    # Fixture context is separate from note fields so malformed or missing
+    # frontmatter cannot prevent the scorer from locating the real inputs.
+    fixture = dict(_FIXTURE.findall(text))
+    transcript = ROOT / fixture["transcript"]
+    status = fixture.get("status", "transcript_ready")
+    with tempfile.TemporaryDirectory() as tmp:
+        job = Path(tmp)
+        job_transcript = job / "transcript.txt"
+        shutil.copyfile(transcript, job_transcript)
+        (job / "note.md").write_text(text, encoding="utf-8")
+        (job / "status.json").write_text(
+            json.dumps({"status": status, "duration_seconds": int(fixture["duration"])}),
+            encoding="utf-8",
+        )
+        if "selection" in fixture:
+            shutil.copyfile(ROOT / fixture["selection"], job / "selection.md")
+        verified = verify_note.verify(
+            job_transcript, text, expected_lang=fixture["lang"], job_status=status,
+        )
+        covered = coverage_check.check_job(job)
+    return verified, covered
+
+
 def score(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     kind, rule = expect_of(text)
-    fields = knowledge_note.parse_frontmatter(text) or {}
-    relative = str(fields.get("transcript_path") or "")
-    if not relative:
-        found = re.search(r"transcript_path:\s*([^\s`]+)", text)
-        relative = found.group(1).strip('"') if found else ""
-    transcript = ROOT / relative if relative else path.with_suffix(".missing.txt")
-    expected_lang = fields.get("expected_lang") or None
-    if expected_lang is None:
-        found_lang = re.search(r"expected_lang:\s*([A-Za-z-]+)", text)
-        expected_lang = found_lang.group(1) if found_lang else None
-    job_status = fields.get("job_status") or None
-    result = verify_note.verify(
-        transcript,
-        text,
-        expected_lang=expected_lang,
-        job_status=job_status,
-    )
-    failed = [item["id"] for item in result["rules"] if not item["ok"]]
+    group = "FAIL" if path.parent == ADVERSARIAL else "PASS"
+    if kind != group:
+        raise ValueError(f"{path}: expected sample label {group}, got {kind}")
+    verified, covered = check_sample(text)
     return {
         "path": path.relative_to(ROOT).as_posix(),
         "expect": kind,
         "rule": rule,
-        "allowed": result["allowed"],
-        "failed": failed,
-        "reasons": result["reasons"],
+        "allowed": verified["allowed"] and covered["ok"],
+        "failed": sorted(failed_ids(verified) | failed_ids(covered)),
+        "reasons": [*verified["reasons"], *covered["reasons"]],
     }
 
 

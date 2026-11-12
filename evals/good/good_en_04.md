@@ -1,41 +1,52 @@
 ---
 # expect: PASS
-title: "good-en-4"
-source_url: "fixture"
-video_id: "good-en-4"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/corpus/pricing_en.txt"
-quoted_window: |-
-  Do not copy a competitor page and call that research.
-expected_lang: "en"
+# fixture_transcript: evals/corpus/pricing_en_timed.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/good_en_04.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
 ## 先记住一句话
 
-Do not copy a competitor page and call that research.
+Use the buyer’s outcome to guide pricing.
 
-## 问题与做法
+## 这场在谈什么、谁
 
-Do not copy a competitor page and call that research. A copied competitor page is not research.
+The speaker discusses how to set a price for buyers.
 
-> Do not copy a competitor page and call that research.
+## 主线论点
 
-## 完整怎么做
+Do not copy a competitor page and call it research. ⏱ 01:15
 
-Publish the first price only after those three conversations. Those three conversations come before the first price is published.
+Publish the first price only after those three conversations. ⏱ 01:40
 
-> Publish the first price only after those three conversations.
+Keep the cheap plan for teams that are still small and learning. ⏱ 02:05
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Keep the cheap plan for teams that are still small and learning. Small teams still learning are who the cheap plan is kept for.
-
-> Keep the cheap plan for teams that are still small and learning.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Stop the trial if the buyer will not name a budget at all. No named budget means the trial stops.
+Stop the trial when the buyer will not name a budget. ⏱ 02:30
 
-> Stop the trial if the buyer will not name a budget at all.
+本文略去｜无
+
+## 原文依据
+> [01:15] Do not copy a competitor page and call that research.
+> [01:40] Publish the first price only after those three conversations.
+> [02:05] Keep the cheap plan for teams that are still small and learning.
+> [02:30] Stop the trial if the buyer will not name a budget at all.

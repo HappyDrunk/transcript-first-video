@@ -1,41 +1,52 @@
 ---
 # expect: PASS
-title: "good-en-2"
-source_url: "fixture"
-video_id: "good-en-2"
-acquisition: "fixture"
-gate_passed: true
-transcript_path: "evals/corpus/pricing_en.txt"
-quoted_window: |-
-  Write the outcome the buyer gets before you name a plan.
-expected_lang: "en"
+# fixture_transcript: evals/corpus/pricing_en_timed.txt
+# fixture_duration: 200
+# fixture_lang: en
+# fixture_selection: evals/corpus/good_en_02.selection
+title: 定价课
+source: https://example.invalid/videos/pricing
+channel: 合成课堂
+published: 2026-01-01
+type: 讲座
+caption_kind: manual
+skill_version: fixture
+transcript_path: transcript.txt
+tags: [video-note]
 ---
-# note
 
 ## 先记住一句话
 
-Write the outcome the buyer gets before you name a plan.
+Use the buyer’s outcome to guide pricing.
 
-## 问题与做法
+## 这场在谈什么、谁
 
-Write the outcome the buyer gets before you name a plan. The plan's name follows the outcome the buyer gets.
+The speaker discusses how to set a price for buyers.
 
-> Write the outcome the buyer gets before you name a plan.
+## 主线论点
 
-## 完整怎么做
+Write the outcome the buyer gets before giving the plan a name. ⏱ 00:25
 
-Ask three customers what they pay today before you publish a number. What they pay today is the number you may then publish.
+Ask three customers what they pay today before you publish a number. ⏱ 00:50
 
-> Ask three customers what they pay today before you publish a number.
+Do not copy a competitor page and call it research. ⏱ 01:15
+
+## 可复用做法
+
+本节没有补充中间部分之外的情况。
 
 ## 翻车或别用
 
-Do not copy a competitor page and call that research. A copied competitor page is not research.
-
-> Do not copy a competitor page and call that research.
+本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 
-Publish the first price only after those three conversations. The first price goes out after those three conversations, not before.
+Publish the first price only after those three conversations. ⏱ 01:40
 
-> Publish the first price only after those three conversations.
+本文略去｜无
+
+## 原文依据
+> [00:25] Write the outcome the buyer gets before you name a plan.
+> [00:50] Ask three customers what they pay today before you publish a number.
+> [01:15] Do not copy a competitor page and call that research.
+> [01:40] Publish the first price only after those three conversations.

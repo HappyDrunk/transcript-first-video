@@ -2,7 +2,10 @@
 
 YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms are not fetched here.
 
-Run from the repo root. A host writes `transcript.txt`, `segments.json`, `chunks/NN.txt`, and `note.scaffold.md` when the gate passes. Caption lines in `transcript.txt` are `[mm:ss] text`, or `[hh:mm:ss] text` after one hour. `segments.json` stores `start`, `end`, and `text` in seconds. Chunks are about 8 minutes or about 6000 characters. Plain text with no clock stays unstamped, and those segment times are null. The scaffold is Obsidian Markdown: YAML frontmatter (`title`, `source_url`, `video_id`, `acquisition`, `gate_passed`, `transcript_path`, `quoted_window`, and `caption_kind` / `caption_trust` when set), four empty headings (问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步), and fill instructions. `title` is the job id. The platform title and description are not stored. The scaffold is not a finished knowledge note. `caption_trust: low` means automatic captions were not in the expected language. Feishu is not called. On failure the host writes `status.json` only and deletes a previous transcript, segments, chunks, note, and scaffold for that same job id. The gate does not listen to the audio, and CI does not score summary quality.
+
+Run from the repo root. A successful acquisition writes `transcript.txt`, `segments.json`, `chunks/NN.txt`, and `note.scaffold.md`. Caption lines retain their clocks and the sidecar keeps available start and end times. Plain speech has null segment times. The scaffold provides the properties and blank headings for the [single-note format](../references/delivery-format.md).
+
+A failed re-acquisition records `last_attempt` on an existing job and preserves its files and status. A successful replacement archives the old `note.md`, any historical `delivery.md`, and `selection.md` under numbered `.prev` names as needed. Historical chunk notes are kept with the archived chunks. A replacement resets the shared repair state.
 
 ## Smoke
 
@@ -54,13 +57,25 @@ yt-dlp may report a media id that is not the status id. Captions are kept only w
 
 A public check of `https://x.com/NASA/status/2102748685792596449` kept a transcript from yt-dlp English captions. The committed receipt is `evals/results/live/x_2102748685792596449/`. The template note that used to sit there was withdrawn. With yt-dlp missing, the same URL still returned a video from the public API and stopped at not finished: no caption track, `ASR_BACKEND` unset, post text not used.
 
+
 ## Check a note
+
+Write `selection.md` and `note.md` in the job directory. For channel delivery, generate the reading copy.
+
+```bash
+python3 scripts/render_reading_note.py --task-dir artifacts/youtube_KwhgfwOSToQ --output "channel/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+```
+
+The renderer runs verify and coverage in order. It writes the reading copy when both checks mark the current inputs `finished`. Add `--keep-frontmatter` to retain the opening YAML block. The job directory keeps the evidence note and its inputs. See the [delivery format](../references/delivery-format.md).
+
+For standalone checks, run these commands in order.
 
 ```bash
 python3 scripts/verify_note.py --job artifacts/youtube_KwhgfwOSToQ
+python3 scripts/coverage_check.py --job artifacts/youtube_KwhgfwOSToQ
 ```
 
-Exit 0 means allowed. Any other exit means do not deposit the note. Allowed requires the transcript to pass the quality gate and a knowledge note: frontmatter plus the four sections, each quoting 40 contiguous characters of the transcript (`QUOTE_WINDOW` in `knowledge_note.py`). A section may instead be one line, `本节不适用：<reason>`, plus one quote. If every section is that line, the command sets `status` to `no-extractable-content` and deletes `note.md`. Pasting the path under a rewritten title is refused. So is a quote with no analysis. This check does not play the audio and does not grade an LLM summary. `--transcript` and `--note` still work for a fixture pair.
+Verify checks R01, R04, R05, R13–R15, and C04a–d. Exit 0 means allowed, 2 means refused, and 1 indicates usage or a read error. `--transcript` and `--note` still support standalone checks. For `--job`, `transcript_path` resolves from the job directory. A historical all-N/A note is archived and recorded as `no-extractable-content`.
 
 ## Local claim counts
 
@@ -69,21 +84,16 @@ python3 scripts/claim_ground_check.py path/to/note.md --quiet
 python3 scripts/test_claim_ground_check.py
 ```
 
-`claim_ground_check.py` is an optional local helper. It counts prose sentences whose numbers, proper nouns, or long same-script phrases are absent from that section's blockquotes. Paths use `pathlib`. It writes only when you pass `--out`, and only to that path. It does not call a language model. Public CI runs `test_claim_ground_check.py`, which checks that counts API on synthetic fixture notes and does not score gold. CI does not run `claim_ground_check.py` as a gate or as an LLM judge. R01–R17 stay in `verify_note.py`.
+`claim_ground_check.py` is an optional local helper. It counts prose sentences whose numbers, proper nouns, or long same-script phrases are absent from that section's blockquotes. Paths use `pathlib`. It writes only when you pass `--out`, and only to that path. It does not call a language model. Public CI runs `test_claim_ground_check.py`, which checks that counts API on synthetic fixture notes and does not score gold. CI does not run `claim_ground_check.py` as a gate or as an LLM judge. This helper reads historical section-level quotes. Use the two checks above for the single-note workflow.
 
-## Coverage gate C
 
-```bash
-python3 scripts/coverage_check.py --job artifacts/youtube_KwhgfwOSToQ
-python3 scripts/coverage_check.py --job artifacts/youtube_KwhgfwOSToQ --delivery path/to/body.md
-python3 scripts/test_coverage_check.py
-```
+## Coverage
 
-Grounded is not covered. The human bar for a long 通读 is 9/10 detail depth and 9/10 summary completeness. Both count. This script does not score that bar and does not call a model. It always runs after `verify_note.py` and before finished or a Feishu/chat send. On a video longer than 5 minutes it refuses a missing inventory (C01), quotes in fewer than 3 duration quartiles (C02), or fewer than 9/10 of the inventory lines (C03, at least 3). `--delivery` refuses a body whose CJK and Latin letters, after YAML and quote lines are removed, are under 0.9× `note.md` (C04). At or under 5 minutes, C01–C03 are skipped and the command still runs. Exit 0 is allowed. Exit 1 is FAIL (`Cxx FAIL: ...`). Exit 2 is usage. A thin grounded stub fails. A full-arc note passes. R01–R17 are unchanged. Spotcheck stays human.
+S01 checks `selection.md` on every job. Ranges must cover the full transcript in order. At least 90% of the retained units and at least three units must have verified end quotes. Evidence and body links must stay in retained units, and `本文略去` must list the omitted ranges. Omitting over half the runtime prints a warning.
 
-Coverage C checks that the note uses the inventory the job already wrote: the rows exist (C01), note quotes spread across quartiles (C02), and at least 9/10 of those rows show up in the note (C03, at least 3). It does not prove the inventory itself was complete against the full transcript. A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it." It does not stop "under-extracted at inventory time."
+C02 checks at least three quartiles on long jobs. Without a reliable clock, coverage can still report character-position diagnostics, while verify refuses delivery with「缺时间戳，请用带时间戳的转写重跑」.
 
-On a long job with a loaded inventory, the command may print `C WARN` when the row count is implausibly low: fewer than one line per 10 minutes, or fewer lines than `chunks/NN.txt` files when there are two or more chunks. That line does not change the exit code and does not loosen C01–C04. A run with no warning is still not a completeness proof. The same limit is in `references/rules.md`.
+Coverage exits 0 on a pass, 1 on FAIL, and 2 on usage error. A pass writes `finished: true` only with a successful verify on the same note, transcript, and selection. Run both commands after editing any of those files. `--json` reports failures, warnings, and checks that did not run. The compatibility option `--delivery` accepts the same note or a byte-for-byte copy.
 
 ## Environment variables
 

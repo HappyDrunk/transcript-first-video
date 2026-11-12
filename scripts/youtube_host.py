@@ -2,7 +2,7 @@
 """Minimal YouTube host: captions first, optional ASR, otherwise no transcript.
 
 A passing transcript writes transcript.txt (caption lines keep [mm:ss]), segments.json,
-chunks/, status.json, and note.scaffold.md. The scaffold is frontmatter, four
+chunks/, status.json, and note.scaffold.md. The scaffold is frontmatter, empty
 empty section headings, and fill instructions. It is not a finished knowledge
 note. The host does not analyze the transcript.
 The platform title and description are not stored. On failure the job directory
@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 import verify_note  # noqa: E402
+import verify_rules  # noqa: E402
 
 USER_AGENT = "Mozilla/5.0 (compatible; transcript-first-video/1.0)"
 INSTANCE_LIST = "https://api.invidious.io/instances.json?sort_by=health"
@@ -748,7 +749,7 @@ def render_scaffold(
 ) -> str:
     """Blank Obsidian scaffold. Title is the job id, not the platform title.
 
-    The body is four empty headings and fill instructions. It does not analyze
+    The body has empty headings and fill instructions. It does not analyze
     the transcript. A finished note.md is not this file.
     """
     return knowledge_note.render_scaffold(
@@ -760,6 +761,7 @@ def render_scaffold(
         caption_language=caption_language,
         caption_kind=caption_kind,
         caption_trust=caption_trust,
+        skill_version=skill_version(),
     )
 
 
@@ -795,18 +797,6 @@ def finalize_job(
     transcript_path = job_dir / "transcript.txt"
     segments_path = job_dir / "segments.json"
     chunks_dir = job_dir / "chunks"
-    note_path = job_dir / "note.md"
-    delivery_path = job_dir / "delivery.md"
-    scaffold_path = job_dir / "note.scaffold.md"
-    status_path = job_dir / "status.json"
-    previous: dict = {}
-    if status_path.is_file():
-        try:
-            loaded = json.loads(status_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                previous = loaded
-        except (OSError, json.JSONDecodeError):
-            pass
     base = {
         "schema_version": 1,
         "skill_version": skill_version(),
@@ -841,16 +831,15 @@ def finalize_job(
                 "exit_code": 2,
             }
         )
-        stored = {**previous, **{key: value for key, value in base.items() if key != "exit_code"}}
-        stored["finished"] = False
-        stored["note"] = cite_path(note_path) if note_path.is_file() else previous.get("note")
-        stored["repair_rounds"] = previous.get("repair_rounds", 0)
-        stored["edit_rounds"] = previous.get("edit_rounds", 0)
-        write_json(status_path, stored)
+        _record_failed_attempt(job_dir, base)
         return base
 
     segments = quality_gate.prepare_segments(text)
     transcript_body = quality_gate.format_transcript(segments) or result.text
+    has_clock = any(
+        cue.start is not None or verify_rules.parse_stamp(cue.text)[0] is not None
+        for cue in segments
+    )
     groups = quality_gate.chunk_segments(segments)
     with tempfile.TemporaryDirectory(prefix=".tfv-attempt-", dir=job_dir) as temp_dir:
         staged = Path(temp_dir)
@@ -879,46 +868,89 @@ def finalize_job(
             caption_language=caption_language or gate_lang,
             caption_kind=caption_kind,
             caption_trust=trust,
-            transcript_cite=cite,
+            transcript_cite=cite if Path(cite).is_absolute() else "transcript.txt",
         )
         staged_scaffold.write_text(scaffold_body, encoding="utf-8")
-        os.replace(staged_transcript, transcript_path)
-        os.replace(staged_segments, segments_path)
-        if chunks_dir.exists():
-            shutil.rmtree(chunks_dir)
-        os.replace(staged_chunks, chunks_dir)
-        os.replace(staged_scaffold, scaffold_path)
-    note_exists = note_path.is_file()
-    delivery_exists = delivery_path.is_file()
-    base.update(
-        {
-            "status": "transcript_ready",
-            "finished": False,
-            "repair_rounds": 0,
-            "edit_rounds": 0,
-            "note_digest": None,
-            "locked": False,
-            "note_stale": note_exists,
-            "reason": (
-                "transcript passed the quality gate; "
-                "note.scaffold.md is a blank form, not a finished knowledge note"
-            ),
-            "next_step": "write-note",
-            "transcript": cite,
-            "segments": cite_path(segments_path),
-            "chunks": cite_path(chunks_dir),
-            "chunk_count": len(groups),
-            "duration_seconds": quality_gate.duration_seconds(segments),
-            "note": cite_path(note_path) if note_exists else None,
-            "delivery": cite_path(delivery_path) if delivery_exists else None,
-            "scaffold": cite_path(scaffold_path),
-            "verifier": None,
-            "exit_code": 0,
-        }
-    )
-    stored = {key: value for key, value in base.items() if key != "exit_code"}
-    write_json(status_path, stored)
+        base.update(
+            {
+                "status": "transcript_ready",
+                "finished": False,
+                "repair_rounds": 0,
+                "edit_rounds": 0,
+                "note_digest": None,
+                "locked": False,
+                "reason": (
+                    "transcript passed the quality gate; "
+                    "note.scaffold.md is a blank form, not a finished knowledge note"
+                    if has_clock else verify_rules.MISSING_TIMESTAMPS
+                ),
+                "next_step": "write-note" if has_clock else "retry-timed-transcript",
+                "transcript": cite,
+                "segments": cite_path(segments_path),
+                "chunks": cite_path(chunks_dir),
+                "chunk_count": len(groups),
+                "duration_seconds": quality_gate.duration_seconds(segments),
+                "scaffold": cite_path(job_dir / "note.scaffold.md"),
+                "verifier": None,
+                "exit_code": 0,
+            }
+        )
+        _publish_transcript(job_dir, staged, base)
     return base
+
+
+def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
+    """Install the staged transcript as a unit and keep old writing traceable."""
+    backup = staged / "previous"
+    backup.mkdir()
+    with verify_note.job_lock(job):
+        replacing = (job / "transcript.txt").is_file()
+        old_notes = (job / "note.md", job / "delivery.md")
+        payload["note_stale"] = any(path.is_file() for path in old_notes)
+        archived, installed = [], []
+        try:
+            if replacing:
+                for path in (*old_notes, job / "selection.md"):
+                    target = verify_note.archive_file(path)
+                    if target is not None:
+                        archived.append((target, path))
+            chunks = job / "chunks"
+            if chunks.is_dir() and any(chunks.glob("*.notes.md")):
+                saved = verify_note.archive_file(chunks)
+                if saved is not None:
+                    archived.append((saved, chunks))
+            for name in ("transcript.txt", "segments.json", "chunks", "note.scaffold.md"):
+                target = job / name
+                if target.exists():
+                    saved = backup / name
+                    target.replace(saved)
+                    archived.append((saved, target))
+                source = staged / name
+                source.replace(target)
+                installed.append((target, source))
+            for key, path in zip(("note", "delivery"), old_notes):
+                payload[key] = cite_path(path) if path.is_file() else None
+            verify_note.write_job_status(job, {key: value for key, value in payload.items() if key != "exit_code"})
+        except OSError:
+            for target, source in reversed(installed):
+                target.replace(source)
+            for saved, target in reversed(archived):
+                saved.replace(target)
+            raise
+
+
+def _record_failed_attempt(job: Path, payload: dict) -> None:
+    attempt = {key: value for key, value in payload.items() if key != "exit_code"}
+    with verify_note.job_lock(job):
+        previous = verify_note.read_job_status(job)
+        if previous and (job / "transcript.txt").is_file():
+            verify_note.write_job_status(job, {**previous, "last_attempt": attempt})
+        else:
+            state = {**previous, **attempt}
+            note = job / "note.md"
+            if note.is_file():
+                state["note"] = cite_path(note)
+            verify_note.write_job_status(job, state)
 
 
 def write_refusal(
@@ -934,15 +966,6 @@ def write_refusal(
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
-    status_path = job_dir / "status.json"
-    previous: dict = {}
-    if status_path.is_file():
-        try:
-            loaded = json.loads(status_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                previous = loaded
-        except (OSError, json.JSONDecodeError):
-            pass
     payload = {
         "schema_version": 1,
         "skill_version": skill_version(),
@@ -968,13 +991,7 @@ def write_refusal(
     }
     if extra:
         payload.update(extra)
-    payload = {**previous, **payload}
-    payload["finished"] = False
-    if (job_dir / "note.md").is_file():
-        payload["note"] = cite_path(job_dir / "note.md")
-    payload["repair_rounds"] = previous.get("repair_rounds", 0)
-    payload["edit_rounds"] = previous.get("edit_rounds", 0)
-    write_json(status_path, payload)
+    _record_failed_attempt(job_dir, payload)
     payload["exit_code"] = 2
     return payload
 
