@@ -17,6 +17,7 @@ FALLBACK_FILES = (
     "scripts/install_check.py",
     "scripts/knowledge_note.py",
     "scripts/quality_gate.py",
+    "scripts/render_reading_note.py",
     "scripts/run_evidence.py",
     "scripts/smoke.sh",
     "scripts/test_claim_ground_check.py",

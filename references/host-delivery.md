@@ -1,5 +1,9 @@
 # Host delivery
 
-Copy the checked `note.md` to the channel folder after verify and coverage set `finished: true` for that version. Use `〈发布日期〉 〈频道〉 - 〈标题〉.md` and preserve its Obsidian properties, prose, and end evidence.
+Generate the reading copy in the channel folder. Keep the evidence note in the job directory.
 
-A host with Feishu, chat, or a wiki can attach or link the checked Markdown file. The host project supplies its own destination and credentials. If the manuscript or selection changes before copying, rerun both checks. See [the single-note format](delivery-format.md).
+```text
+python scripts/render_reading_note.py --task-dir "<job directory>" --output "<channel folder>/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+```
+
+The renderer runs verify and coverage before writing the output. Rerun it after changing the manuscript or selection. A host with Feishu, chat, or a wiki can attach or link the generated Markdown file. The host project supplies its own destination and credentials. See the [delivery format](delivery-format.md).

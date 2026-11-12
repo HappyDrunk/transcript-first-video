@@ -42,7 +42,8 @@ Use transcript-first-video on this video, then write the note: <url>
 
 ```mermaid
 flowchart LR
-  A[link] --> B[transcript] --> S[selection] --> C[note] --> D[verify] --> E[coverage]
+  A[link] --> B[transcript] --> C[selection and note]
+  C --> D[verify and coverage] --> E[reading copy]
 ```
 
 ## Contents
@@ -80,11 +81,10 @@ Adjust these when the reader asks. Keep the [single-note format and evidence](re
 pip install -r requirements.txt
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 # python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
-python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw
-python3 scripts/coverage_check.py --job artifacts/youtube_jNQXAC9IVRw
+python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw --output "channel/〈发布日期〉 〈频道〉 - 〈标题〉.md"
 ```
 
-The host writes the transcript and a blank scaffold. Write the selection and note, run both checks, then copy the checked note as-is when the status is `finished`. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands: [scripts/README.md](scripts/README.md).
+The host writes the transcript and a blank scaffold. Write the selection and evidence note, then run the renderer. It runs verify and coverage and writes the reading copy once the current job is `finished`. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands are in [scripts/README.md](scripts/README.md).
 
 ## Evidence
 
@@ -134,11 +134,10 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 pip install -r requirements.txt
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 # python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
-python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw
-python3 scripts/coverage_check.py --job artifacts/youtube_jNQXAC9IVRw
+python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw --output "频道/〈发布日期〉 〈频道〉 - 〈标题〉.md"
 ```
 
-主机写下文稿和空白脚手架。先通读并写取舍，再写成稿。写完后先跑 `verify_note.py`，再跑 `coverage_check.py`，状态为 `finished` 后原样拷贝成稿。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检：`bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
+主机写下文稿和空白脚手架。先通读并写取舍，再写证据版。写完后运行阅读版脚本，它先执行 verify 和 coverage，两项通过且当前任务状态为 `finished` 后写入阅读版。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检用 `bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
 
 
 ### 笔记

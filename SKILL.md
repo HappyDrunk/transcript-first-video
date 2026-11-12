@@ -12,7 +12,7 @@ Turn a **YouTube** or **Twitter/X video** URL into a transcript, then write the 
 Those two are the primary platforms. This skill does not promise Bilibili, Douyin, Xiaohongshu, or any other site, and it is not a multi-platform summarizer.
 
 
-A deliverable needs a usable transcript with reliable timestamps and one reader-facing `note.md`. Read the full transcript and write `selection.md` before drafting. Both checks must pass before copying the note to its channel folder. If the transcript is missing, unusable, untimed, or has nothing worth extracting, report the reason and keep the inputs.
+A deliverable needs a usable transcript with reliable timestamps and one evidence note (`note.md`). Read the full transcript and write `selection.md` before drafting. The renderer runs both checks before generating the reading copy in its channel folder. If the transcript is missing, unusable, untimed, or has nothing worth extracting, report the reason and keep the inputs.
 
 ## Language preference
 
@@ -25,7 +25,7 @@ Persist the answer in `language.txt` beside this `SKILL.md` in the installed ski
 - `英文` — Write English prose.
 - `中英文对照` — Present the explanation in both languages in the same note.
 
-Every mode preserves Obsidian properties and the original-language evidence under `## 原文依据`. Explain what a method does, how it works, and when to use it in plain words.
+In every mode, the evidence note preserves Obsidian properties and the original-language evidence under `## 原文依据`. Explain what a method does, how it works, and when to use it in plain words.
 
 ## What this skill does not do
 
@@ -45,8 +45,8 @@ Every mode preserves Obsidian properties and the original-language evidence unde
 3. Write `selection.md` in transcript order, one line per unit, with time range, category, 留 or 略, and a one-sentence reason. Cover the full transcript with adjacent ranges. Keep the main claims, steps and their order, the speaker's lists, supporting numbers, named cases, and essential technical elements. Mark greetings, ads, repetition, and off-topic conversation 略.
 4. Write `note.md` from the retained units. Follow [references/delivery-format.md](references/delivery-format.md) for the Obsidian properties, fixed headings, middle sections by video type, and marked explanations. Start with `## 先记住一句话`. Complete the retained lists and cases, and explain essential terms at first use. Write one grounded action for the reader in at most two sentences.
 5. Link each middle claim and the action to its original words with `⏱ mm:ss`. After the action, write the `本文略去` line and finish with `## 原文依据`. Copy each cited passage once as `> [mm:ss] …`, with at least 40 contiguous characters and a real timestamp. Keep the speaker's tools, steps, conditions, and causal claims within what the cited words support. Mark terms, analogies, and caption corrections using the specified blocks. Caption corrections preserve the subtitle spelling in the quote.
-6. Run `python3 scripts/verify_note.py --job <dir>`, then `python3 scripts/coverage_check.py --job <dir>`. Resolve FAIL lines within the shared repair limit. Verify checks the note and evidence. Coverage checks S01 on every job and C02 on long jobs. The scripts set `finished: true` after both pass on the same inputs. Recheck after editing the note or selection.
-7. Copy the checked `note.md` to the channel folder as `〈发布日期〉 〈频道〉 - 〈标题〉.md`, keeping the entire file.
+6. Run `python3 scripts/render_reading_note.py --task-dir "<dir>" --output "<channel folder>/〈发布日期〉 〈频道〉 - 〈标题〉.md"`. It runs verify on the note and evidence, then coverage (S01 on every job and C02 on long jobs). It writes the reading copy after both checks pass on the same inputs and set `finished: true`. Resolve FAIL lines within the shared repair limit and rerun the command after edits.
+7. Deliver the generated reading copy from the channel folder. Keep `note.md`, `selection.md`, the transcript, and the status in the job directory.
 
 The status is 未交 on a gate failure or lock. A historical all-`本节不适用` draft is archived by verify as `no-extractable-content`. Leave the transcript available for later work. See [references/rules.md](references/rules.md) for the rules and [scripts/README.md](scripts/README.md) for the commands. Read the linked evidence against the transcript to check meaning, especially conditions, ordering, and whether the selected units cover the methods a reader needs.
 
@@ -61,8 +61,8 @@ link
   → quality gate
        pass → note.scaffold.md; the agent reads the transcript and writes selection.md, then note.md
        fail → upgrade model once (e.g. small→medium) OR stop with a reason
-  → verify_note.py --job
-  → coverage_check.py --job, then copy the verified note.md when finished
+  → render_reading_note.py --task-dir --output
+       verify, then coverage → reading copy when finished
   → verify and coverage share at most 2 repair rounds
   → historical all-N/A → no-extractable-content, archive note.md
   → no usable text → say not finished; do not pretend
@@ -142,6 +142,7 @@ Bundled fetchers are YouTube (`youtube_host.py`) and Twitter/X video (`x_host.py
 - `scripts/knowledge_note.py` — blank scaffold and historical all-N/A handling.
 - `scripts/verify_note.py` — transcript quality, structure, evidence, and action checks.
 - `scripts/coverage_check.py` — S01 selection and C02 quartiles. Run after verify.
+- `scripts/render_reading_note.py` — run both checks and generate the reading copy.
 - `references/rules.md` — the 12 required checks and two warnings.
 - `references/delivery-format.md` — the single-note format, selection rules, and examples.
 

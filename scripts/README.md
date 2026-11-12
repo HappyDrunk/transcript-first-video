@@ -60,7 +60,15 @@ A public check of `https://x.com/NASA/status/2102748685792596449` kept a transcr
 
 ## Check a note
 
-Write `selection.md` and `note.md` in the job directory. Run the checks in this order.
+Write `selection.md` and `note.md` in the job directory. For channel delivery, generate the reading copy.
+
+```bash
+python3 scripts/render_reading_note.py --task-dir artifacts/youtube_KwhgfwOSToQ --output "channel/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+```
+
+The renderer runs verify and coverage in order. It writes the reading copy when both checks mark the current inputs `finished`. Add `--keep-frontmatter` to retain the opening YAML block. The job directory keeps the evidence note and its inputs. See the [delivery format](../references/delivery-format.md).
+
+For standalone checks, run these commands in order.
 
 ```bash
 python3 scripts/verify_note.py --job artifacts/youtube_KwhgfwOSToQ
