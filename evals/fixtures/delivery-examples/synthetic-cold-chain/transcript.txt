@@ -1,0 +1,4 @@
+> [00:48] Our three steps are: place a temperature logger beside the goods, record the temperature during transport, and call the driver if it goes above five degrees Celsius.
+> [02:11] The logger now reads three point eight degrees. This screen also shows the two stops on this trip.
+> [03:02] Bayline Cold Freight used to have twelve boxes above the limit for every two hundred. After adding the logger and calling the driver on an alert, last month it was four in every two hundred. We are showing the summary, not the full route records.
+> [03:36] We plan to add the alert to more routes next season.
