@@ -8,7 +8,7 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Mistake:** Deposit a final note from title, description, engagement stats, or surrounding tweet text while the video itself was never transcribed.
 
-**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status. The note also has to quote a contiguous stretch of the transcript (40 characters) inside each knowledge section: 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步. A pasted path under a rewritten title is not a quote. A quote with no analysis is not knowledge. The quote check does not listen to the audio. A fluent wrong caption can still pass it.
+**Fix:** Completion requires a usable transcript (or an explicitly labeled metadata-only degradation the user accepted). Tags like `needs-transcript` / `video-pending` must not coexist with a “fully understood” status. The note links each middle claim to a timestamped, contiguous quote of at least 40 characters in `原文依据`. A pasted path under a rewritten title is not a quote. A quote with no analysis is not knowledge. The quote check does not listen to the audio. A fluent wrong caption can still pass it.
 
 ## 2. Short video ≠ exempt
 
@@ -60,14 +60,6 @@ Bundled hosts in this repo are YouTube and Twitter/X video only. Lessons below t
 
 **Fix:** Port the capability layer (jobs + fetch captions/audio + ASR + gate + sink adapter). Keep foreign desk schemas out of the portable skill.
 
-## 10. Coverage C pass is not a full inventory
+## 10. Coverage and the choice of what to retain
 
-**Mistake:** Treat a Coverage C pass as proof the inventory listed the transcript, or as a human 9/10 on detail depth.
-
-**Fix:** C checks that the note uses the inventory the job already wrote (rows present, quartile spread, at least 9/10 of those rows). A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it." It does not stop "under-extracted at inventory time." `C WARN` is a notice when the row count is implausibly low versus duration or chunk count. It does not change pass/fail. The write-up is `scripts/README.md`.
-
-## 11. Mixed knowledge sinks
-
-**Mistake:** Drop YouTube, WeChat, and X notes into one undifferentiated folder “for convenience”.
-
-**Fix:** Route by source channel when the project maintains partitions. Unknown source should fail closed or ask, not silently default into the wrong shelf.
+S01 checks that the selection ranges cover the transcript and that the note uses evidence from at least nine tenths of the retained units, with at least three hits. Review the omitted units for core methods, conditions, and supporting figures. C02 checks the spread across the full transcript. See [the rule reference](rules.md).

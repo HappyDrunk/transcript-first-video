@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed note gate.
-
-A note is allowed only when all of these hold:
-
-- The transcript file exists and passes the quality gate.
-- The note cites that file and quotes a real window of it.
-- The note is Obsidian Markdown with the knowledge sections
-  问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步.
-- Each section quotes the transcript and adds analysis that is not a stub.
-- A section may instead be one line, ``本节不适用：`` plus a reason, and one quote.
-- Four sections in that form are not a deposit. ``--job`` archives note.md and
-  sets status ``no-extractable-content``.
-
-A path, a status line, or a blockquote alone is not a finished note.
-The gate does not listen to audio. It does not grade an LLM summary.
-Analyzer essays about a failed transcription are refused unless the transcript
-itself passed and the note quotes it.
-
-Exit 0 allowed. Exit 2 refused. Exit 1 usage or read error.
-"""
-
+"""Verify a reader-facing single note. Exit 0 allowed, 2 refused, 1 usage/read error."""
 from __future__ import annotations
 
 import argparse
@@ -28,6 +8,8 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -124,14 +106,16 @@ def verify(
     expected_lang: str | None = None,
     confidence: float | None = None,
     job_status: str | None = None,
+    job: bool = False,
 ) -> dict:
-    """Run R01–R17. ``reasons`` are ``Rxx FAIL: ...`` lines."""
+    """Run the single-note R and C04 rules. ``reasons`` are ``Rxx FAIL: ...`` lines."""
     ctx = verify_rules.build_context(
         transcript,
         note,
         expected_lang=expected_lang,
         confidence=confidence,
         job_status=job_status,
+        job=job,
     )
     results = verify_rules.run_rules(ctx)
     reasons = verify_rules.failure_lines(results)
@@ -139,6 +123,7 @@ def verify(
     return {
         "allowed": not reasons,
         "reasons": reasons,
+        "warnings": verify_rules.warnings(ctx),
         "rules": [
             {"id": rule_id, "ok": ok, "message": message}
             for rule_id, ok, message in results
@@ -166,9 +151,57 @@ def read_job_status(job: Path) -> dict:
 
 
 def write_job_status(job: Path, data: dict) -> None:
-    (job / "status.json").write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=job, delete=False) as staged:
+        temp = Path(staged.name)
+    try:
+        temp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temp.replace(job / "status.json")
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+@contextmanager
+def job_lock(job: Path):
+    """Serialize acquisition and the two state-writing checks for one job."""
+    with (job / ".status.lock").open("a+b") as lock:
+        if sys.platform == "win32":
+            import msvcrt
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def _note_digest(note: str) -> str:
+    return hashlib.sha256(note.encode("utf-8")).hexdigest()
+
+
+def job_inputs(job: Path) -> dict:
+    """Identify the exact note and context checked by both gates."""
+    inputs = {}
+    for key, name in (("note", "note.md"), ("transcript", "transcript.txt"),
+                      ("selection", "selection.md"), ("segments", "segments.json")):
+        path = job / name
+        try:
+            content = path.read_bytes()
+        except FileNotFoundError:
+            inputs[key] = None
+            if key == "note":
+                inputs["note_file"] = None
+            continue
+        digest = hashlib.sha256(content).hexdigest()
+        if key == "note":
+            normalized = content.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+            inputs["note_file"] = digest
+            inputs[key] = _note_digest(normalized)
+        else:
+            inputs[key] = digest
+    status = read_job_status(job)
+    inputs["duration_seconds"] = status.get("duration_seconds")
+    inputs["expected_lang"] = status.get("gate_lang") or status.get("expected_lang")
+    return inputs
 
 
 def repair_lock(status: dict) -> bool:
@@ -205,10 +238,13 @@ def current_skill_version() -> str:
     return "unknown"
 
 
-def record_note_revision(job: Path, note: str) -> dict:
+def record_note_revision(job: Path, note: str | None = None, *, digest: str | None = None) -> dict:
     """Count distinct note revisions so repeated edits cannot bypass the shared cap."""
     data = read_job_status(job)
-    digest = hashlib.sha256(note.encode("utf-8")).hexdigest()
+    if digest is None:
+        if note is None:
+            raise ValueError("note text or digest is required")
+        digest = _note_digest(note)
     previous = data.get("note_digest")
     rounds = data.get("edit_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
@@ -218,6 +254,7 @@ def record_note_revision(job: Path, note: str) -> dict:
         data["note_digest"] = digest
         data["edit_rounds"] = rounds
         data["finished"] = False
+        data["verifier"] = None
         data["coverage"] = {"allowed": False, "reasons": ["note changed after verification"]}
         if data.get("status") == "finished":
             data["status"] = "transcript_ready"
@@ -229,7 +266,9 @@ def record_note_revision(job: Path, note: str) -> dict:
     return data
 
 
-def record_gate_result(job: Path, gate: str, allowed: bool, reasons: list[str]) -> dict:
+def record_gate_result(
+    job: Path, gate: str, allowed: bool, reasons: list[str], *, inputs: dict | None = None,
+) -> dict:
     """Persist one verify or coverage outcome and the shared repair budget."""
     data = read_job_status(job)
     rounds = data.get("repair_rounds", 0)
@@ -237,17 +276,21 @@ def record_gate_result(job: Path, gate: str, allowed: bool, reasons: list[str]) 
         rounds = 0
     data["repair_rounds"] = rounds
     data["finished"] = False
+    if data.get("status") == "finished":
+        data["status"] = "transcript_ready"
     if gate == "verify":
         data["verifier"] = {
             "allowed": allowed,
             "at": datetime.now(timezone.utc).isoformat(),
             "skill_version": current_skill_version(),
+            "inputs": inputs if allowed else None,
             **({"reasons": reasons} if reasons else {}),
         }
-        if not allowed:
-            data["coverage"] = {"allowed": False, "reasons": ["verify failed"]}
+        data["coverage"] = {
+            "allowed": False, "reasons": ["coverage pending" if allowed else "verify failed"],
+        }
     else:
-        data["coverage"] = {"allowed": allowed, "reasons": reasons}
+        data["coverage"] = {"allowed": allowed, "reasons": reasons, "inputs": inputs if allowed else None}
     if not allowed:
         data["repair_rounds"] = rounds + 1
         data["failure_lines"] = reasons
@@ -255,19 +298,25 @@ def record_gate_result(job: Path, gate: str, allowed: bool, reasons: list[str]) 
             data["status"] = "not_deposited"
             data["locked"] = True
             data["reason"] = REPAIR_LIMIT_MESSAGE
-        elif data.get("status") == "finished":
-            data["status"] = "transcript_ready"
-    elif gate == "coverage" and (data.get("verifier") or {}).get("allowed") is True:
-        data["finished"] = True
-        data["status"] = "finished"
-        data.pop("failure_lines", None)
+    elif gate == "coverage" and inputs is not None:
+        verifier = data.get("verifier") or {}
+        if (
+            verifier.get("allowed") is True
+            and verifier.get("inputs") == inputs
+            and verifier.get("skill_version") == current_skill_version()
+        ):
+            data["finished"] = True
+            data["status"] = "finished"
+            data["note"] = "note.md"
+            data["note_stale"] = False
+            data.pop("failure_lines", None)
     write_job_status(job, data)
     return data
 
 
 def archive_file(path: Path) -> Path | None:
     """Keep a replaced document under a stable .prev name, adding a number as needed."""
-    if not path.is_file():
+    if not path.exists():
         return None
     first = path.with_name(f"{path.stem}.prev{path.suffix}")
     target = first
@@ -304,6 +353,7 @@ def apply_no_extractable(job: Path, reason: str) -> dict:
     data["note_stale"] = True
     data["reason"] = reason
     data["next_step"] = "stop"
+    data["coverage"] = {"allowed": False, "reasons": [reason]}
     data["verifier"] = {
         "allowed": False,
         "at": datetime.now(timezone.utc).isoformat(),
@@ -340,134 +390,80 @@ def _emit_verify(result: dict, *, as_json: bool) -> int:
         print("allowed" if result.get("allowed") else "refused")
         for reason in result.get("reasons") or []:
             print(reason, file=sys.stderr)
+        for warning in result.get("warnings") or []:
+            print(warning, file=sys.stderr)
     return 0 if result.get("allowed") else 2
 
 
-def _job_expected_lang(job: Path, explicit: str | None) -> str | None:
-    if explicit:
-        return explicit
-    status_path = job / "status.json"
-    if not status_path.is_file():
-        return None
+def _verify_job(job: Path, args: argparse.Namespace) -> int:
+    status = read_job_status(job)
+    if repair_lock(status):
+        return _emit_verify({"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json)
+
+    inputs = job_inputs(job)
     try:
-        data = json.loads(status_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data.get("gate_lang") or data.get("expected_lang")
+        note = _read_note(args.note or str(job / "note.md"))
+    except SystemExit as exc:
+        reason = str(exc)
+        record_gate_result(job, "verify", False, [reason])
+        return _emit_verify({"allowed": False, "reasons": [reason]}, as_json=args.json)
+
+    canonical_note = inputs["note"] == _note_digest(note)
+    if canonical_note and knowledge_note.all_sections_inapplicable(note):
+        reason = knowledge_note.ALL_INAPPLICABLE_REASON
+        updated = apply_no_extractable(job, reason)
+        reasons = [f"C04a FAIL: {reason}"]
+        if repair_lock(updated):
+            reasons.append(REPAIR_LIMIT_MESSAGE)
+        return _emit_verify(
+            {"allowed": False, "reasons": reasons, "status": NO_EXTRACTABLE, "note_deleted": True},
+            as_json=args.json,
+        )
+
+    status = record_note_revision(job, note)
+    if repair_lock(status):
+        return _emit_verify({"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json)
+    result = verify(
+        job / "transcript.txt", note, job=True, confidence=args.confidence,
+        expected_lang=args.expected_lang or inputs["expected_lang"], job_status=status.get("status"),
+    )
+    if inputs != job_inputs(job):
+        result["allowed"] = False
+        result["reasons"].append("job files changed during verification; rerun both checks")
+    checked_inputs = inputs if canonical_note else None
+    status = record_gate_result(job, "verify", result["allowed"], result["reasons"], inputs=checked_inputs)
+    if repair_lock(status):
+        result["allowed"] = False
+        result["reasons"].append(REPAIR_LIMIT_MESSAGE)
+    return _emit_verify(result, as_json=args.json)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Allow a note only when it cites a transcript that passes the quality gate, "
-            "quotes that transcript in each knowledge section, and analyzes it. "
-            "A path plus a quote is not enough. "
-            "--job reads transcript.txt and note.md in a host directory."
-        )
-    )
-    parser.add_argument(
-        "--job",
-        type=Path,
-        help="Job directory. Uses transcript.txt and note.md. All-N/A archives the documents.",
-    )
+    parser = argparse.ArgumentParser(description="Verify the single note against its transcript.")
+    parser.add_argument("--job", type=Path, help="Job directory containing transcript.txt and note.md")
     parser.add_argument("--transcript", type=Path)
-    parser.add_argument(
-        "--note",
-        default=None,
-        help="Note file. Use - to read stdin. Defaults to note.md inside --job, otherwise stdin.",
-    )
-    parser.add_argument("--expected-lang", default=None)
-    parser.add_argument("--confidence", type=float, default=None)
+    parser.add_argument("--note", help="Note path or - for stdin. Defaults to note.md with --job.")
+    parser.add_argument("--expected-lang")
+    parser.add_argument("--confidence", type=float)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
-    transcript = args.transcript
-    note_arg = args.note
     if args.job is not None:
-        job = args.job
-        if not job.is_dir():
-            message = f"job directory does not exist: {job}"
-            _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
+        if not args.job.is_dir():
+            _emit_verify({"allowed": False, "reasons": [f"job directory does not exist: {args.job}"]}, as_json=args.json)
             return 1
-        current_status = read_job_status(job)
-        if repair_lock(current_status):
-            return _emit_verify(
-                {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json
-            )
-        transcript = job / "transcript.txt"
-        note_path = job / "note.md" if note_arg is None else Path(note_arg)
-        if note_path.is_file():
-            note = note_path.read_text(encoding="utf-8", errors="replace")
-            if knowledge_note.all_sections_inapplicable(note):
-                reason = knowledge_note.ALL_INAPPLICABLE_REASON
-                updated = apply_no_extractable(job, reason)
-                if repair_lock(updated):
-                    return _emit_verify(
-                        {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]},
-                        as_json=args.json,
-                    )
-                return _emit_verify(
-                    {
-                        "allowed": False,
-                        "reasons": [f"R03 FAIL: {reason}"],
-                        "status": NO_EXTRACTABLE,
-                        "note_deleted": True,
-                    },
-                    as_json=args.json,
-                )
-        elif note_arg is None:
-            message = f"note.md is missing in {job}"
-            record_gate_result(job, "verify", False, [message])
-            return _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
-        else:
-            note_arg = str(note_path)
-        if note_arg is None:
-            note_arg = str(note_path)
-        expected = _job_expected_lang(job, args.expected_lang)
-        status_name = None
-        status_path = job / "status.json"
-        if status_path.is_file():
-            try:
-                loaded = json.loads(status_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                loaded = None
-            if isinstance(loaded, dict):
-                status_name = loaded.get("status")
-    else:
-        if transcript is None:
-            parser.error("pass --transcript, or pass --job")
-        if note_arg is None:
-            note_arg = "-"
-        expected = args.expected_lang
-        status_name = None
+        with job_lock(args.job):
+            return _verify_job(args.job, args)
+    if args.transcript is None:
+        parser.error("pass --transcript, or pass --job")
     try:
-        note = _read_note(note_arg)
+        note = _read_note(args.note or "-")
     except SystemExit as exc:
-        message = str(exc)
-        _emit_verify({"allowed": False, "reasons": [message]}, as_json=args.json)
+        _emit_verify({"allowed": False, "reasons": [str(exc)]}, as_json=args.json)
         return 1
-    if args.job is not None:
-        status = record_note_revision(args.job, note)
-        if repair_lock(status):
-            return _emit_verify(
-                {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}, as_json=args.json
-            )
-    result = verify(
-        transcript,
-        note,
-        expected_lang=expected,
-        confidence=args.confidence,
-        job_status=status_name,
+    return _emit_verify(
+        verify(args.transcript, note, expected_lang=args.expected_lang, confidence=args.confidence),
+        as_json=args.json,
     )
-    if args.job is not None:
-        status = record_gate_result(
-            args.job, "verify", bool(result.get("allowed")), result.get("reasons") or []
-        )
-        if repair_lock(status):
-            result["allowed"] = False
-            result["reasons"] = [REPAIR_LIMIT_MESSAGE]
-    return _emit_verify(result, as_json=args.json)
 
 
 if __name__ == "__main__":

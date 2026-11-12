@@ -42,7 +42,7 @@ Use transcript-first-video on this video, then write the note: <url>
 
 ```mermaid
 flowchart LR
-  A[link] --> B[transcript] --> C[note] --> D[verify] --> E[coverage]
+  A[link] --> B[transcript] --> S[selection] --> C[note] --> D[verify] --> E[coverage]
 ```
 
 ## Contents
@@ -54,34 +54,17 @@ flowchart LR
 - [License](#license)
 - [中文](#中文)
 
+
 ## Note
 
-A finished note looks like this:
+Read the full timed transcript, record what to keep or omit in `selection.md`, then write `note.md`. The note starts with `## 先记住一句话`, uses middle sections suited to the video type, and ends with `## 原文依据`. Chinese prose defaults to plain language for beginners.
 
-````markdown
-## 先记住一句话
-*(One sentence to remember)*
-
-## 问题与做法
-*(Problem and approach)*
-
-## 完整怎么做
-*(How to do it end to end)*
-
-## 翻车或别用
-*(When it breaks or when not to use it)*
-
-## 今天立刻动手一步
-*(One step you can take today)*
-````
-
-Chinese delivery defaults to beginner-clear prose: plain words for why, what, and the benefit; no jargon piled into titles or the body; proper nouns from the talk may stay.
-
-Example: [references/note-examples.md](references/note-examples.md).
+The format and four synthetic examples are in [references/delivery-format.md](references/delivery-format.md).
 
 ## Read-feel knobs
 
-The opening heading, the four sections, R01–R17, and Coverage C stay fixed. These knobs change read-feel only. They are not an install wizard. Set one only when someone asks. Changing a knob leaves R01–R17 and Coverage C in force. Delivery wording stays in the delivered body and does not rewrite `note.md`.
+
+Adjust these when the reader asks. Keep the [single-note format and evidence](references/delivery-format.md).
 
 | Knob | What it changes |
 | :--- | :--- |
@@ -101,7 +84,7 @@ python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw
 python3 scripts/coverage_check.py --job artifacts/youtube_jNQXAC9IVRw
 ```
 
-The host only writes the transcript and a blank scaffold; you write the note. Then run `verify_note.py`, then `coverage_check.py`, and deliver only after both pass. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands: [scripts/README.md](scripts/README.md).
+The host writes the transcript and a blank scaffold. Write the selection and note, run both checks, then copy the checked note as-is when the status is `finished`. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands: [scripts/README.md](scripts/README.md).
 
 ## Evidence
 
@@ -155,31 +138,19 @@ python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw
 python3 scripts/coverage_check.py --job artifacts/youtube_jNQXAC9IVRw
 ```
 
-主机只写下文稿和空白脚手架；笔记由你来写。写完后先跑 `verify_note.py`，再跑 `coverage_check.py`，两道都过再交出去。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检：`bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
+主机写下文稿和空白脚手架。先通读并写取舍，再写成稿。写完后先跑 `verify_note.py`，再跑 `coverage_check.py`，状态为 `finished` 后原样拷贝成稿。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检：`bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
+
 
 ### 笔记
 
-写完的笔记长这样：
+`selection.md` 按文稿顺序记下每段留或略和理由。`note.md` 从「先记住一句话」开篇，中间按视频类型组织，文末「原文依据」保留逐字引文。中文默认用初学者能懂的白话。
 
-````markdown
-## 先记住一句话
-
-## 问题与做法
-
-## 完整怎么做
-
-## 翻车或别用
-
-## 今天立刻动手一步
-````
-
-中文默认小白能懂：白话讲清为什么、是什么、好处；标题和正文不堆术语；片子里出现的专名可以留。
-
-例子：[references/note-examples.md](references/note-examples.md)
+模板和四个示例见 [交付格式](references/delivery-format.md)。
 
 ### 读感旋钮
 
-开头标题、四节、R01–R17、Coverage C 保持不动。下面只改读感。安装时不问。有人开口要改，才动。改旋钮之后，R01–R17 和 Coverage C 仍然有效。交付时的措辞留在交付正文里，不回写 `note.md`。
+
+读者提出要求时，可以调整下面这些写法。成稿按[交付格式](references/delivery-format.md)保留结构和证据。
 
 | 旋钮 | 改什么 |
 | :--- | :--- |

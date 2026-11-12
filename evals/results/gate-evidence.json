@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-06T02:41:17Z",
+  "generated_at": "2026-11-12T07:42:36Z",
   "verifier": [
     {
       "id": "usable-en",
       "eval_id": 1,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/usable_en_note.md",
       "expected_lang": "en",
       "expect_allowed": true,
-      "summary": "Usable English transcript. The note cites it and analyzes it in the four knowledge sections.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
+      "summary": "Usable English transcript. The note cites it and links the reading sections to verbatim end evidence.",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang en --json",
       "exit_code": 0,
       "allowed": true,
       "reasons": [],
@@ -29,7 +29,11 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R01 FAIL: quality gate failed: empty or unusable transcript (no speech text after cleanup)"
+        "R01 FAIL: quality gate failed: empty or unusable transcript (no speech text after cleanup)",
+        "R04 FAIL: quote is not verbatim for at least 40 characters: [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen th; quote is not verbatim for at least 40 characters: [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new p; quote is not verbatim for at least 40 characters: [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do no",
+        "R05 FAIL: 缺时间戳，请用带时间戳的转写重跑",
+        "R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link",
+        "C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s; unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -46,7 +50,11 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R01 FAIL: quality gate failed: looping repeats: the same segment appears 6 times (43% of segments); quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35); analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+        "R01 FAIL: quality gate failed: looping repeats: the same segment appears 6 times (43% of segments); quality gate failed: language/ratio fail for expected Chinese: cjk=0, cjk_ratio=0.00, latin_ratio=1.00 (need cjk>=8 and cjk_ratio>=0.35)",
+        "R04 FAIL: quote is not verbatim for at least 40 characters: [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen th; quote is not verbatim for at least 40 characters: [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new p; quote is not verbatim for at least 40 characters: [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do no",
+        "R05 FAIL: 缺时间戳，请用带时间戳的转写重跑",
+        "R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link",
+        "C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s; unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -54,12 +62,12 @@
     {
       "id": "usable-zh",
       "eval_id": 3,
-      "transcript": "evals/fixtures/usable_zh_transcript.txt",
+      "transcript": "evals/fixtures/usable_zh_timed_transcript.txt",
       "note": "evals/fixtures/usable_zh_note.md",
       "expected_lang": "zh",
       "expect_allowed": true,
       "summary": "Usable Chinese transcript. The note cites it and analyzes the repotting method.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_zh_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_zh_timed_transcript.txt --note evals/fixtures/usable_zh_note.md --expected-lang zh --json",
       "exit_code": 0,
       "allowed": true,
       "reasons": [],
@@ -69,12 +77,12 @@
     {
       "id": "clean-en-expected-zh",
       "eval_id": 3,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/usable_en_note.md",
       "expected_lang": "zh",
       "expect_allowed": false,
       "summary": "Fluent English is still a ratio fail when Chinese is expected.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/usable_en_note.md --expected-lang zh --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
@@ -95,7 +103,11 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R01 FAIL: quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech"
+        "R01 FAIL: quality gate failed: gibberish: Latin vowel ratio 0.00 is too low to be speech",
+        "R04 FAIL: quote is not verbatim for at least 40 characters: [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen th; quote is not verbatim for at least 40 characters: [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new p; quote is not verbatim for at least 40 characters: [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do no",
+        "R05 FAIL: 缺时间戳，请用带时间戳的转写重跑",
+        "R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link",
+        "C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s; unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -104,15 +116,18 @@
       "id": "missing-path",
       "eval_id": null,
       "transcript": "evals/fixtures/does_not_exist.txt",
-      "note": "evals/fixtures/laundered_essay_note.md",
-      "expected_lang": "zh",
+      "note": "evals/fixtures/missing_transcript_note.md",
+      "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Essay cites a transcript path that is not on disk.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/does_not_exist.txt --note evals/fixtures/laundered_essay_note.md --expected-lang zh --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/does_not_exist.txt --note evals/fixtures/missing_transcript_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R01 FAIL: missing transcript path: evals/fixtures/does_not_exist.txt does not exist; analyzer-laundering: the note is an essay about ASR or transcription failure without a usable transcript"
+        "R01 FAIL: missing transcript path: evals/fixtures/does_not_exist.txt does not exist",
+        "R04 FAIL: quote is not verbatim for at least 40 characters: [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen th; quote is not verbatim for at least 40 characters: [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new p; quote is not verbatim for at least 40 characters: [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do no",
+        "R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link",
+        "C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s; unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -120,18 +135,16 @@
     {
       "id": "missing-citation",
       "eval_id": 1,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/uncited_note.md",
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Usable transcript, note never names the file.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/uncited_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/uncited_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R02 FAIL: note does not cite transcript path evals/fixtures/usable_en_transcript.txt; note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
-        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步",
-        "R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
+        "C04a FAIL: missing frontmatter properties: transcript_path; transcript_path must resolve to evals/fixtures/usable_en_timed_transcript.txt"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -139,18 +152,18 @@
     {
       "id": "path-only",
       "eval_id": 1,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/path_only_note.md",
       "expected_lang": "en",
       "expect_allowed": false,
       "summary": "Usable transcript. The note pastes the path and a title, and does not quote the transcript.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/path_only_note.md --expected-lang en --json",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/path_only_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R02 FAIL: note is missing Obsidian frontmatter (title, source_url, video_id, acquisition, gate_passed, transcript_path, quoted_window)",
-        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步",
-        "R04 FAIL: note does not quote a transcript window (need 40 contiguous characters from the transcript; a path or a title is not a quote)"
+        "R04 FAIL: 原文依据 needs at least one contiguous transcript quote",
+        "R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link",
+        "C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -158,16 +171,18 @@
     {
       "id": "quote-stub",
       "eval_id": 1,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/quote_stub_note.md",
       "expected_lang": "en",
       "expect_allowed": false,
-      "summary": "Usable transcript. The note has frontmatter and a real quote, and no knowledge sections.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/quote_stub_note.md --expected-lang en --json",
+      "summary": "Usable transcript. The note has frontmatter and a real quote, and no reader-facing sections.",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/quote_stub_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R03 FAIL: finished note is missing knowledge section 问题与做法, 完整怎么做, 翻车或别用, 今天立刻动手一步"
+        "R13 FAIL: missing 今天立刻动手一步",
+        "C04a FAIL: expected H2 sections in order: 先记住一句话 / 这场在谈什么、谁 / 主线论点 / 可复用做法 / 翻车或别用 / 今天立刻动手一步; expected 本文略去 on its own line after 今天立刻动手一步, before 原文依据",
+        "C04b FAIL: unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -175,19 +190,17 @@
     {
       "id": "boilerplate-sections",
       "eval_id": 1,
-      "transcript": "evals/fixtures/usable_en_transcript.txt",
+      "transcript": "evals/fixtures/usable_en_timed_transcript.txt",
       "note": "evals/fixtures/boilerplate_note.md",
       "expected_lang": "en",
       "expect_allowed": false,
-      "summary": "Four section headings and real quotes, with the same quote-stub sentence in each.",
-      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_transcript.txt --note evals/fixtures/boilerplate_note.md --expected-lang en --json",
+      "summary": "The main-claim section contains only time markers and no claim text.",
+      "command": "python3 scripts/verify_note.py --transcript evals/fixtures/usable_en_timed_transcript.txt --note evals/fixtures/boilerplate_note.md --expected-lang en --json",
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R04 FAIL: section 今天立刻动手一步 quote is not verbatim in the transcript: Put a handful of bark in the new pot so water can drain. Set the plant in the mi",
-        "R10 FAIL: boilerplate analysis in section 问题与做法: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 完整怎么做: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 翻车或别用: the section is a quote stub rather than a reusable claim; boilerplate analysis in section 今天立刻动手一步: the section is a quote stub rather than a reusable claim",
-        "R13 FAIL: 今天立刻动手一步 overlaps an imperative in the transcript by 0%; need 30%",
-        "R17 FAIL: section 问题与做法 shares 0 content tokens with its quotes; need 3; section 完整怎么做 shares 0 content tokens with its quotes; need 3; section 翻车或别用 shares 0 content tokens with its quotes; need 3; section 今天立刻动手一步 shares 0 content tokens with its quotes; need 3"
+        "C04a FAIL: empty section: 主线论点",
+        "C04b FAIL: 主线论点: ⏱ 00:00 needs three shared content tokens; 主线论点: ⏱ 00:30 needs three shared content tokens; 主线论点: ⏱ 01:00 needs three shared content tokens"
       ],
       "naive_would_deposit": true,
       "matched": true
@@ -199,8 +212,8 @@
       "exit_code": 0,
       "status": "transcript_ready",
       "finished": false,
-      "reason": "transcript passed the quality gate; note.scaffold.md is a blank form, not a finished knowledge note",
-      "next_step": "write-note",
+      "reason": "缺时间戳，请用带时间戳的转写重跑",
+      "next_step": "retry-timed-transcript",
       "note_exists": false,
       "scaffold_exists": true,
       "transcript_exists": true,
@@ -253,8 +266,8 @@
       "exit_code": 0,
       "status": "transcript_ready",
       "finished": false,
-      "reason": "transcript passed the quality gate; note.scaffold.md is a blank form, not a finished knowledge note",
-      "next_step": "write-note",
+      "reason": "缺时间戳，请用带时间戳的转写重跑",
+      "next_step": "retry-timed-transcript",
       "note_exists": false,
       "scaffold_exists": true,
       "transcript_exists": true,
