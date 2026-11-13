@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 import re
 import unicodedata
 from bisect import bisect_left, bisect_right
@@ -583,6 +585,10 @@ def _cross_script(prose: str, quote: str) -> bool:
 
 EVIDENCE_HEADING = "原文依据"
 ACTION_HEADING = _C04_END[-1]
+SCREEN_TAG = "[画面]"
+UNCERTAIN_SCREEN_TAG = "[画面?]"
+SCREEN_FILE = "screen.txt"
+SCREEN_FRAMES = "screen-frames"
 OMISSION_LINE = re.compile(r"^本文略去[｜|]\s*(.*?)\s*$")
 TIME_TOLERANCE = 15
 MISSING_TIMESTAMPS = "缺时间戳，请用带时间戳的转写重跑"
@@ -604,6 +610,7 @@ class Quote:
     matches: tuple[QuoteMatch, ...]
     anchor: quality_gate.Segment | None
     match: QuoteMatch | None
+    screen: bool = False
 
     @property
     def timed(self) -> bool:
@@ -627,6 +634,7 @@ class RuleContext:
     evidence_errors: list[str]
     omission: str | None
     cited: bool
+    has_screen_file: bool = False
 
     @property
     def exists(self) -> bool:
@@ -660,6 +668,42 @@ def parse_stamp(text: str) -> tuple[int | None, str]:
     match = _STAMP.match(text.strip())
     stamp = clock_seconds(match[1]) if match else None
     return (stamp, text.strip()[match.end():].strip()) if stamp is not None else (None, text.strip())
+
+
+def screen_mode() -> str:
+    value = os.environ.get("TFV_SCREEN_MODE", "").strip().casefold()
+    return value if value in {"slides", "nameplate"} else "off"
+
+
+def screen_tag(text: str) -> str:
+    return next((tag for tag in (SCREEN_TAG, UNCERTAIN_SCREEN_TAG) if text.startswith(tag)), "")
+
+
+def _screen_index(path: Path) -> dict[str, tuple[QuoteMatch, ...]]:
+    try:
+        content = path.read_bytes()
+        lines = content.decode("utf-8-sig").splitlines()
+    except (OSError, UnicodeError):
+        return {}
+    try:
+        status = json.loads(path.with_name("status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        status = None
+    screen = status.get("screen_ocr") if isinstance(status, dict) else None
+    if isinstance(screen, dict) and (
+        screen.get("state") != "ready" or screen.get("sha256") != hashlib.sha256(content).hexdigest()
+    ):
+        return {}
+    matches: dict[str, list[QuoteMatch]] = {}
+    for line in lines:
+        stamp, tagged = parse_stamp(line)
+        if stamp is None or not tagged.startswith(SCREEN_TAG):
+            continue
+        text = tagged[len(SCREEN_TAG):].strip()
+        if text:
+            cue = quality_gate.Segment(stamp, stamp, text)
+            matches.setdefault(text, []).append(QuoteMatch(0, (cue,)))
+    return {text: tuple(locations) for text, locations in matches.items()}
 
 
 def _fmt(seconds: int) -> str:
@@ -745,7 +789,9 @@ def _verbatim_haystack(segments: list[quality_gate.Segment], speech: str) -> str
     return TranscriptIndex(segments).text if segments else _fold(speech)
 
 
-def _end_quotes(body: str, index: TranscriptIndex) -> tuple[list[Quote], list[str]]:
+def _end_quotes(
+    body: str, index: TranscriptIndex, screen: dict[str, tuple[QuoteMatch, ...]] | None,
+) -> tuple[list[Quote], list[str]]:
     quotes, errors = [], []
     for line in body.splitlines():
         if not line.strip():
@@ -755,9 +801,14 @@ def _end_quotes(body: str, index: TranscriptIndex) -> tuple[list[Quote], list[st
             errors.append(f"expected one blockquote per evidence line: {line.strip()[:80]}")
             continue
         stamp, text = parse_stamp(raw[1])
-        if stamp is not None and not _STAMP.match(raw[1])[2]:
+        tag = screen_tag(text) if screen is not None else ""
+        if tag:
+            text = text[len(tag):].strip()
+            matches = screen.get(text, ()) if tag == SCREEN_TAG else ()
+        else:
+            matches = index.matches(text.removeprefix("[--:--]").strip())
+        if not tag and stamp is not None and not _STAMP.match(raw[1])[2]:
             errors.append(f"add a space after quote timestamp [{_fmt(stamp)}]")
-        matches = index.matches(text.removeprefix("[--:--]").strip())
         nearest = min(
             ((abs(stamp - int(cue.start)), cue.start, match.offset, cue, match)
              for match in matches for cue in match.cues
@@ -766,7 +817,8 @@ def _end_quotes(body: str, index: TranscriptIndex) -> tuple[list[Quote], list[st
             key=lambda candidate: candidate[:3],
         )
         quotes.append(Quote(raw[1], text, stamp, matches,
-                            nearest[3] if nearest else None, nearest[4] if nearest else None))
+                            nearest[3] if nearest else None, nearest[4] if nearest else None,
+                            screen=bool(tag)))
     return quotes, errors
 
 
@@ -807,9 +859,12 @@ def build_context(
     evidence_heading = next((heading for heading in _HEADING.finditer(body)
                              if heading.groups() == ("##", EVIDENCE_HEADING)), None)
     quotes, evidence_errors = [], []
+    screen_path = transcript.with_name(SCREEN_FILE)
+    screen_enabled = job and screen_mode() != "off"
+    screen = _screen_index(screen_path) if screen_enabled else None
     omission = None
     if evidence_heading:
-        quotes, evidence_errors = _end_quotes(body[evidence_heading.end():], TranscriptIndex(segments))
+        quotes, evidence_errors = _end_quotes(body[evidence_heading.end():], TranscriptIndex(segments), screen)
         body = body[:evidence_heading.start()].rstrip()
         lines = body.splitlines()
         omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
@@ -820,7 +875,7 @@ def build_context(
     return RuleContext(
         transcript, note, tuple(status for status in (job_status, fields.get("job_status")) if status),
         gate, fields, segments, speech, sections, quotes, evidence_errors, omission,
-        _cites(fields, transcript, job=job),
+        _cites(fields, transcript, job=job), screen_enabled and screen_path.is_file(),
     )
 
 
@@ -834,7 +889,10 @@ def r04_quotes_verbatim(ctx: RuleContext) -> tuple[str, bool, str]:
         issues.append(f"{EVIDENCE_HEADING} needs at least one contiguous transcript quote")
     for quote in ctx.quotes:
         if not quote.matches:
-            issues.append(f"quote is not verbatim for at least {QUOTE_WINDOW} characters: {quote.raw[:100]}")
+            if quote.screen:
+                issues.append(f"screen quote must match a complete [画面] line in screen.txt: {quote.raw[:100]}")
+            else:
+                issues.append(f"quote is not verbatim for at least {QUOTE_WINDOW} characters: {quote.raw[:100]}")
     return _result("R04", issues, "end quotes are verbatim and contiguous")
 
 
@@ -865,21 +923,24 @@ def prose_without_times(prose: str) -> str:
     ).strip()
 
 
-def match_link(stamp: int, quotes: list[Quote]) -> tuple[Quote | None, str]:
+def match_link(stamp: int, quotes: list[Quote]) -> tuple[list[Quote], str]:
+    exact = [quote for quote in quotes if stamp == quote.stamp]
+    if exact and sum(not quote.screen for quote in exact) <= 1:
+        return exact, ""
     nearest = sorted(
         (quote for quote in quotes if abs(stamp - quote.stamp) <= TIME_TOLERANCE),
         key=lambda quote: abs(stamp - quote.stamp),
     )
     if not nearest:
-        return None, "has no end quote within 15s"
+        return [], "has no end quote within 15s"
     if len(nearest) > 1 and abs(stamp - nearest[0].stamp) == abs(stamp - nearest[1].stamp):
-        return None, "has no unique nearest end quote"
-    return nearest[0], ""
+        return [], "has no unique nearest end quote"
+    return nearest[:1], ""
 
 
 def linked_quotes(prose: str, quotes: list[Quote]) -> list[Quote]:
     return [quote for stamp in sorted(delivery_times(prose))
-            if (quote := match_link(stamp, quotes)[0]) is not None]
+            for quote in match_link(stamp, quotes)[0]]
 
 
 def _with_parents(sections: list[DeliverySection]):
@@ -924,9 +985,9 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
 
 def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
     issues = []
-    stamps, used, source_starts = set(), set(), {}
+    stamps, used, used_screen, source_starts = set(), set(), set(), {}
     for quote in ctx.quotes:
-        if quote.stamp is None:
+        if quote.stamp is None or quote.screen:
             continue
         if quote.stamp in stamps:
             issues.append(f"duplicate end quote timestamp [{_fmt(quote.stamp)}]")
@@ -949,16 +1010,23 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
             if not times and is_middle_claim:
                 issues.append(f"{section.heading}: claim is missing a ⏱ time link: {clean[:80]}")
             for stamp in sorted(times):
-                quote, issue = match_link(stamp, valid)
+                linked, issue = match_link(stamp, valid)
                 if issue:
                     issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} {issue}")
                     continue
-                used.add(quote.stamp)
-                if is_middle_claim and not _cross_script(clean, quote.text):
-                    if len(_content_tokens(clean) & _content_tokens(quote.text)) < 3:
-                        issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} needs three shared content tokens")
+                for quote in linked:
+                    if quote.screen:
+                        used_screen.add(quote.raw)
+                        continue
+                    used.add(quote.stamp)
+                    if is_middle_claim and not _cross_script(clean, quote.text):
+                        if len(_content_tokens(clean) & _content_tokens(quote.text)) < 3:
+                            issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} needs three shared content tokens")
     for stamp in sorted(stamps - used):
         issues.append(f"unused end quote [{_fmt(stamp)}]")
+    for quote in ctx.quotes:
+        if quote.screen and quote.stamp is not None and quote.raw not in used_screen:
+            issues.append(f"unused screen quote [{_fmt(quote.stamp)}]: {quote.text[:80]}")
     return _result("C04b", issues, "body time links and end quotes match in both directions")
 
 
@@ -980,22 +1048,30 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = caption_corrections(blocks, ctx.speech)
+
+    def mentions(text: str) -> list[tuple[float, float, str]]:
+        if ctx.has_screen_file:
+            text = re.sub(r"(?<=\d)[xX](?![A-Za-z0-9])", "×", text)
+        return number_mentions(text)
+
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
             if _fixed_explanation(parent, claim):
                 continue
             source_claims = section.prose if claim == section.heading else [claim]
             times = delivery_times(claim).union(*(delivery_times(item) for item in source_claims))
-            linked = [quote for stamp in times if (quote := match_link(stamp, valid)[0])]
+            linked = [quote for stamp in times for quote in match_link(stamp, valid)[0]]
             if times and not linked:
                 continue
-            source = [quote.text for quote in (linked if times else valid)] + corrections
+            excerpts = [quote.text for quote in (linked if times else valid)]
+            source = excerpts + corrections
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
-            support = [mention for excerpt in source for mention in number_mentions(excerpt)]
+            numeric_source = excerpts if ctx.has_screen_file else source
+            support = [mention for excerpt in numeric_source for mention in mentions(excerpt)]
             missing_numbers = {
-                label for low, high, label in number_mentions(prose)
+                label for low, high, label in mentions(prose)
                 if not any(slow <= high and shigh >= low for slow, shigh, _ in support)
             }
             missing_names = {
@@ -1019,7 +1095,8 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
 def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = caption_corrections(blocks, ctx.speech)
-    return _result("C04d", explanation_issues(blocks, ctx.speech, corrections),
+    cited_screen = [quote.text for quote in ctx.valid_quotes if quote.screen]
+    return _result("C04d", explanation_issues(blocks, ctx.speech, [*corrections, *cited_screen]),
                    "explanations use marked blocks")
 
 

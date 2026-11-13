@@ -51,6 +51,7 @@ flowchart LR
 - [Note](#note)
 - [Read-feel knobs](#read-feel-knobs)
 - [Checks](#checks)
+- [Optional YouTube screen text](#optional-youtube-screen-text)
 - [Evidence](#evidence)
 - [License](#license)
 - [中文](#中文)
@@ -85,6 +86,37 @@ python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw 
 ```
 
 The host writes the transcript and a blank scaffold. Write the selection and evidence note, then run the renderer. It runs verify and coverage and writes the reading copy once the current job is `finished`. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands are in [scripts/README.md](scripts/README.md).
+
+## Optional YouTube screen text
+
+`TFV_SCREEN_MODE` defaults to `off`. Use `slides` for talks with slides or `nameplate` to read lower thirds in the first 180 seconds. Set the same mode when running the host, verifier, coverage check, and reading renderer. The transcript still determines whether the job can proceed.
+
+```bash
+export TFV_SCREEN_MODE=slides
+python3 scripts/youtube_host.py "<YouTube URL>" --out artifacts --asr off --json
+# After writing selection.md and note.md:
+python3 scripts/render_reading_note.py --task-dir "artifacts/youtube_<ID>" --output "reading.md"
+```
+
+For embedded slides, set `TFV_SLIDE_CROP` to `x,y,width,height` as fractions of the source frame. The default uses the full image for full-screen slides. OCR uses English by default. With the corresponding Tesseract language data installed, `TFV_OCR_LANG` can select another language or a combination such as `eng+chi_sim`.
+
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. A line with figures needs the same numeric spelling in at least two of three passes. `screen-frames/` holds the screenshots for the emitted lines, and `status.json` records tool versions, elapsed time including the video download, and the line numbers associated with each screenshot. Downloaded video is temporary. When screen OCR fails or times out, the host records the reason and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+
+Install Python and yt-dlp as above. On Debian or Ubuntu, install the OCR tools manually.
+
+```bash
+sudo apt update
+sudo apt install ffmpeg tesseract-ocr tesseract-ocr-eng
+```
+
+If the VM cannot reach the apt mirror, download the official `.deb` packages and any missing dependencies for its distro release and architecture. Compare each downloaded file's SHA-256 with its `SHA256` value from the repository's signed package metadata before installing it. [Ubuntu archive verification](https://documentation.ubuntu.com/security/software-integrity/archive-verification/)
+
+```bash
+sha256sum ./package.deb
+sudo dpkg -i ./package.deb
+```
+
+The scripts use the installed versions. After a Grok Bot VM rebuild, reinstall the tools and language data. The probe downloaded 1080p with yt-dlp 2026.08.19 despite a missing Deno warning. If YouTube downloads start failing, first try updating yt-dlp and installing Deno.
 
 ## Evidence
 
@@ -139,6 +171,7 @@ python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw 
 
 主机写下文稿和空白脚手架。先通读并写取舍，再写证据版。写完后运行阅读版脚本，它先执行 verify 和 coverage，两项通过且当前任务状态为 `finished` 后写入阅读版。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检用 `bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
 
+YouTube 画面识别默认关闭。带幻灯片的大会或讲座用 `TFV_SCREEN_MODE=slides`，只找片头三分钟内的人名条用 `TFV_SCREEN_MODE=nameplate`。抓取、验稿、覆盖检查和生成阅读版时使用相同的设置。识别失败或超时会记入 `status.json`，任务继续使用字幕。虚拟机重建后须重新安装工具和语言包。[画面识别的安装和用法](#optional-youtube-screen-text)
 
 ### 笔记
 

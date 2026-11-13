@@ -214,11 +214,10 @@ def check_selection(
                 if unit_at(stamp) is None:
                     issues.append(f"{section.heading}: ⏱ {rules._fmt(stamp)} is outside the selection.md ranges")
                     continue
-                quote, _ = rules.match_link(stamp, valid)
-                moments = [stamp]
-                if quote is not None:
-                    moments.extend((quote.stamp, quote.anchor.start))
-                if _crosses_omission(moments, omitted):
+                linked, _ = rules.match_link(stamp, valid)
+                if _crosses_omission([stamp], omitted) or any(
+                    _crosses_omission([stamp, quote.stamp, quote.anchor.start], omitted) for quote in linked
+                ):
                     issues.append(f"{section.heading}: ⏱ {rules._fmt(stamp)} uses or crosses an omitted (略) unit")
             if index and _has_omitted_excerpt(rules.prose_without_times(prose), index, omitted_starts):
                 issues.append(f"{section.heading}: prose quotes an omitted (略) unit")
@@ -265,8 +264,9 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
     if not raw.strip():
         reasons.append("C00 FAIL: transcript.txt is missing or empty")
     if long:
-        if duration is not None and ctx.has_clock:
-            quartiles = sorted({quartile(quote.anchor.start, duration) for quote in ctx.valid_quotes})
+        if ctx.has_clock and (duration is not None or any(quote.screen for quote in ctx.valid_quotes)):
+            time_span = duration or math.floor(latest) + 1
+            quartiles = sorted({quartile(quote.anchor.start, time_span) for quote in ctx.valid_quotes})
             basis = "time"
         elif ctx.has_clock:
             length = len(rules.TranscriptIndex(ctx.segments).text)

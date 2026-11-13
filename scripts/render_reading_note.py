@@ -18,6 +18,7 @@ import verify_rules as rules
 
 
 INTRO = "带竖线的行是 AI 补充的名词解释或比方，不是视频里说的话。"
+SCREEN_HINT = "标明来自画面的内容由机器识别，可能有个别字符误差。"
 OUTRO = "每句话对应的视频原话和时间点，保存在这条视频的证据版里。"
 FRONTMATTER = re.compile(r"\A---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
 TIME_GROUP = re.compile(
@@ -33,6 +34,7 @@ EMPTY_SECTION = re.compile(
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 JOB_FILES = (
     "note.md", "transcript.txt", "selection.md", "status.json", "segments.json", ".status.lock", "delivery.md",
+    rules.SCREEN_FILE,
 )
 ARCHIVED_NOTE = re.compile(r"(?:note|delivery)\.prev(?:\.[0-9]+)?\.md", re.IGNORECASE)
 
@@ -164,6 +166,8 @@ def render_note(note: bytes, *, keep_frontmatter: bool) -> bytes:
                      if heading.groups() == ("##", rules.EVIDENCE_HEADING)), None)
     if evidence is None:
         raise RenderError("note.md is missing the 原文依据 section")
+    screen_quote = re.compile(r"^\s*>[ \t]+\[(?:\d+:)?\d{2,}:[0-5]\d\]\[画面\]", re.MULTILINE)
+    has_screen = bool(screen_quote.search(body, evidence.end()))
     body = body[:evidence.start()]
     omission = OMISSION.search(body)
     if omission is None:
@@ -172,7 +176,7 @@ def render_note(note: bytes, *, keep_frontmatter: bool) -> bytes:
     markdown = "\n\n".join((
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
-        INTRO,
+        f"{INTRO}\n\n{SCREEN_HINT}" if has_screen else INTRO,
         render_body(body[:omission.start()]),
         "---",
         f"没写进来的部分：{omission[1]}",
@@ -193,6 +197,8 @@ def normalize_newlines(text: str) -> str:
 
 def check_destination(job: Path, output: Path) -> None:
     resolved = output.resolve()
+    if any(path.is_relative_to(job / rules.SCREEN_FRAMES) for path in (output, resolved)):
+        raise RenderError(f"--output would use the screenshot directory: {output}")
     if any(path.parent == job and ARCHIVED_NOTE.fullmatch(path.name) for path in (output, resolved)):
         raise RenderError(f"--output would use a job archive path: {output}")
     for name in JOB_FILES:

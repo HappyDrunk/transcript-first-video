@@ -199,6 +199,12 @@ def job_inputs(job: Path) -> dict:
         else:
             inputs[key] = digest
     status = read_job_status(job)
+    if verify_rules.screen_mode() != "off":
+        screen = job / verify_rules.SCREEN_FILE
+        try:
+            inputs["screen"] = hashlib.sha256(screen.read_bytes()).hexdigest()
+        except FileNotFoundError:
+            inputs["screen"] = None
     inputs["duration_seconds"] = status.get("duration_seconds")
     inputs["expected_lang"] = status.get("gate_lang") or status.get("expected_lang")
     return inputs
