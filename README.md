@@ -98,9 +98,9 @@ python3 scripts/youtube_host.py "<YouTube URL>" --out artifacts --asr off --json
 python3 scripts/render_reading_note.py --task-dir "artifacts/youtube_<ID>" --output "reading.md"
 ```
 
-For embedded slides, set `TFV_SLIDE_CROP` to `x,y,width,height` as fractions of the source frame. The default uses the full image for full-screen slides. OCR uses English by default. With the corresponding Tesseract language data installed, `TFV_OCR_LANG` can select another language or a combination such as `eng+chi_sim`.
+Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame. OCR uses English by default. With the corresponding Tesseract language data installed, `TFV_OCR_LANG` can select another language or a combination such as `eng+chi_sim`.
 
-`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. A line with figures needs the same numeric spelling in at least two of three passes. `screen-frames/` holds the screenshots for the emitted lines, and `status.json` records tool versions, elapsed time including the video download, and the line numbers associated with each screenshot. Downloaded video is temporary. When screen OCR fails or times out, the host records the reason and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. A numeric spelling must match exactly in at least two distinct image treatments. OCR uses the original size, half size, and inverted binary image, with extra passes when the image contains bright areas or saturated colors that can isolate text. `screen-frames/` holds the screenshots for the emitted lines, and `status.json` records tool versions, elapsed time including the video download, and the line numbers associated with each screenshot. Downloaded video is temporary. When screen OCR fails or times out, the host records the reason and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
 
 Install Python and yt-dlp as above. On Debian or Ubuntu, install the OCR tools manually.
 

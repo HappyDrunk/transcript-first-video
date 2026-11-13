@@ -15,6 +15,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import quality_gate
@@ -30,15 +31,33 @@ _SHOWINFO = re.compile(
 )
 _CHECKSUM = re.compile(r"\bchecksum:([A-Fa-f0-9]+)")
 _DURATION = re.compile(r"\bDuration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
+_SIGNAL = re.compile(r"^lavfi\.signalstats\.(YMIN|YMAX|SATMAX)=([0-9.]+)$", re.MULTILINE)
+_BRIGHT_GRAY = 200
+_BRIGHT_LIMITED_Y = 16 + round(_BRIGHT_GRAY * 219 / 255)
+_MIN_CHROMA = 32
+_BRIGHT = f"format=gray,lut=y='if(gt(val,{_BRIGHT_GRAY}),0,255)'"
+_CHROMA = "255-(max(max(r(X,Y),g(X,Y)),b(X,Y))-min(min(r(X,Y),g(X,Y)),b(X,Y)))"
+_SATURATION = f"format=gbrp,geq=r='{_CHROMA}':g=0:b=0,extractplanes=r"
 _NUMERIC_TEXT = re.compile(
     r"(?:[A-Za-z]*[$€£¥￥][ \t]*)?[+\-−]?[A-Za-z]*[.,]?\d[A-Za-z\d]*"
-    r"(?:[.,][A-Za-z\d]+|[.,][ \t]*\d+)*(?:[ \t]*(?:[%％×倍]|[xX](?![A-Za-z])))?"
+    r"(?:[.,][A-Za-z\d]+|[.,][ \t]*\d+)*(?:[ \t]*(?:[$€£¥￥%％×倍]|[xX](?![A-Za-z])))?"
+    r"|[零〇一二两三四五六七八九十百千万亿]+倍"
 )
 _NUMERIC_MARK = re.compile(r"[\d$€£¥￥%％×]|[零〇一二两三四五六七八九十百千万亿]+倍")
+_NUMERIC_SYMBOL = re.compile(r"[$€£¥￥%％×]")
+_PERCENT = re.compile(
+    r"(?<![A-Za-z\d.,])(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
+    r"|\d+(?:[.,]\d+)?|[.,]\d+)[ \t]*[%％](?![A-Za-z\d])"
+)
+_PERCENT_MARK = re.compile(r"[%％]")
+_SHORT_NUMBER = re.compile(r"[+\-−]?[$€£¥￥]?(?:\d+(?:[.,]\d+)?|[.,]\d+)[%％×xX倍kKmMbB]?")
 _NAME = re.compile(
     r"(?:[A-Z][^\W\d_]+(?:[-’'][^\W\d_]+)?(?:[ \t]+[A-Z][^\W\d_]+(?:[-’'][^\W\d_]+)?){1,3}"
     r"|[\u3400-\u9fff]{2,4})"
 )
+_ROLE = re.compile(r"[^\W\d_][\w .,&()/’'+\-]*")
+_WORD = re.compile(r"[^\W\d_]+")
+_NAMEPLATE_CONFIDENCE = 80
 
 
 class ScreenError(Exception):
@@ -52,10 +71,16 @@ class Line:
     y: int
     width: int
     height: int
+    confidence: float = 0
 
     def at_same_position(self, other: Line) -> bool:
         tolerance = max(6, min(self.height, other.height) // 2)
         return abs(self.x - other.x) <= tolerance and abs(self.y - other.y) <= tolerance
+
+    def overlaps(self, other: Line) -> bool:
+        vertical = min(self.y + self.height, other.y + other.height) - max(self.y, other.y)
+        horizontal = min(self.x + self.width, other.x + other.width) - max(self.x, other.x)
+        return vertical > 0 and vertical * 2 >= min(self.height, other.height) and horizontal > 0
 
 
 @dataclass(frozen=True)
@@ -148,11 +173,13 @@ def _crop(mode: str) -> str:
 
 def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list[Frame]:
     interval = NAMEPLATE_INTERVAL if mode == "nameplate" else SLIDE_INTERVAL
-    # Fixed clock buckets give brief slides a chance even after a nearby cut.
-    select = (
-        f"select='isnan(prev_selected_t)+gte(t-prev_selected_t,1)*"
-        f"(gt(scene,0.30)+gt(floor(t/{interval}),floor(prev_selected_t/{interval})))'"
+    new_bucket = f"gt(floor(t/{interval}),floor(prev_selected_t/{interval}))"
+    spaced = "gte(t-prev_selected_t,1)"
+    # A nearby cut must not displace the next periodic sample of a brief lower third.
+    extra = f"{new_bucket}+{spaced}*gt(scene,0.30)" if mode == "nameplate" else (
+        f"{spaced}*(gt(scene,0.30)+{new_bucket})"
     )
+    select = f"select='isnan(prev_selected_t)+{extra}'"
     result = scan.run([
         ffmpeg, "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info",
         "-filter_threads", "1", *(["-t", str(NAMEPLATE_SECONDS)] if mode == "nameplate" else []),
@@ -190,9 +217,10 @@ def _tsv_lines(tsv: str, multiplier: int) -> list[Line]:
             continue
         try:
             left, top, width, height = (int(field) * multiplier for field in fields[6:10])
+            confidence = float(fields[10])
         except ValueError:
             continue
-        groups[tuple(fields[1:5])].append(Line(fields[-1].strip(), left, top, width, height))
+        groups[tuple(fields[1:5])].append(Line(fields[-1].strip(), left, top, width, height, confidence))
     lines = []
     for words in groups.values():
         left = min(word.x for word in words)
@@ -201,28 +229,33 @@ def _tsv_lines(tsv: str, multiplier: int) -> list[Line]:
             " ".join(word.text for word in words), left, top,
             max(word.x + word.width for word in words) - left,
             max(word.y + word.height for word in words) - top,
+            min(word.confidence for word in words),
         ))
     return lines
 
 
 def _nameplate(lines: list[Line]) -> list[Line]:
     """Keep lower-third names with nearby aligned role lines, in OCR reading order."""
+    def role_text(text: str) -> bool:
+        return bool(_ROLE.fullmatch(text) and any(len(word) >= 3 for word in _WORD.findall(text)))
+
+    readable = [line for line in lines if line.confidence >= _NAMEPLATE_CONFIDENCE]
     selected = set()
-    for line in lines:
+    for line in readable:
         name, comma, role = line.text.partition(",")
         if not _NAME.fullmatch(name.strip()):
             continue
-        if comma and any(char.isalpha() for char in role):
+        if comma and role_text(role.strip()):
             selected.add(line)
             continue
         following = sorted((
-            other for other in lines if 0 < other.y - line.y <= line.height * 3
+            other for other in readable if line.height / 2 < other.y - line.y <= line.height * 3
             and min(abs(other.x - line.x),
                     abs(other.x + other.width / 2 - line.x - line.width / 2),
                     abs(other.x + other.width - line.x - line.width)) <= line.height
-            and any(char.isalpha() for char in other.text)
+            and role_text(other.text)
         ), key=lambda other: other.y)
-        if following:
+        if following and following[0].y <= line.y + line.height * 2:
             selected.add(line)
             selected.update(following[:2])
     return [line for line in lines if line in selected]
@@ -233,16 +266,12 @@ def _read_frame(
 ) -> list[tuple[Line, bool]]:
     lang = os.environ.get("TFV_OCR_LANG", "").strip() or "eng"
     env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
-    passes = []
     original = frame.path.with_name(f"{frame.path.stem}-original.png")
-    for name, filters, multiplier in (
-        ("original", crop, 1),
-        ("half", "scale=iw/2:ih/2", 2),
-        ("binary", "format=gray,negate,lut=y='if(gte(val,128),255,0)'", 1),
-    ):
+
+    def read(name: str, filters: str, multiplier: int = 1) -> tuple[list[Line], str]:
         path = frame.path.with_name(f"{frame.path.stem}-{name}.png")
         source = frame.path if name == "original" else original
-        scan.run([
+        transformed = scan.run([
             ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
             "-filter_threads", "1", "-i", str(source), "-vf", filters,
             "-frames:v", "1", "-threads", "1", str(path),
@@ -253,36 +282,75 @@ def _read_frame(
         finally:
             if name != "original":
                 path.unlink(missing_ok=True)
-        lines = _tsv_lines(result.stdout, multiplier)
-        passes.append(lines)
+        return _tsv_lines(result.stdout, multiplier), transformed.stdout
+
+    # Measure luminance and chroma on a side branch, leaving the first OCR image intact.
+    measured = f"{crop},split[ocr][stats];[stats]format=yuv444p,signalstats,metadata=print:file=-,nullsink;[ocr]null"
+    original_lines, signal = read("original", measured)
+    passes = [
+        original_lines,
+        read("half", "scale=iw/2:ih/2", 2)[0],
+        read("binary", "format=gray,negate,lut=y='if(gte(val,128),255,0)'")[0],
+    ]
+    levels = {key: float(value) for key, value in _SIGNAL.findall(signal)}
+    # Brightness isolation is useful when the image spans the grayscale threshold.
+    if levels.get("YMIN", 255) <= _BRIGHT_LIMITED_Y < levels.get("YMAX", 0):
+        passes.append(read("bright", _BRIGHT)[0])
+    if mode == "slides" and levels.get("SATMAX", 0) >= _MIN_CHROMA:
+        passes.append(read("saturation", _SATURATION)[0])
     original.unlink()
-    recognized = _agree(passes)
-    if mode == "nameplate":
-        # Role and name can be split differently by the three OCR passes.
-        selected = {line for lines in passes for line in _nameplate(lines)}
-        recognized = [(line, trusted) for line, trusted in recognized if line in selected]
-    return recognized
+    return _agree(passes, nameplate=mode == "nameplate")
 
 
-def _agree(passes: list[list[Line]]) -> list[tuple[Line, bool]]:
+def _agree(passes: list[list[Line]], *, nameplate: bool) -> list[tuple[Line, bool]]:
     """Require matching numeric glyphs in distinct passes of the same frame."""
     result: dict[str, tuple[Line, bool]] = {}
-    numbers = [[(line, tuple(_numeric_spelling(line.text))) for line in lines] for lines in passes]
-    for index, lines in enumerate(numbers):
-        for line, spelling in lines:
-            trusted = not _NUMERIC_MARK.search(line.text) or any(
-                spelling and spelling == other_spelling
-                and (line.text == other.text or line.at_same_position(other))
-                for other_index, others in enumerate(numbers) if index != other_index
-                for other, other_spelling in others
-            )
+    numeric_lines = [
+        [(line, _numeric_spelling(line.text)) for line in lines if _NUMERIC_MARK.search(line.text)]
+        for lines in passes
+    ]
+    for index, lines in enumerate(passes):
+        other_numbers = [item for other_index, items in enumerate(numeric_lines) if index != other_index
+                         for item in items]
+        for line in _nameplate(lines) if nameplate else lines:
+            if _NUMERIC_MARK.search(line.text):
+                trusted = _confirmed_number(line, other_numbers)
+            else:
+                # Another pass may have read a number where this pass found a symbol or omitted it.
+                trusted = not any(
+                    line.overlaps(other) and _similar_words(line.text, other.text)
+                    for other, _ in other_numbers
+                )
+            if not nameplate and len(line.text) <= 3 and not (trusted and _SHORT_NUMBER.fullmatch(line.text)):
+                continue
             earlier = result.get(line.text)
-            if earlier is None or trusted and not earlier[1]:
+            if earlier is None or (trusted, line.confidence) > (earlier[1], earlier[0].confidence):
                 result[line.text] = (line, trusted)
     return list(result.values())
 
 
-def _numeric_spelling(text: str) -> list[str]:
+def _confirmed_number(line: Line, other_numbers: list[tuple[Line, tuple[str, ...]]]) -> bool:
+    spelling = _numeric_spelling(line.text)
+    if not spelling or _NUMERIC_SYMBOL.findall(line.text) != _NUMERIC_SYMBOL.findall(" ".join(spelling)):
+        return False
+    # OCR can produce the same letter/digit mixture in several passes.
+    if len(_PERCENT.findall(line.text)) != len(_PERCENT_MARK.findall(line.text)):
+        return False
+    return any(
+        spelling == other_spelling
+        and (line.text == other.text or line.at_same_position(other) or line.overlaps(other))
+        for other, other_spelling in other_numbers
+    )
+
+
+def _similar_words(text: str, other: str) -> bool:
+    """Find shared context when a glyph in a line is read as a digit in another pass."""
+    words = set(_WORD.findall(text.casefold()))
+    other_words = set(_WORD.findall(other.casefold()))
+    return bool(words and words == other_words) or any(len(word) >= 3 for word in words & other_words)
+
+
+def _numeric_spelling(text: str) -> tuple[str, ...]:
     # Keep punctuation, units and letter-shaped OCR errors adjacent to digits.
     matches = _NUMERIC_TEXT.finditer(text)
     spellings = []
@@ -293,7 +361,47 @@ def _numeric_spelling(text: str) -> list[str]:
         if end < len(text) and text[end] in ".,":
             end += 1
         spellings.append(text[start:end])
-    return spellings
+    return tuple(spellings)
+
+
+def _deduplicate(
+    frames: list[Frame], results: list[list[tuple[Line, bool]]], watermarks: set[str],
+) -> list[tuple[Frame, Line, bool]]:
+    chosen: list[tuple[Frame, Line, bool]] = []
+    exact: dict[tuple[str, tuple[str, ...]], int] = {}
+    for frame, lines in zip(frames, results):
+        seen: dict[tuple[str, ...], list[tuple[int, Line, str]]] = defaultdict(list)
+        for line, trusted in lines:
+            folded = line.text.casefold()
+            if folded in watermarks:
+                continue
+            normalized = " ".join(folded.replace("'", "").replace("’", "").split())
+            spelling = _numeric_spelling(line.text)
+            # Numeric glyphs are never normalized away when merging similar OCR results.
+            key = (normalized, spelling)
+            match = exact.get(key)
+            similar = False
+            if match is None and len(normalized) >= 16:
+                # Fuzzy matching is local to one image. A later slide can contain a similar sentence.
+                match = next((
+                    index
+                    for index, box, earlier in seen[spelling]
+                    if line.at_same_position(box)
+                    and SequenceMatcher(None, normalized, earlier, autojunk=False).ratio() >= 0.90
+                ), None)
+                similar = match is not None
+            if match is None:
+                match = len(chosen)
+                chosen.append((frame, line, trusted))
+            else:
+                previous_frame, previous, confirmed = chosen[match]
+                if trusted > confirmed or (
+                    similar and frame == previous_frame and trusted == confirmed and line.confidence > previous.confidence
+                ):
+                    chosen[match] = frame, line, trusted
+            seen[spelling].append((match, line, normalized))
+            exact[key] = match
+    return sorted(chosen, key=lambda item: item[0].seconds)
 
 
 def _write_evidence(
@@ -313,24 +421,16 @@ def _write_evidence(
         ):
             watermarks.add(text)
 
-    # Prefer a confirmed occurrence of the same text, even if an earlier frame was uncertain.
-    chosen: dict[str, tuple[Frame, bool]] = {}
-    for frame, lines in zip(frames, results):
-        for line, trusted in lines:
-            if line.text.casefold() in watermarks:
-                continue
-            previous = chosen.get(line.text)
-            if previous is None or trusted and not previous[1]:
-                chosen[line.text] = (frame, trusted)
+    chosen = _deduplicate(frames, results, watermarks)
     if not chosen:
         raise ScreenError("OCR found no screen text after filtering")
     screenshots = staged / SCREEN_FRAMES
     screenshots.mkdir()
     references = {}
     rows = []
-    for text, (frame, trusted) in sorted(chosen.items(), key=lambda item: item[1][0].seconds):
+    for frame, line, trusted in chosen:
         tag = SCREEN_TAG if trusted else UNCERTAIN_SCREEN_TAG
-        rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {text}")
+        rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {line.text}")
         if frame.path.name not in references:
             frame.path.replace(screenshots / frame.path.name)
             references[frame.path.name] = []
