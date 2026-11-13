@@ -1,0 +1,202 @@
+{
+  "evals/adversarial/all_na_1.md": [
+    "f9b280d2e5054edf70b95cd5ac035e241fea25bad057ad6cf44c723ff8bae431",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/all_na_2.md": [
+    "f9b280d2e5054edf70b95cd5ac035e241fea25bad057ad6cf44c723ff8bae431",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/bad_asr_1.md": [
+    "acd02dca62e67633bb614a9c1af80e2044e018ac67458eada86cc211fb6349ea",
+    "cd69886942ea47333f724b870ff544814ffc9e5d7134e0a7f79f8da59cff5cde"
+  ],
+  "evals/adversarial/bad_asr_2.md": [
+    "3e60c67eff959e54b594204c93b3d8c313d548ca15ae15788b315533e1d4cd27",
+    "cd69886942ea47333f724b870ff544814ffc9e5d7134e0a7f79f8da59cff5cde"
+  ],
+  "evals/adversarial/bad_status_1.md": [
+    "06e268594201a3a374b6302710c044879c593310f0e10dec0f84c0f0fe0411ce",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/bad_status_2.md": [
+    "f50c0977edc08e2f7077ad9180b62084752f9030bd5057b77691e4efc9f76b8d",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/fake_quote_1.md": [
+    "aa88928f6d2ef3bc969c327c47cd8be827cdac1fb6c5c8bde9c02563449b2ea2",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/fake_quote_2.md": [
+    "e1e565e593df62a04d26fa4c1e00fbd51a6cd98d0b56918924eed965036a4fc5",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/first_slice_1.md": [
+    "d02b9f6036bc3f9d3801097b3932d9c74c6b2fbe68f51356fd05bcce29372ca7",
+    "4f313edf35c6cdd2e75d5ad8359b18da7be0be89bfcff318decff1c118e59c64"
+  ],
+  "evals/adversarial/first_slice_2.md": [
+    "38919b390d27a4ee1283366ff2113a506087e516f85552ec69cd957cb09c49ec",
+    "4f313edf35c6cdd2e75d5ad8359b18da7be0be89bfcff318decff1c118e59c64"
+  ],
+  "evals/adversarial/from_title_1.md": [
+    "a28844cca9fd1ae164b5f82326a2346ca650daadf7b36b42bbd141359509d620",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/from_title_2.md": [
+    "a28844cca9fd1ae164b5f82326a2346ca650daadf7b36b42bbd141359509d620",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/missing_front_1.md": [
+    "a0fab85ca13748dc6356df751e2bd31449e3851684e4cb13ba4f12d1e3c51923",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/missing_front_2.md": [
+    "a0fab85ca13748dc6356df751e2bd31449e3851684e4cb13ba4f12d1e3c51923",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/names_1.md": [
+    "6eb8da6a003adcd0320b8ab0c2fd759d9c4dfaafa9a973d3e9e1302971d1ea49",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/names_2.md": [
+    "6eb8da6a003adcd0320b8ab0c2fd759d9c4dfaafa9a973d3e9e1302971d1ea49",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/number_1.md": [
+    "75419f92474068b09e1f615c09a48827f5470a6e890d88cb31867f430d63af7c",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/number_2.md": [
+    "75419f92474068b09e1f615c09a48827f5470a6e890d88cb31867f430d63af7c",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/phase2c_a_unmatched_link.md": [
+    "317e4dde7f55a673bd44f6ff36f8a5d4f458beee2777f3a27eba00994de0d2a1",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/phase2c_b_nonverbatim_quote.md": [
+    "7d93893a67bd1b22a59309d9e50f20ea5809e2607cef9c79105c80c8227b6654",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/phase2c_c_unused_quote.md": [
+    "8d934ecc239948c41d30e30d0472347c2fb0fe351d7b84da26067248db1f02fb",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/phase2c_d_selection.md": [
+    "f23d68a54bbf83aa1530e5e683bd21dc5e44cf7d056075bdcc754e0fcc00c0d0",
+    "80912defd3bb9a4ba8b9c7a83f64e7a31b044d90b76405d0774511723b0cea06"
+  ],
+  "evals/adversarial/quote_only_1.md": [
+    "5661db6a466479ffbe4eea1ef3bf30535d166d9e934a7bef818f54a9e9346ea6",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/quote_only_2.md": [
+    "5661db6a466479ffbe4eea1ef3bf30535d166d9e934a7bef818f54a9e9346ea6",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/same_quote_1.md": [
+    "85bd0d2258008d7d3873fc62990008a4481fffcdb8e42a84d4347e6291ef905e",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/same_quote_2.md": [
+    "ac2a4c5b9af4b96fdf844ead777c66f941f1c31e46289f9c78944be16fa5d47d",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/swap_en_1.md": [
+    "b5f3fcb2839e34c385bf837de234b6c3ad47b91c766dc36d0dd2a68751576fc7",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/swap_en_2.md": [
+    "f0b784d1b81314ccac354b46e1c4159cb7eba02c1c644aa9852efe875660f5a2",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/swap_zh_1.md": [
+    "2cad7ce8b756622a044db03a52dc59bfcdc55609f79a93a5b4c2dc207db4cc88",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/swap_zh_2.md": [
+    "63ada9aaef743aa0bf3435377e484eb3096148167e43c1f9628be340c5b92021",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/timestamp_1.md": [
+    "6002d5841c51eb37bc9bd98a0e813af00147a25f88d6741f6b64e8a4a4d8e48d",
+    "3a75d6fdaeb8b4563044f5638e2f8d2e073f1ca849534d0db54d7b71a1fba960"
+  ],
+  "evals/adversarial/timestamp_2.md": [
+    "678b98dca9eaec0eae4f775e4363c78aed36998dac16ad328947579668947779",
+    "3a75d6fdaeb8b4563044f5638e2f8d2e073f1ca849534d0db54d7b71a1fba960"
+  ],
+  "evals/adversarial/vague_step_1.md": [
+    "1ca27ed31d7d92832200ed12c4898b183daa5bba28bf864118f08d5eb340fddb",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/adversarial/vague_step_2.md": [
+    "1ca27ed31d7d92832200ed12c4898b183daa5bba28bf864118f08d5eb340fddb",
+    "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
+  ],
+  "evals/good/good_en_01.md": [
+    "f23d68a54bbf83aa1530e5e683bd21dc5e44cf7d056075bdcc754e0fcc00c0d0",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_02.md": [
+    "99504ed334a6248793d464cc7795f119bc14b99d88faf80aa6315aa1aa0e6202",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_03.md": [
+    "99504ed334a6248793d464cc7795f119bc14b99d88faf80aa6315aa1aa0e6202",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_04.md": [
+    "f23d68a54bbf83aa1530e5e683bd21dc5e44cf7d056075bdcc754e0fcc00c0d0",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_05.md": [
+    "99504ed334a6248793d464cc7795f119bc14b99d88faf80aa6315aa1aa0e6202",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_06.md": [
+    "99504ed334a6248793d464cc7795f119bc14b99d88faf80aa6315aa1aa0e6202",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_07.md": [
+    "f23d68a54bbf83aa1530e5e683bd21dc5e44cf7d056075bdcc754e0fcc00c0d0",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_en_08.md": [
+    "99504ed334a6248793d464cc7795f119bc14b99d88faf80aa6315aa1aa0e6202",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_long_01.md": [
+    "d02b9f6036bc3f9d3801097b3932d9c74c6b2fbe68f51356fd05bcce29372ca7",
+    "aa658649608fd045c31a15f49a2503a6b0a52c344d47093ac2d03d5832011d30"
+  ],
+  "evals/good/good_long_02.md": [
+    "d02b9f6036bc3f9d3801097b3932d9c74c6b2fbe68f51356fd05bcce29372ca7",
+    "aa658649608fd045c31a15f49a2503a6b0a52c344d47093ac2d03d5832011d30"
+  ],
+  "evals/good/good_long_03.md": [
+    "d02b9f6036bc3f9d3801097b3932d9c74c6b2fbe68f51356fd05bcce29372ca7",
+    "aa658649608fd045c31a15f49a2503a6b0a52c344d47093ac2d03d5832011d30"
+  ],
+  "evals/good/good_long_04.md": [
+    "38919b390d27a4ee1283366ff2113a506087e516f85552ec69cd957cb09c49ec",
+    "42ffe78d99722658d53241f8f6891a63421a299d6d6ed425ce4849f4cce4082e"
+  ],
+  "evals/good/good_zh_01.md": [
+    "176c3d25331583fced726dc4c8d6e8ea485bc8e129657fb1ba9ddad44bd3d57d",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_zh_02.md": [
+    "1a323bbc6912b63d28bcb94e190a61285be7d6989bcad372f2e04afd7a935dfa",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_zh_03.md": [
+    "1a323bbc6912b63d28bcb94e190a61285be7d6989bcad372f2e04afd7a935dfa",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ],
+  "evals/good/good_zh_04.md": [
+    "1a323bbc6912b63d28bcb94e190a61285be7d6989bcad372f2e04afd7a935dfa",
+    "3794d15fafc3e95427d31e87cc32a4acade48ca3639810089d032655142d4408"
+  ]
+}
