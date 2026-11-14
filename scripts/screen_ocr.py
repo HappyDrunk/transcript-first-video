@@ -13,10 +13,11 @@ import tempfile
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass
-from difflib import SequenceMatcher
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from threading import BoundedSemaphore, Thread, enumerate as live_threads
 
 import quality_gate
 from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREEN_TAG
@@ -24,20 +25,16 @@ from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREE
 SLIDE_INTERVAL = 8
 NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
+NAMEPLATE_TIMEOUT = 120
 UNKNOWN_DURATION_TIMEOUT = 600
+_OCR_SLOTS = BoundedSemaphore(2)
+_OCR_WORKER = "tfv-rapidocr"
 
 _SHOWINFO = re.compile(
     r"showinfo[^]\n]*]\s+n:\s*(\d+).*?\bpts_time:\s*([\d.eE+-]+)([^\n]*)"
 )
 _CHECKSUM = re.compile(r"\bchecksum:([A-Fa-f0-9]+)")
 _DURATION = re.compile(r"\bDuration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
-_SIGNAL = re.compile(r"^lavfi\.signalstats\.(YMIN|YMAX|SATMAX)=([0-9.]+)$", re.MULTILINE)
-_BRIGHT_GRAY = 200
-_BRIGHT_LIMITED_Y = 16 + round(_BRIGHT_GRAY * 219 / 255)
-_MIN_CHROMA = 32
-_BRIGHT = f"format=gray,lut=y='if(gt(val,{_BRIGHT_GRAY}),0,255)'"
-_CHROMA = "255-(max(max(r(X,Y),g(X,Y)),b(X,Y))-min(min(r(X,Y),g(X,Y)),b(X,Y)))"
-_SATURATION = f"format=gbrp,geq=r='{_CHROMA}':g=0:b=0,extractplanes=r"
 _NUMERIC_TEXT = re.compile(
     r"(?:[A-Za-z]*[$€£¥￥][ \t]*)?[+\-−]?[A-Za-z]*[.,]?\d[A-Za-z\d]*"
     r"(?:[.,][A-Za-z\d]+|[.,][ \t]*\d+)*(?:[ \t]*(?:[$€£¥￥%％×倍]|[xX](?![A-Za-z])))?"
@@ -62,6 +59,10 @@ _NAMEPLATE_CONFIDENCE = 80
 
 class ScreenError(Exception):
     pass
+
+
+def native_ocr_running() -> bool:
+    return any(thread.name == _OCR_WORKER for thread in live_threads())
 
 
 @dataclass(frozen=True)
@@ -90,9 +91,11 @@ class Frame:
 
 
 class Scan:
-    def __init__(self, duration: float | None):
+    def __init__(self, mode: str, duration: float | None):
         self.started = time.monotonic()
-        self.budget = duration / 2 if duration else UNKNOWN_DURATION_TIMEOUT
+        self.budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else (
+            duration / 2 if duration else UNKNOWN_DURATION_TIMEOUT
+        )
 
     def remaining(self) -> float:
         left = self.budget - (time.monotonic() - self.started)
@@ -100,14 +103,14 @@ class Scan:
             raise ScreenError("screen OCR timed out")
         return left
 
-    def run(self, args: list[str], step: str, *, limit: int | None = None, env=None):
+    def run(self, args: list[str], step: str, *, limit: int | None = None):
         timeout = self.remaining()
         if limit is not None:
             timeout = min(timeout, limit)
         try:
             result = subprocess.run(
                 args, capture_output=True, encoding="utf-8", errors="replace",
-                timeout=timeout, env=env, check=False,
+                timeout=timeout, check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise ScreenError(f"{step} timed out") from exc
@@ -119,13 +122,12 @@ class Scan:
             raise ScreenError(f"{step} failed: {detail}")
         return result
 
-    def probe(self, versions: dict[str, str]) -> dict[str, str]:
-        commands = {}
+    def probe(self, versions: dict[str, str]) -> str:
+        ffmpeg = shutil.which("ffmpeg")
         failures = []
         for name, executable, flag in (
             ("python", sys.executable, "--version"),
-            ("ffmpeg", shutil.which("ffmpeg"), "-version"),
-            ("tesseract", shutil.which("tesseract"), "--version"),
+            ("ffmpeg", ffmpeg, "-version"),
         ):
             if not executable:
                 failures.append(f"{name} missing")
@@ -136,12 +138,47 @@ class Scan:
                 if not output:
                     raise ScreenError(f"{name} version probe returned no version")
                 versions[name] = output.splitlines()[0]
-                commands[name] = executable
             except ScreenError as exc:
                 failures.append(str(exc))
+        for package in ("rapidocr", "onnxruntime"):
+            try:
+                versions[package] = version(package)
+            except PackageNotFoundError:
+                failures.append(f"{package} missing")
         if failures:
             raise ScreenError(", ".join(failures))
-        return commands
+        assert ffmpeg is not None
+        return ffmpeg
+
+    def recognize(self, operation, *args):
+        # Native inference can outlive its deadline. Keep it off the caller
+        # thread and use bytes so it cannot race temporary-file cleanup.
+        deadline = time.monotonic() + min(30, self.remaining())
+        if not _OCR_SLOTS.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise ScreenError("RapidOCR timed out")
+        future = Future()
+
+        def run():
+            try:
+                future.set_result(operation(*args))
+            except Exception as exc:
+                future.set_exception(exc)
+            finally:
+                _OCR_SLOTS.release()
+
+        try:
+            Thread(target=run, name=_OCR_WORKER, daemon=True).start()
+        except RuntimeError as exc:
+            _OCR_SLOTS.release()
+            raise ScreenError(f"RapidOCR worker unavailable: {exc}") from exc
+        try:
+            result = future.result(timeout=max(0, deadline - time.monotonic()))
+        except TimeoutError as exc:
+            raise ScreenError("RapidOCR timed out") from exc
+        except Exception as exc:
+            raise ScreenError(f"RapidOCR failed: {exc}") from exc
+        self.remaining()
+        return result
 
 
 def _download(scan: Scan, command: list[str], source: str, work: Path) -> Path:
@@ -161,7 +198,7 @@ def _crop(mode: str) -> str:
         return "crop=iw:trunc(ih*0.38/2)*2:0:ih-oh"
     raw = os.environ.get("TFV_SLIDE_CROP", "").strip()
     if not raw:
-        return "crop=iw:ih:0:0"
+        return ""
     try:
         x, y, w, h = map(float, raw.split(","))
         if not (0 <= x < 1 and 0 <= y < 1 and 0 < w <= 1 - x and 0 < h <= 1 - y):
@@ -187,7 +224,8 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
         "-vf", f"{select},showinfo", "-fps_mode", "vfr",
         "-threads", "1", "-start_number", "1", str(work / "frame-%06d.png"),
     ], "frame extraction")
-    if duration := _DURATION.search(result.stderr):
+    duration = _DURATION.search(result.stderr)
+    if mode == "slides" and duration:
         actual = int(duration[1]) * 3600 + int(duration[2]) * 60 + float(duration[3])
         if actual > 0:
             scan.budget = actual / 2
@@ -209,29 +247,20 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
     return frames
 
 
-def _tsv_lines(tsv: str, multiplier: int) -> list[Line]:
-    groups = defaultdict(list)
-    for row in tsv.splitlines():
-        fields = row.split("\t", 11)
-        if len(fields) != 12 or fields[0] != "5" or not fields[-1].strip():
-            continue
-        try:
-            left, top, width, height = (int(field) * multiplier for field in fields[6:10])
-            confidence = float(fields[10])
-        except ValueError:
-            continue
-        groups[tuple(fields[1:5])].append(Line(fields[-1].strip(), left, top, width, height, confidence))
-    lines = []
-    for words in groups.values():
-        left = min(word.x for word in words)
-        top = min(word.y for word in words)
-        lines.append(Line(
-            " ".join(word.text for word in words), left, top,
-            max(word.x + word.width for word in words) - left,
-            max(word.y + word.height for word in words) - top,
-            min(word.confidence for word in words),
-        ))
-    return lines
+def _rapidocr(mode: str):
+    os.environ.setdefault("OPENCV_FOR_THREADS_NUM", "1")
+    from rapidocr import RapidOCR
+
+    # The package defaults to CPU ONNX Runtime and ships the corresponding models.
+    params = {
+        "EngineConfig.onnxruntime.intra_op_num_threads": min(8, os.cpu_count() or 1),
+        "EngineConfig.onnxruntime.inter_op_num_threads": 1,
+    }
+    if mode == "nameplate":
+        # The detector normally enlarges the short side to 736 px, even on
+        # a shallow lower-third crop. Keep the package's existing 2000 px cap.
+        params.update({"Det.limit_type": "max", "Det.limit_side_len": 2000})
+    return RapidOCR(params=params)
 
 
 def _nameplate(lines: list[Line]) -> list[Line]:
@@ -262,43 +291,35 @@ def _nameplate(lines: list[Line]) -> list[Line]:
 
 
 def _read_frame(
-    scan: Scan, ffmpeg: str, tesseract: str, mode: str, crop: str, frame: Frame,
+    scan: Scan, ffmpeg: str, ocr, mode: str, crop: str, frame: Frame,
 ) -> list[tuple[Line, bool]]:
-    lang = os.environ.get("TFV_OCR_LANG", "").strip() or "eng"
-    env = {**os.environ, "OMP_THREAD_LIMIT": "1"}
-    original = frame.path.with_name(f"{frame.path.stem}-original.png")
-
-    def read(name: str, filters: str, multiplier: int = 1) -> tuple[list[Line], str]:
+    def transform(source: Path, name: str, filters: str) -> Path:
         path = frame.path.with_name(f"{frame.path.stem}-{name}.png")
-        source = frame.path if name == "original" else original
-        transformed = scan.run([
+        scan.run([
             ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
             "-filter_threads", "1", "-i", str(source), "-vf", filters,
             "-frames:v", "1", "-threads", "1", str(path),
         ], f"FFmpeg {name} transform")
-        try:
-            result = scan.run([tesseract, str(path), "stdout", "--psm", "11", "-l", lang, "tsv"],
-                              "Tesseract OCR", limit=30, env=env)
-        finally:
-            if name != "original":
-                path.unlink(missing_ok=True)
-        return _tsv_lines(result.stdout, multiplier), transformed.stdout
+        return path
 
-    # Measure luminance and chroma on a side branch, leaving the first OCR image intact.
-    measured = f"{crop},split[ocr][stats];[stats]format=yuv444p,signalstats,metadata=print:file=-,nullsink;[ocr]null"
-    original_lines, signal = read("original", measured)
-    passes = [
-        original_lines,
-        read("half", "scale=iw/2:ih/2", 2)[0],
-        read("binary", "format=gray,negate,lut=y='if(gte(val,128),255,0)'")[0],
-    ]
-    levels = {key: float(value) for key, value in _SIGNAL.findall(signal)}
-    # Brightness isolation is useful when the image spans the grayscale threshold.
-    if levels.get("YMIN", 255) <= _BRIGHT_LIMITED_Y < levels.get("YMAX", 0):
-        passes.append(read("bright", _BRIGHT)[0])
-    if mode == "slides" and levels.get("SATMAX", 0) >= _MIN_CHROMA:
-        passes.append(read("saturation", _SATURATION)[0])
-    original.unlink()
+    original = transform(frame.path, "original", crop) if crop else frame.path
+    passes = []
+    for size in (1, 2):
+        path = original if size == 1 else transform(original, "half", "scale=iw/2:ih/2")
+        result = scan.recognize(ocr, path.read_bytes())
+        if size == 2:
+            path.unlink()
+        lines = []
+        for box, text, score in zip(result.boxes if result.boxes is not None else (),
+                                    result.txts or (), result.scores or ()):
+            x, y = zip(*box)
+            left, right = round(min(x) * size), round(max(x) * size)
+            top, bottom = round(min(y) * size), round(max(y) * size)
+            if text := " ".join(text.split()):
+                lines.append(Line(text, left, top, right - left, bottom - top, float(score) * 100))
+        passes.append(lines)
+    if original != frame.path:
+        original.unlink()
     return _agree(passes, nameplate=mode == "nameplate")
 
 
@@ -310,8 +331,7 @@ def _agree(passes: list[list[Line]], *, nameplate: bool) -> list[tuple[Line, boo
         for lines in passes
     ]
     for index, lines in enumerate(passes):
-        other_numbers = [item for other_index, items in enumerate(numeric_lines) if index != other_index
-                         for item in items]
+        other_numbers = numeric_lines[1 - index]
         for line in _nameplate(lines) if nameplate else lines:
             if _NUMERIC_MARK.search(line.text):
                 trusted = _confirmed_number(line, other_numbers)
@@ -352,9 +372,8 @@ def _similar_words(text: str, other: str) -> bool:
 
 def _numeric_spelling(text: str) -> tuple[str, ...]:
     # Keep punctuation, units and letter-shaped OCR errors adjacent to digits.
-    matches = _NUMERIC_TEXT.finditer(text)
     spellings = []
-    for match in matches:
+    for match in _NUMERIC_TEXT.finditer(text):
         start, end = match.span()
         if start and text[start - 1] in ".,$€£¥￥":
             start -= 1
@@ -367,41 +386,23 @@ def _numeric_spelling(text: str) -> tuple[str, ...]:
 def _deduplicate(
     frames: list[Frame], results: list[list[tuple[Line, bool]]], watermarks: set[str],
 ) -> list[tuple[Frame, Line, bool]]:
-    chosen: list[tuple[Frame, Line, bool]] = []
-    exact: dict[tuple[str, tuple[str, ...]], int] = {}
-    for frame, lines in zip(frames, results):
-        seen: dict[tuple[str, ...], list[tuple[int, Line, str]]] = defaultdict(list)
+    chosen: dict[str, tuple[Frame, Line, bool]] = {}
+    for frame, lines in sorted(zip(frames, results), key=lambda item: item[0].seconds):
+        local: dict[tuple[str, tuple[str, ...]], tuple[Line, bool]] = {}
         for line, trusted in lines:
             folded = line.text.casefold()
             if folded in watermarks:
                 continue
-            normalized = " ".join(folded.replace("'", "").replace("’", "").split())
-            spelling = _numeric_spelling(line.text)
-            # Numeric glyphs are never normalized away when merging similar OCR results.
-            key = (normalized, spelling)
-            match = exact.get(key)
-            similar = False
-            if match is None and len(normalized) >= 16:
-                # Fuzzy matching is local to one image. A later slide can contain a similar sentence.
-                match = next((
-                    index
-                    for index, box, earlier in seen[spelling]
-                    if line.at_same_position(box)
-                    and SequenceMatcher(None, normalized, earlier, autojunk=False).ratio() >= 0.90
-                ), None)
-                similar = match is not None
-            if match is None:
-                match = len(chosen)
-                chosen.append((frame, line, trusted))
-            else:
-                previous_frame, previous, confirmed = chosen[match]
-                if trusted > confirmed or (
-                    similar and frame == previous_frame and trusted == confirmed and line.confidence > previous.confidence
-                ):
-                    chosen[match] = frame, line, trusted
-            seen[spelling].append((match, line, normalized))
-            exact[key] = match
-    return sorted(chosen, key=lambda item: item[0].seconds)
+            normalized = folded.replace("'", "").replace("’", "")
+            key = normalized, _numeric_spelling(line.text)
+            same_frame = local.get(key)
+            if same_frame is None or (trusted, line.confidence) > (same_frame[1], same_frame[0].confidence):
+                local[key] = line, trusted
+        for line, trusted in local.values():
+            previous = chosen.get(line.text)
+            if previous is None or trusted > previous[2]:
+                chosen[line.text] = frame, line, trusted
+    return sorted(chosen.values(), key=lambda item: item[0].seconds)
 
 
 def _write_evidence(
@@ -443,30 +444,21 @@ def extract(
     staged: Path, mode: str, source: str, download_command: list[str], duration: float | None,
     download_options: Callable[[], list[str]],
 ) -> dict:
-    scan = Scan(duration)
+    scan = Scan(mode, duration)
     versions: dict[str, str] = {}
     status: dict = {"mode": mode, "versions": versions}
     try:
-        commands = scan.probe(versions)
+        ffmpeg = scan.probe(versions)
         crop = _crop(mode)
         if not download_command:
             raise ScreenError("yt-dlp missing")
         with tempfile.TemporaryDirectory(prefix="ocr-", dir=staged) as temp:
             work = Path(temp)
             video = _download(scan, [*download_command, *download_options()], source, work)
-            frames = _frames(scan, commands["ffmpeg"], video, work, mode)
+            frames = _frames(scan, ffmpeg, video, work, mode)
             video.unlink()
-            with ThreadPoolExecutor(max_workers=2) as workers:
-                futures = [
-                    workers.submit(_read_frame, scan, commands["ffmpeg"], commands["tesseract"], mode, crop, frame)
-                    for frame in frames
-                ]
-                try:
-                    results = [future.result() for future in futures]
-                except (ScreenError, OSError, KeyboardInterrupt):
-                    for future in futures:
-                        future.cancel()
-                    raise
+            ocr = scan.recognize(_rapidocr, mode)
+            results = [_read_frame(scan, ffmpeg, ocr, mode, crop, frame) for frame in frames]
             references = _write_evidence(staged, frames, results, filter_watermarks=mode == "slides")
         scan.remaining()
         status.update(state="ready", path=SCREEN_FILE, screenshot_directory=SCREEN_FRAMES,

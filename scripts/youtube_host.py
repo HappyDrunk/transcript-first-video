@@ -1277,4 +1277,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    exit_code = main()
+    if screen_ocr.native_ocr_running():
+        # The job is already published. A timed-out native call can crash
+        # interpreter teardown, so exit directly once the CLI output is sent.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(exit_code)
+    sys.exit(exit_code)

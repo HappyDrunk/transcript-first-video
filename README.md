@@ -98,15 +98,16 @@ python3 scripts/youtube_host.py "<YouTube URL>" --out artifacts --asr off --json
 python3 scripts/render_reading_note.py --task-dir "artifacts/youtube_<ID>" --output "reading.md"
 ```
 
-Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame. OCR uses English by default. With the corresponding Tesseract language data installed, `TFV_OCR_LANG` can select another language or a combination such as `eng+chi_sim`.
+Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame.
 
-`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. A numeric spelling must match exactly in at least two distinct image treatments. OCR uses the original size, half size, and inverted binary image, with extra passes when the image contains bright areas or saturated colors that can isolate text. `screen-frames/` holds the screenshots for the emitted lines, and `status.json` records tool versions, elapsed time including the video download, and the line numbers associated with each screenshot. Downloaded video is temporary. When screen OCR fails or times out, the host records the reason and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Text repeated across frames appears once, at the earliest time it is citable, or the earliest time it appears if every reading is uncertain. `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration for slides and 120 seconds for nameplates. The host records OCR failures or timeouts and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
 
-Install Python and yt-dlp as above. On Debian or Ubuntu, install the OCR tools manually.
+Install Python and yt-dlp as above. On Debian or Ubuntu, install FFmpeg and install the OCR packages in the Python environment used to run the host.
 
 ```bash
 sudo apt update
-sudo apt install ffmpeg tesseract-ocr tesseract-ocr-eng
+sudo apt install ffmpeg
+python3 -m pip install rapidocr onnxruntime
 ```
 
 If the VM cannot reach the apt mirror, download the official `.deb` packages and any missing dependencies for its distro release and architecture. Compare each downloaded file's SHA-256 with its `SHA256` value from the repository's signed package metadata before installing it. [Ubuntu archive verification](https://documentation.ubuntu.com/security/software-integrity/archive-verification/)
@@ -116,7 +117,7 @@ sha256sum ./package.deb
 sudo dpkg -i ./package.deb
 ```
 
-The scripts use the installed versions. After a Grok Bot VM rebuild, reinstall the tools and language data. The probe downloaded 1080p with yt-dlp 2026.08.19 despite a missing Deno warning. If YouTube downloads start failing, first try updating yt-dlp and installing Deno.
+RapidOCR uses CPU ONNX Runtime and loads models bundled in the installed package. After a Grok Bot VM rebuild, reinstall the tools and Python packages. The probe downloaded 1080p with yt-dlp 2026.08.19 despite a missing Deno warning. If YouTube downloads start failing, first try updating yt-dlp and installing Deno.
 
 ## Evidence
 
@@ -171,7 +172,7 @@ python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw 
 
 主机写下文稿和空白脚手架。先通读并写取舍，再写证据版。写完后运行阅读版脚本，它先执行 verify 和 coverage，两项通过且当前任务状态为 `finished` 后写入阅读版。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检用 `bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
 
-YouTube 画面识别默认关闭。带幻灯片的大会或讲座用 `TFV_SCREEN_MODE=slides`，只找片头三分钟内的人名条用 `TFV_SCREEN_MODE=nameplate`。抓取、验稿、覆盖检查和生成阅读版时使用相同的设置。识别失败或超时会记入 `status.json`，任务继续使用字幕。虚拟机重建后须重新安装工具和语言包。[画面识别的安装和用法](#optional-youtube-screen-text)
+YouTube 画面识别默认关闭。带幻灯片的大会或讲座用 `TFV_SCREEN_MODE=slides`，只找片头三分钟内的人名条用 `TFV_SCREEN_MODE=nameplate`。抓取、验稿、覆盖检查和生成阅读版时使用相同的设置。识别失败或超时会记入 `status.json`，任务继续使用字幕。虚拟机重建后须重新安装 FFmpeg、RapidOCR 和 ONNX Runtime。[画面识别的安装和用法](#optional-youtube-screen-text)
 
 ### 笔记
 
