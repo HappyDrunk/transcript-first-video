@@ -26,6 +26,8 @@ jobs:
         run: python3 scripts/test_phase1a.py
       - name: Frozen Phase 2E tests
         run: python3 scripts/test_phase2e.py
+      - name: Frozen Phase 2E item 6 tests
+        run: python3 scripts/test_phase2e_item6.py
       - name: RED-1 accepted note survives successful settle
         run: python3 scripts/test_regressions.py RegressionTests.test_red1_successful_settle_preserves_accepted_note
       - name: RED-2 old deposit survives failed settle
