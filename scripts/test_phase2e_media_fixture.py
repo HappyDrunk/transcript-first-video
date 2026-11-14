@@ -2,24 +2,141 @@
 
 from __future__ import annotations
 
+import importlib.abc
+import importlib.metadata
+import importlib.util
 import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
-from collections import Counter
+import time
+import zlib
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+
+OCR_VERSIONS = {"rapidocr": "3.81.9", "onnxruntime": "1.81.8"}
+FULL_SIZE = (1280, 800)
+HALF_SIZE = (640, 400)
+
+
+def frame_png(marker: int, size: tuple[int, int] = FULL_SIZE) -> bytes:
+    """Make a valid grayscale PNG whose pixels carry the frame identity."""
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(kind + payload)
+        return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", crc)
+
+    width, height = size
+    return b"".join((
+        b"\x89PNG\r\n\x1a\n",
+        chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)),
+        chunk(b"IDAT", zlib.compress((b"\x00" + bytes([marker]) * width) * height)),
+        chunk(b"IEND", b""),
+    ))
+
+
+def frame_data(image) -> tuple[int, tuple[int, int]]:
+    if hasattr(image, "shape"):
+        height, width = image.shape[:2]
+        pixel = image[0, 0] if image.ndim == 2 else image[0, 0, 0]
+        return int(pixel), (width, height)
+    if hasattr(image, "getpixel"):
+        pixel = image.convert("L").getpixel((0, 0))
+        return pixel, image.size
+
+    png = image if isinstance(image, bytes) else Path(image).read_bytes()
+    size = struct.unpack_from(">II", png, 16)
+    length, kind = struct.unpack_from(">I4s", png, 33)
+    if kind != b"IDAT":
+        raise AssertionError("not a fixture PNG")
+    scanlines = zlib.decompress(png[41:41 + length])
+    return scanlines[1], size
+
+
+def transform_frame(source: Path, target: Path, filters: str) -> None:
+    marker, size = frame_data(source)
+    width, height = size
+    if "scale" in filters:
+        size = (width // 2, height // 2)
+    # The tests exercise both source sizes. Reject the retired OCR-only transforms.
+    if any(operation in filters for operation in ("negate", "lut", "threshold", "signalstats", "geq")):
+        raise AssertionError(f"unexpected OCR transform: {filters}")
+    target.write_bytes(frame_png(marker, size))
+
+
+def ocr_result(*lines: tuple[int, int, str]) -> SimpleNamespace:
+    boxes = []
+    for x, y, text in lines:
+        right = x + 8 * len(text)
+        boxes.append(((x, y), (right, y), (right, y + 16), (x, y + 16)))
+    return SimpleNamespace(boxes=tuple(boxes) or None,
+                           txts=tuple(text for _, _, text in lines) or None,
+                           scores=(0.99,) * len(lines) or None)
+
+
+class OCRPackages(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Expose the optional OCR packages at their regular import and version boundaries."""
+
+    def __init__(self, recognize, events, missing=None):
+        self.recognize = recognize
+        self.events = events
+        self.missing = missing
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname in OCR_VERSIONS:
+            self.events.append(("missing" if fullname == self.missing else "lookup", fullname))
+            if fullname == self.missing:
+                raise ModuleNotFoundError(f"No module named '{fullname}'", name=fullname)
+            return importlib.util.spec_from_loader(fullname, self)
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        module.__version__ = OCR_VERSIONS[module.__name__]
+        if module.__name__ == "rapidocr":
+            module.RapidOCR = self.engine
+
+    def engine(self, *args, **kwargs):
+        return self.recognize
+
+    @contextmanager
+    def installed(self):
+        distribution = importlib.metadata.Distribution.from_name
+
+        def find_distribution(name):
+            if name not in OCR_VERSIONS:
+                return distribution(name)
+            self.events.append(("missing" if name == self.missing else "lookup", name))
+            if name == self.missing:
+                raise importlib.metadata.PackageNotFoundError(name)
+            return SimpleNamespace(version=OCR_VERSIONS[name])
+
+        saved = {name: sys.modules.pop(name) for name in OCR_VERSIONS if name in sys.modules}
+        try:
+            with (
+                patch.object(sys, "meta_path", [self, *sys.meta_path]),
+                patch.object(importlib.metadata.Distribution, "from_name", side_effect=find_distribution),
+            ):
+                yield
+        finally:
+            for name in OCR_VERSIONS:
+                sys.modules.pop(name, None)
+            sys.modules.update(saved)
 
 
 class MediaTools:
-    versions = {"ffmpeg": "7.81.4", "tesseract": "5.81.9"}
+    versions = {"ffmpeg": "7.81.4", **OCR_VERSIONS}
     image_suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".ppm", ".pgm", ".pnm"}
     frame_time = 95
     ocr_text = {
-        b"original": "Drainage $48.27\nCoarse bark\nMoisture 72%\nCalibration $8.30\n",
-        b"half": "Drainage $48.27\nCalibration $8.3\n",
-        b"inverted-binary": "Calibration $08.30\n",
+        FULL_SIZE: ("Drainage $48.27", "Coarse bark", "Moisture 72%", "Calibration $8.30"),
+        HALF_SIZE: ("Drainage $48.27", "", "", "Calibration $8.3"),
     }
 
     def __init__(self, video_id: str, speech: str, *, missing: str | None = None,
@@ -36,12 +153,18 @@ class MediaTools:
         self.scan_limits = []
         self.real_which = shutil.which
         self.real_run = subprocess.run
+        self.real_monotonic = time.monotonic
+        self.clock_offset = 0
+        self.ocr_packages = OCRPackages(self.recognize, self.events, missing)
+
+    def monotonic(self):
+        return self.real_monotonic() + self.clock_offset
 
     def which(self, command, *args, **kwargs):
         name = Path(command).stem.lower()
-        if name in {"yt-dlp", *self.versions}:
+        if name in {"yt-dlp", "ffmpeg", "tesseract"}:
             self.events.append(("missing" if name == self.missing else "lookup", name))
-            return None if name == self.missing else name
+            return None if name in {self.missing, "tesseract"} else name
         return self.real_which(command, *args, **kwargs)
 
     @staticmethod
@@ -102,7 +225,6 @@ class MediaTools:
                     return "", ""
             else:
                 frame = self.frame_time
-            marker = b"frame"
             if "%" in target.name:
                 def frame_name(index: int, stamp: int) -> Path:
                     number = stamp if "-frame_pts" in args else index
@@ -111,72 +233,42 @@ class MediaTools:
                 if self.watermark:
                     times = (20, 40, 60, 80, 100)
                     for index, stamp in enumerate(times, 1):
-                        self.write(frame_name(index, stamp), f"frame:{index}".encode())
+                        self.write(frame_name(index, stamp), frame_png(index))
                     return "", "".join(self.showinfo(index, stamp) for index, stamp in enumerate(times))
                 target = frame_name(1, frame)
-        else:
-            marker = source.read_bytes()
-            frame = self.frame_time
-        variant, separator, sample = marker.partition(b":")
-        if "crop" in filters:
-            variant = b"original"
-        if "scale" in filters:
-            if variant not in {b"original", b"half"}:
-                raise AssertionError(f"resize must use the cropped slide: {args}")
-            variant = b"half"
-        if "negate" in filters:
-            if variant not in {b"original", b"inverted-binary"}:
-                raise AssertionError(f"inversion must use the cropped slide: {args}")
-            variant = b"inverted"
-        if any(operation in filters for operation in ("threshold", "lut", "binarize")):
-            if variant not in {b"inverted", b"inverted-binary"}:
-                raise AssertionError(f"binarization must follow inversion: {args}")
-            variant = b"inverted-binary"
-        self.write(target, variant + separator + sample)
-        return "", self.showinfo(0, frame)
+            self.write(target, frame_png(0))
+            return "", self.showinfo(0, frame)
+        transform_frame(source, target, filters)
+        return "", ""
 
     @staticmethod
     def showinfo(index: int, stamp: int) -> str:
         return f"[Parsed_showinfo_0 @ fixture] n:{index:4d} pts:{stamp:7d} pts_time:{stamp} pos: 0\n"
 
-    def tesseract(self, args: list[str], timeout: int | None) -> tuple[str, str]:
-        if self.timeout:
-            self.events.append(("timeout", "tesseract"))
-            raise subprocess.TimeoutExpired(args, timeout)
-        source = Path(args[1])
-        marker = source.read_bytes()
-        variant, _, sample = marker.partition(b":")
-        self.ocr_images.append(variant)
+    def recognize(self, image, **kwargs):
+        marker, size = frame_data(image)
+        self.ocr_images.append(size)
+        if self.timeout and not self.clock_offset:
+            self.events.append(("timeout", "rapidocr"))
+            self.clock_offset = 300
         if self.mode == "nameplate":
-            text = "Mira Vellora, Horticulturist\n"
-        elif sample:
+            lines = ("Mira Vellora, Horticulturist",)
+        elif self.watermark:
             names = ("Topsoil", "Fine bark", "Stones", "Mulch", "Compost")
-            index = int(sample) - 1
-            text = f"Garden Channel\n{names[index]}\n"
-            if index < 2:
-                text += "Seasonal\n"
-        elif variant in self.ocr_text:
-            text = self.ocr_text[variant]
+            index = marker - 1
+            lines = ("Garden Channel", names[index], "Seasonal" if index < 2 else "")
         else:
-            raise AssertionError(f"unexpected OCR input {marker!r}: {args}")
-        if "tsv" in args:
-            rows = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"]
-            for line, words in enumerate(text.splitlines(), 1):
-                rows.extend(f"5\t1\t1\t1\t{line}\t{word}\t{word*60}\t{line*35}\t56\t24\t99\t{value}"
-                            for word, value in enumerate(words.split(), 1))
-            text = "\n".join(rows) + "\n"
-        if args[2] != "stdout":
-            output_suffix = ".tsv" if "tsv" in args else ".txt"
-            self.write(Path(args[2] + output_suffix), text.encode("utf-8"))
-            return "", ""
-        return text, ""
+            lines = self.ocr_text[size]
+        scale = FULL_SIZE[0] // size[0]
+        return ocr_result(*((60 // scale, i * 40 // scale, line)
+                            for i, line in enumerate(lines, 1) if line))
 
     def run(self, command, *args, **kwargs):
         argv = [os.fsdecode(arg) for arg in command]
         name = Path(argv[0]).stem.lower()
         if name == "git" or (Path(argv[0]) == Path(sys.executable) and argv[1:] == ["--version"]):
             return self.real_run(command, *args, **kwargs)
-        if name not in {"yt-dlp", *self.versions}:
+        if name not in {"yt-dlp", "ffmpeg"}:
             raise AssertionError(f"unexpected external command: {argv}")
         if name == self.missing:
             self.events.append(("missing", name))
@@ -185,12 +277,9 @@ class MediaTools:
         if name == "yt-dlp":
             stdout, stderr = self.ytdlp(argv)
         elif any(flag in argv for flag in ("-version", "--version")):
-            prefix = "ffmpeg version" if name == "ffmpeg" else "tesseract"
-            stdout, stderr = f"{prefix} {self.versions[name]}\n", ""
-        elif name == "ffmpeg":
-            stdout, stderr = self.ffmpeg(argv)
+            stdout, stderr = f"ffmpeg version {self.versions[name]}\n", ""
         else:
-            stdout, stderr = self.tesseract(argv, kwargs.get("timeout"))
+            stdout, stderr = self.ffmpeg(argv)
         if not (kwargs.get("text") or kwargs.get("encoding") or kwargs.get("universal_newlines")):
             stdout, stderr = stdout.encode("utf-8"), stderr.encode("utf-8")
         return subprocess.CompletedProcess(command, 0, stdout, stderr)

@@ -24,7 +24,7 @@ import verify_note
 import verify_report
 import youtube_host
 
-from test_phase2e_media_fixture import MediaTools
+from test_phase2e_media_fixture import MediaTools, OCR_VERSIONS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -375,6 +375,7 @@ class Phase2ETests(unittest.TestCase):
         argv = [VIDEO_ID, "--out", str(output), "--expected-lang", "en", "--asr", "off", "--json"]
         with (patch.dict(os.environ, {"YTDLP_COOKIES": "", "YTDLP_EXTRACTOR_ARGS": "",
                                       "INVIDIOUS_INSTANCE": "off"}),
+              tools.ocr_packages.installed(), patch("time.monotonic", tools.monotonic),
               patch("shutil.which", tools.which), patch("subprocess.run", tools.run),
               patch("socket.socket.connect", side_effect=AssertionError("unexpected network access"))):
             code, stdout, stderr = entry(youtube_host.main, argv, mode)
@@ -394,7 +395,7 @@ class Phase2ETests(unittest.TestCase):
             with self.subTest(mode=mode):
                 job, _, tools = self.host(name, mode)
                 self.assertFalse((job / "screen.txt").exists())
-                self.assertFalse(any(event[1] in {"ffmpeg", "tesseract"} for event in tools.events),
+                self.assertFalse(any(event[1] in {"ffmpeg", "tesseract", *OCR_VERSIONS} for event in tools.events),
                                  tools.events)
                 self.assertFalse(tools.videos, tools.videos)
 
@@ -414,7 +415,7 @@ class Phase2ETests(unittest.TestCase):
             else:
                 self.assertRegex(serialized, r"timed?[\s_-]*out|timeout|超时")
         with self.subTest(evidence="tool calls"):
-            event = ("missing", missing) if missing else ("timeout", "tesseract")
+            event = ("missing", missing) if missing else ("timeout", "rapidocr")
             self.assertIn(event, tools.events)
         write(job / "note.md", NOTE)
         self.assert_allowed(self.verify(job))
@@ -423,13 +424,15 @@ class Phase2ETests(unittest.TestCase):
     def test_missing_ffmpeg_falls_back_to_captions(self) -> None:
         self.assert_host_fallback(missing="ffmpeg")
 
-    def test_missing_tesseract_falls_back_to_captions(self) -> None:
-        self.assert_host_fallback(missing="tesseract")
+    def test_missing_ocr_packages_fall_back_to_captions(self) -> None:
+        for package in OCR_VERSIONS:
+            with self.subTest(package=package):
+                self.assert_host_fallback(missing=package)
 
     def test_screen_timeout_falls_back_to_captions(self) -> None:
         self.assert_host_fallback(timeout=True)
 
-    def test_three_ocr_passes_publish_usable_and_uncertain_lines(self) -> None:
+    def test_two_ocr_passes_publish_usable_and_uncertain_lines(self) -> None:
         speech, old_status, _ = self.host("speech-only", None)
         job, status, tools = self.host("ocr", "slides")
         self.assertEqual((job / "transcript.txt").read_bytes(), (speech / "transcript.txt").read_bytes())

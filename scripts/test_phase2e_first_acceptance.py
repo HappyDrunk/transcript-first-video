@@ -8,40 +8,51 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import screen_ocr
 
+from test_phase2e_media_fixture import (
+    FULL_SIZE, HALF_SIZE, OCRPackages, frame_data, frame_png, ocr_result, transform_frame,
+)
+
+
 FIXTURES = Path(__file__).resolve().parents[1] / "evals" / "fixtures" / "phase2e" / "first-acceptance"
-TSV_HEADER = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"
 TRUSTED = "[画面] "
 UNCERTAIN = "[画面?] "
 
 
-def ocr_tsv(*lines: tuple[int, int, str]) -> str:
-    """Create a Tesseract response with positions in the processed image's pixels."""
-    rows = [TSV_HEADER]
-    for number, (x, y, text) in enumerate(lines, 1):
-        for word_number, word in enumerate(text.split(), 1):
-            width = 8 * len(word)
-            rows.append(f"5\t1\t1\t1\t{number}\t{word_number}\t{x}\t{y}\t{width}\t16\t95\t{word}")
-            x += width + 8
-    return "\n".join(rows) + "\n"
-
-
 class FrameCommands:
-    """Provide one timed frame. Use real image transforms and OCR for image fixtures."""
+    """Provide timed frames at the FFmpeg boundary, with optional OCR replay."""
 
-    def __init__(self, seconds: int, *, ocr_passes: list[str] | None = None, image: Path | None = None):
+    def __init__(
+        self, seconds: int, *, ocr_passes: tuple[SimpleNamespace, SimpleNamespace] | None = None,
+        image: Path | None = None, extra_frames: dict[int, tuple[SimpleNamespace, SimpleNamespace]] | None = None,
+        duration: int | None = None,
+    ):
         self.seconds = seconds
-        self.ocr_passes = iter(ocr_passes) if ocr_passes is not None else None
         self.image = image
+        self.duration = duration
+        replay = {} if ocr_passes is None else {seconds: ocr_passes, **(extra_frames or {})}
+        self.replay = sorted(replay.items())
+        self.ocr_packages = OCRPackages(self.recognize, [])
         self.run_real = subprocess.run
         self.find_real = shutil.which
 
+    def recognize(self, image, **kwargs):
+        marker, size = frame_data(image)
+        _, (original, half) = self.replay[marker - 1]
+        if size == FULL_SIZE:
+            return original
+        if size == HALF_SIZE:
+            return half
+        raise AssertionError(f"unexpected OCR dimensions: {size}")
+
     def which(self, command, *args, **kwargs):
-        if self.ocr_passes is not None and command in {"ffmpeg", "tesseract"}:
+        if self.replay and command == "ffmpeg":
             return command
         return self.find_real(command, *args, **kwargs)
 
@@ -53,19 +64,25 @@ class FrameCommands:
             Path(output).touch()
         elif tool == "ffmpeg" and "-i" in command and Path(command[command.index("-i") + 1]).suffix == ".mp4":
             target = command[-1]
-            frame = Path(re.sub(r"%0?(\d*)d", lambda match: str(1).zfill(int(match[1] or 0)), target))
-            if self.image is None:
-                frame.touch()
-            else:
-                shutil.copyfile(self.image, frame)
-            stderr = f"[Parsed_showinfo_0 @ fixture] n: 0 pts: {self.seconds} pts_time:{self.seconds} pos: 0\n"
-        elif self.ocr_passes is not None and tool in {"ffmpeg", "tesseract"}:
+            if self.duration is not None:
+                hours, remaining = divmod(self.duration, 3600)
+                minutes, seconds = divmod(remaining, 60)
+                stderr = f"Duration: {hours:02d}:{minutes:02d}:{seconds:02d}.00\n"
+            timestamps = [seconds for seconds, _ in self.replay] if self.replay else [self.seconds]
+            for index, seconds in enumerate(timestamps, 1):
+                frame = Path(re.sub(r"%0?(\d*)d", lambda match: str(index).zfill(int(match[1] or 0)), target))
+                if self.image is None:
+                    frame.write_bytes(frame_png(index))
+                else:
+                    shutil.copyfile(self.image, frame)
+                stderr += f"[Parsed_showinfo_0 @ fixture] n: {index - 1} pts: {seconds} pts_time:{seconds} pos: 0\n"
+        elif self.replay and tool == "ffmpeg":
             if "-version" in command or "--version" in command:
-                stdout = f"{tool} fixture\n"
-            elif tool == "ffmpeg":
-                Path(command[-1]).touch()
+                stdout = "ffmpeg fixture\n"
             else:
-                stdout = next(self.ocr_passes, TSV_HEADER + "\n")
+                source = Path(command[command.index("-i") + 1])
+                filters = command[command.index("-vf") + 1]
+                transform_frame(source, Path(command[-1]), filters)
         else:
             return self.run_real(command, *args, **kwargs)
         return subprocess.CompletedProcess(command, 0, stdout, stderr)
@@ -74,14 +91,15 @@ class FrameCommands:
 def screen_output(mode: str, commands: FrameCommands) -> tuple[list[str], dict]:
     with (
         tempfile.TemporaryDirectory() as temp,
-        patch.dict(os.environ, {"TFV_OCR_LANG": "eng", "TFV_SLIDE_CROP": ""}),
+        patch.dict(os.environ, {"TFV_SLIDE_CROP": ""}),
+        commands.ocr_packages.installed() if commands.replay else nullcontext(),
         patch("shutil.which", commands.which),
         patch("subprocess.run", commands.run),
     ):
         staged = Path(temp)
         status = screen_ocr.extract(
             staged, mode, "https://example.invalid/video", ["fixture-download"],
-            240 if mode == "nameplate" else 800, lambda: [],
+            commands.duration or (240 if mode == "nameplate" else 800), lambda: [],
         )
         path = staged / "screen.txt"
         rows = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
@@ -91,16 +109,15 @@ def screen_output(mode: str, commands: FrameCommands) -> tuple[list[str], dict]:
 
 
 class OCRReplayTests(unittest.TestCase):
-    def slides(self, *passes: str, seconds: int = 96) -> list[str]:
-        rows, status = screen_output("slides", FrameCommands(seconds, ocr_passes=list(passes)))
+    def slides(self, original: SimpleNamespace, half: SimpleNamespace, *, seconds: int = 96) -> list[str]:
+        rows, status = screen_output("slides", FrameCommands(seconds, ocr_passes=(original, half)))
         self.assertEqual(status["state"], "ready", status)
         return [row.partition("]")[2] for row in rows]
 
     def test_short_noise_is_omitted(self):
         rows = self.slides(
-            ocr_tsv((80, 10, "k"), (80, 50, "Prices correct"), (80, 90, "71")),
-            ocr_tsv((40, 10, "Cy"), (40, 25, "’"), (40, 45, "71")),
-            ocr_tsv((80, 50, "Prices correct")),
+            ocr_result((80, 10, "k"), (80, 50, "Prices correct"), (80, 90, "71")),
+            ocr_result((40, 10, "Cy"), (40, 25, "’"), (40, 45, "71")),
         )
         self.assertIn(TRUSTED + "Prices correct", rows)
         self.assertIn(TRUSTED + "71", rows)
@@ -108,26 +125,26 @@ class OCRReplayTests(unittest.TestCase):
         published_text = {row.split("] ", 1)[1] for row in rows}
         self.assertFalse(published_text & fragments, "Short OCR fragments leaked into screen.txt: " + repr(rows))
 
-    def test_three_spellings_of_same_line_publish_once(self):
+    def test_two_spellings_of_same_line_publish_once(self):
         first = "Read text first. Spend image reads only on what text "
         last = " rule out."
-        variants = [first + word + last for word in ("can’t", "can't", "cant")]
-        rows = self.slides(
-            ocr_tsv((107, 732, variants[0]), (107, 670, "Same answer, and a finished report")),
-            ocr_tsv((54, 366, variants[1])),
-            ocr_tsv((107, 733, variants[2]), (107, 670, "Same answer, and a finished report")),
-            seconds=632,
-        )
-        self.assertIn(TRUSTED + "Same answer, and a finished report", rows)
-        matches = [row for row in rows if first in row]
-        self.assertEqual(len(matches), 1, matches)
-        self.assertTrue(matches[0].startswith(TRUSTED), matches)
+        control = "Same answer, and a finished report"
+        for spelling in ("can't", "cant"):
+            with self.subTest(spelling=spelling):
+                rows = self.slides(
+                    ocr_result((107, 732, first + "can’t" + last), (107, 670, control)),
+                    ocr_result((54, 366, first + spelling + last), (54, 335, control)),
+                    seconds=632,
+                )
+                self.assertIn(TRUSTED + control, rows)
+                matches = [row for row in rows if first in row]
+                self.assertEqual(len(matches), 1, matches)
+                self.assertTrue(matches[0].startswith(TRUSTED), matches)
 
     def test_ampersand_misread_of_digit_is_not_citable(self):
         rows = self.slides(
-            ocr_tsv((223, 284, "AUG 4 RUN"), (223, 200, "RESEARCH & DESIGN"), (600, 284, "MAY 7 RUN")),
-            ocr_tsv((111, 100, "RESEARCH & DESIGN"), (300, 142, "MAY 7 RUN")),
-            ocr_tsv((223, 284, "AUG & RUN")),
+            ocr_result((223, 284, "AUG 4 RUN"), (223, 200, "RESEARCH & DESIGN"), (600, 284, "MAY 7 RUN")),
+            ocr_result((111, 142, "AUG & RUN"), (111, 100, "RESEARCH & DESIGN"), (300, 142, "MAY 7 RUN")),
             seconds=632,
         )
         self.assertIn(TRUSTED + "RESEARCH & DESIGN", rows)
@@ -136,12 +153,10 @@ class OCRReplayTests(unittest.TestCase):
         self.assertNotIn(TRUSTED + "AUG & RUN", rows, "The symbol replaced a digit at the same position")
 
     def test_matching_malformed_percentages_are_not_citable(self):
-        # The published text gives the wrong readings, with no per-pass TSV for this frame.
-        # Give the exact malformed comparison two votes to exercise the failure directly.
+        # Replay the malformed comparison in both passes.
         rows = self.slides(
-            ocr_tsv((120, 100, "A1% > 97%"), (550, 100, "52% > 40%")),
-            ocr_tsv((60, 50, "A1% > 97%"), (275, 50, "52% > 40%")),
-            ocr_tsv((120, 100, "A1% 97%")),
+            ocr_result((120, 100, "A1% > 97%"), (550, 100, "52% > 40%")),
+            ocr_result((60, 50, "A1% > 97%"), (275, 50, "52% > 40%")),
         )
         self.assertIn(TRUSTED + "52% > 40%", rows)
         self.assertEqual([row for row in rows if row.startswith(TRUSTED) and "A1%" in row], [],
@@ -150,11 +165,10 @@ class OCRReplayTests(unittest.TestCase):
     def test_gibberish_is_not_published_as_a_nameplate(self):
         name = "Mira Vellora, Horticulturist"
         noise = ("Lr EES EE", "————————— Oe", "Sc Se")
-        rows, status = screen_output("nameplate", FrameCommands(112, ocr_passes=[
-            ocr_tsv((100, 50, noise[0]), (100, 76, noise[1]), (100, 95, noise[2]), (400, 50, name)),
-            ocr_tsv((200, 25, name)),
-            ocr_tsv((400, 50, name)),
-        ]))
+        rows, status = screen_output("nameplate", FrameCommands(112, ocr_passes=(
+            ocr_result((100, 50, noise[0]), (100, 76, noise[1]), (100, 95, noise[2]), (400, 50, name)),
+            ocr_result((200, 25, name)),
+        )))
         self.assertEqual(status["state"], "ready", status)
         self.assertIn("[01:52]" + TRUSTED + name, rows)
         self.assertEqual([row for row in rows if any(text in row for text in noise)], [],
@@ -162,9 +176,8 @@ class OCRReplayTests(unittest.TestCase):
 
     def test_single_pass_and_different_numeric_spellings_stay_uncertain(self):
         rows = self.slides(
-            ocr_tsv((200, 100, "$6.93"), (400, 100, "$2.11"), (600, 100, "$3.17")),
-            ocr_tsv((200, 50, "$2.11"), (300, 50, "$3.1")),
-            ocr_tsv((600, 100, "$3.170")),
+            ocr_result((200, 100, "$6.93"), (400, 100, "$2.11"), (600, 100, "$3.17")),
+            ocr_result((200, 50, "$2.11"), (300, 50, "$3.1")),
         )
         self.assertIn(TRUSTED + "$2.11", rows)
         self.assertIn(UNCERTAIN + "$6.93", rows)
@@ -172,8 +185,52 @@ class OCRReplayTests(unittest.TestCase):
         self.assertNotIn(TRUSTED + "$6.93", rows)
         self.assertNotIn(TRUSTED + "$3.17", rows)
 
+    def test_cross_frame_exact_text_uses_first_citable_occurrence(self):
+        first = ocr_result(
+            (80, 40, "Transfer overview"), (80, 80, "Cost $6.93"),
+            (80, 120, "Notes on the author's example"), (80, 160, "Capacity 75GB"),
+        )
+        first_half = ocr_result((40, 20, "Transfer overview"))
+        second = ocr_result(
+            (80, 40, "Transfer overview"), (80, 80, "Cost $6.93"),
+            (80, 120, "Notes on the authors example"), (80, 160, "Capacity 75GB"),
+        )
+        second_half = ocr_result((40, 20, "Transfer overview"), (40, 40, "Cost $6.93"))
+        rows, status = screen_output("slides", FrameCommands(
+            12, ocr_passes=(first, first_half), extra_frames={20: (second, second_half)},
+        ))
+        self.assertEqual(status["state"], "ready", status)
+        self.assertCountEqual(rows, [
+            "[00:12]" + TRUSTED + "Transfer overview",
+            "[00:20]" + TRUSTED + "Cost $6.93",
+            "[00:12]" + TRUSTED + "Notes on the author's example",
+            "[00:20]" + TRUSTED + "Notes on the authors example",
+            "[00:12]" + UNCERTAIN + "Capacity 75GB",
+        ])
+        rows_by_screenshot = [
+            {rows[line_number - 1] for line_number in line_numbers}
+            for line_numbers in status["screenshot_lines"].values()
+        ]
+        self.assertIn({"[00:20]" + TRUSTED + "Cost $6.93",
+                       "[00:20]" + TRUSTED + "Notes on the authors example"}, rows_by_screenshot)
 
-@unittest.skipUnless(os.environ.get("TFV_TEST_REAL_OCR") == "1", "set TFV_TEST_REAL_OCR=1 for local FFmpeg and Tesseract")
+    def test_nameplate_budget_is_fixed_and_slides_keep_half_duration(self):
+        original = ocr_result((80, 40, "Mira Vellora, Horticulturist"))
+        half = ocr_result((40, 20, "Mira Vellora, Horticulturist"))
+        for duration in (90, 600):
+            for mode, expected in (("nameplate", 120), ("slides", duration / 2)):
+                with self.subTest(mode=mode, duration=duration):
+                    rows, status = screen_output(mode, FrameCommands(
+                        8, ocr_passes=(original, half), duration=duration,
+                    ))
+                    self.assertEqual(status["state"], "ready", status)
+                    self.assertEqual(status["timeout_seconds"], expected, status)
+                    self.assertIn("[00:08]" + TRUSTED + "Mira Vellora, Horticulturist", rows)
+
+
+@unittest.skipUnless(
+    os.environ.get("TFV_TEST_REAL_OCR") == "1", "set TFV_TEST_REAL_OCR=1 for local FFmpeg, RapidOCR and ONNX Runtime",
+)
 class DiagnosticFrameTests(unittest.TestCase):
     """Read original PNGs from tfv-phase2e-diagnose.zip with the installed OCR tools."""
 
