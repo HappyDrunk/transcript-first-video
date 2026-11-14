@@ -11,7 +11,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-import coverage_check
 import knowledge_note
 import verify_note
 import verify_rules as rules
@@ -228,19 +227,15 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
 
     with verify_note.job_lock(job):
         inputs = verify_note.job_inputs(job)
-        # These are the same job checks as the CLI, under one lock through publication.
-        verify_args = argparse.Namespace(note=None, confidence=None, expected_lang=None, json=False)
-        if verify_note._verify_job(job, verify_args):
-            raise RenderError("verify failed")
+        result = verify_note.check_job_submission(job, with_coverage=True)
+        coverage = result.get("coverage", {})
+        for line in result["reasons"] + result.get("warnings", []) + coverage.get("not_checked", []):
+            print(line, file=sys.stderr)
+        if not result["allowed"]:
+            raise RenderError("verify or coverage failed")
         verifier = verify_note.read_job_status(job).get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
-
-        coverage = coverage_check._check_and_record(job, None)
-        for line in coverage["reasons"] + coverage["warnings"] + coverage["not_checked"]:
-            print(line, file=sys.stderr)
-        if not coverage["ok"]:
-            raise RenderError("coverage failed")
         check_finished(job, inputs, verifier)
         note = (job / "note.md").read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
