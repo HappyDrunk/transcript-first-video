@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
+import screen_ocr  # noqa: E402
 import verify_note  # noqa: E402
 import verify_rules  # noqa: E402
 
@@ -201,6 +202,13 @@ def _ytdlp_extra_args() -> list[str]:
     if extractor:
         args.extend(["--extractor-args", extractor])
     return args
+
+
+def _screen_download_options() -> list[str]:
+    try:
+        return _ytdlp_extra_args()
+    except HostError as exc:
+        raise screen_ocr.ScreenError(str(exc)) from exc
 
 
 def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
@@ -383,6 +391,7 @@ def fetch_ytdlp_captions(
         "kind": kind,
         "error": None,
         "source": "yt-dlp",
+        "media_duration": verify_rules._checked_clock(info.get("duration")),
     }
 
 
@@ -780,6 +789,8 @@ def finalize_job(
     verify: bool = True,
     upgrade_attempted: bool = False,
     platform: str = "youtube",
+    screen_download: list[str] | None = None,
+    media_duration: float | None = None,
 ) -> dict:
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
@@ -871,6 +882,14 @@ def finalize_job(
             transcript_cite=cite if Path(cite).is_absolute() else "transcript.txt",
         )
         staged_scaffold.write_text(scaffold_body, encoding="utf-8")
+        mode = verify_rules.screen_mode()
+        if screen_download is not None and mode != "off":
+            screen = screen_ocr.extract(
+                staged, mode, source, screen_download, media_duration, _screen_download_options,
+            )
+            if "reason" in screen:
+                screen["reason"] = redact(screen["reason"])
+            base["screen_ocr"] = screen
         base.update(
             {
                 "status": "transcript_ready",
@@ -919,15 +938,19 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
                 saved = verify_note.archive_file(chunks)
                 if saved is not None:
                     archived.append((saved, chunks))
-            for name in ("transcript.txt", "segments.json", "chunks", "note.scaffold.md"):
+            optional = (verify_rules.SCREEN_FILE, verify_rules.SCREEN_FRAMES)
+            for name in ("transcript.txt", "segments.json", "chunks", "note.scaffold.md", *optional):
                 target = job / name
                 if target.exists():
                     saved = backup / name
                     target.replace(saved)
                     archived.append((saved, target))
                 source = staged / name
-                source.replace(target)
-                installed.append((target, source))
+                if name not in optional or (
+                    payload.get("screen_ocr", {}).get("state") == "ready"
+                ):
+                    source.replace(target)
+                    installed.append((target, source))
             for key, path in zip(("note", "delivery"), old_notes):
                 payload[key] = cite_path(path) if path.is_file() else None
             verify_note.write_job_status(job, {key: value for key, value in payload.items() if key != "exit_code"})
@@ -1048,6 +1071,9 @@ def run_host(
     attempts: list[dict] = []
     caption = None
     base_cmd = ytdlp_base()
+    screen_download = None
+    if verify_rules.screen_mode() != "off":
+        screen_download = base_cmd or []
     if base_cmd is None:
         attempts.append({"source": "yt-dlp", "ok": False, "detail": "yt-dlp is not installed"})
     else:
@@ -1095,6 +1121,8 @@ def run_host(
             caption_kind=caption.get("kind"),
             verify=verify,
             extra={"attempts": attempts, "mirror_host": caption.get("mirror_host")},
+            screen_download=screen_download,
+            media_duration=caption.get("media_duration"),
         )
 
     backend, block = asr_plan(asr_choice)
@@ -1147,6 +1175,7 @@ def run_host(
         verify=verify,
         upgrade_attempted=upgraded,
         extra={"attempts": attempts, "asr_backend": backend, "asr_model": model},
+        screen_download=screen_download,
     )
 
 
@@ -1248,4 +1277,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    exit_code = main()
+    if screen_ocr.native_ocr_running():
+        # The job is already published. A timed-out native call can crash
+        # interpreter teardown, so exit directly once the CLI output is sent.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(exit_code)
+    sys.exit(exit_code)
