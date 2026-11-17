@@ -195,7 +195,8 @@ class Phase2ETests(unittest.TestCase):
 
     def test_screen_supports_corrected_spelling(self) -> None:
         transcript = TRANSCRIPT.replace("firm white ones", "firm vermica roots")
-        note = NOTE.replace("firm white ones", "firm vermica roots")
+        prose, heading, evidence = NOTE.partition("\n## 原文依据\n")
+        note = prose + heading + evidence.replace("firm white ones", "firm vermica roots")
         claim = (
             "画面显示名称拼作 Vellora。 ⏱ 00:30 ⏱ 01:35\n\n"
             "> [!warning] 字幕更正\n"
