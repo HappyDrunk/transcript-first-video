@@ -179,6 +179,11 @@ _EN_SOURCE_NUMBER = re.compile(
     r"(?:[ -]+(?:hundred|thousand|million|billion|dozen|dozens|decade|decades))?%?)(?![A-Za-z])",
     re.IGNORECASE,
 )
+_EN_PLUS_SCALE = re.compile(
+    r"(?<![A-Za-z0-9])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)[ \t]+plus[ \t]+"
+    r"(?P<scale>hundred|thousand|million|billion)\b",
+    re.IGNORECASE,
+)
 
 
 def _arabic_number_value(raw: str) -> float:
@@ -363,20 +368,24 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
     return issues
 
 
-def term_occurs(term: str, source: str) -> bool:
-    if not re.search(r"[A-Za-z0-9]", term):
-        return _fold(term) in _fold(source)
+def _term_pattern(term: str) -> str:
     pattern = r"\s+".join(map(re.escape, term.split()))
     if re.match(r"[A-Za-z0-9]", term):
         pattern = r"(?<![A-Za-z0-9])" + pattern
     if re.search(r"[A-Za-z0-9]$", term):
         pattern += r"(?![A-Za-z0-9])"
-    return bool(re.search(pattern, source, re.IGNORECASE))
+    return pattern
 
 
-def caption_corrections(blocks: list[list[str]], transcript: str) -> list[str]:
-    """Return corrected spellings from marked blocks backed by the transcript."""
-    corrections: list[str] = []
+def term_occurs(term: str, source: str) -> bool:
+    if not re.search(r"[A-Za-z0-9]", term):
+        return _fold(term) in _fold(source)
+    return bool(re.search(_term_pattern(term), source, re.IGNORECASE))
+
+
+def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[str, str]]:
+    """Return original and corrected spellings backed by the transcript."""
+    corrections: list[tuple[str, str]] = []
     for header, *lines in blocks:
         match = _CALLOUT.fullmatch(header)
         if match is None or match.groups() != ("warning", "字幕更正"):
@@ -391,7 +400,7 @@ def caption_corrections(blocks: list[list[str]], transcript: str) -> list[str]:
                 continue
             corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip()
             if corrected:
-                corrections.append(corrected)
+                corrections.append((original, corrected))
     return corrections
 
 
@@ -440,6 +449,12 @@ def proper_names(text: str) -> list[str]:
 def number_mentions(text: str) -> list[tuple[float, float, str]]:
     mentions: list[tuple[float, float, str]] = []
 
+    def plus_scale(match: re.Match[str]) -> str:
+        value = _arabic_number_value(f"{match['number']} {match['scale']}")
+        mentions.append((value, value, match[0]))
+        # The full phrase supplies the count, not either component on its own.
+        return " "
+
     def decimal(match: re.Match[str]) -> str:
         whole = source_number_mentions(match[1])[0][0]
         fraction = "".join(str(_SPOKEN_DIGITS.index(word)) for word in match[2].lower().split())
@@ -449,7 +464,7 @@ def number_mentions(text: str) -> list[tuple[float, float, str]]:
 
     # Phase 1B recognizes the integer words on each side of a spoken decimal.
     # Read them together so "three point eight" supports 3.8.
-    text = _SPOKEN_DECIMAL.sub(decimal, text)
+    text = _SPOKEN_DECIMAL.sub(decimal, _EN_PLUS_SCALE.sub(plus_scale, text))
     return mentions + body_number_mentions(text) + source_number_mentions(text)
 
 
@@ -653,6 +668,7 @@ _ENGLISH_WORD = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]+(?:['’‐‑-][A-Za-z]+)
 
 @dataclass(frozen=True)
 class QuoteMatch:
+    # Character offset for speech, physical line index for screen evidence.
     offset: int
     cues: tuple[quality_gate.Segment, ...]
 
@@ -750,14 +766,14 @@ def _screen_index(path: Path) -> dict[str, tuple[QuoteMatch, ...]]:
     ):
         return {}
     matches: dict[str, list[QuoteMatch]] = {}
-    for line in lines:
+    for line_index, line in enumerate(lines):
         stamp, tagged = parse_stamp(line)
         if stamp is None or not tagged.startswith(SCREEN_TAG):
             continue
         text = tagged[len(SCREEN_TAG):].strip()
         if text:
             cue = quality_gate.Segment(stamp, stamp, text)
-            matches.setdefault(text, []).append(QuoteMatch(0, (cue,)))
+            matches.setdefault(text, []).append(QuoteMatch(line_index, (cue,)))
     return {text: tuple(locations) for text, locations in matches.items()}
 
 
@@ -1098,11 +1114,46 @@ def _remove_properties(text: str, fields: dict) -> str:
     return text
 
 
+_ZH_VERSION = re.compile(rf"第[ \t]*([0-9]+|[{_ZH_NUMERAL}]+)[ \t]*版")
+_V_VERSION = re.compile(r"(?<![A-Za-z0-9_])v([0-9]+)(?![A-Za-z0-9_]|\.[0-9])", re.IGNORECASE)
+
+
+def _remove_supported_versions(prose: str, excerpts: list[str]) -> str:
+    versions = {int(label) for excerpt in excerpts for label in _V_VERSION.findall(excerpt)}
+
+    def replace(match: re.Match[str]) -> str:
+        label = match[1]
+        value = int(label) if label.isascii() else _chinese_integer(label)
+        return " " * len(match[0]) if value in versions else match[0]
+
+    return _ZH_VERSION.sub(replace, prose)
+
+
+def _adjacent_screen_excerpts(quotes: list[Quote]) -> list[str]:
+    """Join cited, consecutive physical screen lines at a single timestamp."""
+    positions = {
+        (quote.stamp, quote.anchor.start, quote.match.offset): quote.text
+        for quote in quotes if quote.screen
+    }
+    joined, run = [], []
+    previous = None
+    for (stamp, anchor, line), text in sorted(positions.items()):
+        if previous != (stamp, anchor, line - 1):
+            if len(run) > 1:
+                joined.append(" ".join(run))
+            run = []
+        run.append(text)
+        previous = (stamp, anchor, line)
+    if len(run) > 1:
+        joined.append(" ".join(run))
+    return joined
+
+
 def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     issues, unknown_quoted = [], {}
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
-    corrections = caption_corrections(blocks, ctx.speech)
+    corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
 
     def mentions(text: str) -> list[tuple[float, float, str]]:
         if ctx.has_screen_file:
@@ -1118,7 +1169,8 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             linked = [quote for stamp in times for quote in match_link(stamp, valid)[0]]
             if times and not linked:
                 continue
-            excerpts = [quote.text for quote in (linked if times else valid)]
+            evidence = linked if times else valid
+            excerpts = [quote.text for quote in evidence]
             source = excerpts + corrections
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
@@ -1129,7 +1181,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             numeric_prose, prose_months = split_months(prose)
             support = [mention for excerpt, _ in numeric_excerpts for mention in mentions(excerpt)]
             missing_numbers = {
-                label for low, high, label in mentions(numeric_prose)
+                label for low, high, label in mentions(_remove_supported_versions(numeric_prose, excerpts))
                 if not any(slow <= high and shigh >= low for slow, shigh, _ in support)
             }
             missing_numbers.update(
@@ -1141,11 +1193,12 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 if not any(term_occurs(name, excerpt) for excerpt in source)
             }
             supported_originals = set()
+            original_excerpts = [*excerpts, *_adjacent_screen_excerpts(evidence)]
             for match in _PARENTHESIZED_ORIGINAL.finditer(prose):
                 original = (match[1] or match[2]).strip()
                 if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
                     continue
-                if any(term_occurs(original, excerpt) for excerpt in excerpts):
+                if any(term_occurs(original, excerpt) for excerpt in original_excerpts):
                     supported_originals.add(match.start())
                 else:
                     issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
@@ -1169,8 +1222,17 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = caption_corrections(blocks, ctx.speech)
     cited_screen = [quote.text for quote in ctx.valid_quotes if quote.screen]
-    return _result("C04d", explanation_issues(blocks, ctx.speech, [*corrections, *cited_screen]),
-                   "explanations use marked blocks")
+    corrected_spellings = [corrected for _, corrected in corrections]
+    issues = explanation_issues(blocks, ctx.speech, [*corrected_spellings, *cited_screen])
+    for original, corrected in dict.fromkeys(corrections):
+        if original == corrected:
+            continue
+        corrected_pattern = re.compile(_term_pattern(corrected))
+        for section in ctx.sections:
+            if any(term_occurs(original, corrected_pattern.sub(" ", prose))
+                   for prose in [section.heading, *section.prose]):
+                issues.append(f"{section.heading or '正文'}: incorrect caption spelling {original!r} must stay in 字幕更正")
+    return _result("C04d", issues, "explanations use marked blocks")
 
 
 def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:

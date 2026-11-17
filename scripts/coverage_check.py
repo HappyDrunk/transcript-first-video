@@ -118,10 +118,14 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
         fields = [field.strip() for field in line.split("|")]
         if len(fields) == 4:
             time, category, decision, reason = fields
-            match = re.fullmatch(_RANGE, time)
-            if match and category and decision in {"留", "略"} and reason:
-                bounds = _range_seconds(*match.groups())
-                if bounds:
+            if category and decision in {"留", "略"} and reason:
+                if (category.startswith(rules.SCREEN_TAG)
+                        and category[len(rules.SCREEN_TAG):].strip()
+                        and rules.clock_seconds(time) is not None):
+                    # Screen selections list extra evidence without consuming a speech interval.
+                    continue
+                match = re.fullmatch(_RANGE, time)
+                if match and (bounds := _range_seconds(*match.groups())):
                     units.append(SelectionUnit(*bounds, retained=decision == "留"))
                     continue
         issues.append(f"selection.md line {line_no}: expected time range | category | 留 or 略 | reason")
