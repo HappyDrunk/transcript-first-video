@@ -11,6 +11,7 @@ import re
 import unicodedata
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import knowledge_note
@@ -272,7 +273,17 @@ _C04_MIDDLE = {
     "大会": ("发布或主张了什么", "有证据的 / 只是说法"),
     "演示": ("演示了什么", "关键数字与条件"),
 }
-_CONFERENCE_EVIDENCE, _CONFERENCE_CLAIMS = _C04_MIDDLE["大会"][-1], "只是口头声称"
+_CONFERENCE_LEGACY = _C04_MIDDLE["大会"][-1]
+_CONFERENCE_MAIN = "主线讲了什么"
+_CONFERENCE_CLAIMS = "只是口头声称"
+
+
+def middle_headings(kind: str, sections: list[DeliverySection]) -> tuple[str, ...]:
+    middle = _C04_MIDDLE.get(kind, ())
+    if kind == "大会" and any(section.level == 2 and section.heading == _CONFERENCE_MAIN
+                            for section in sections):
+        return (middle[0], _CONFERENCE_MAIN)
+    return middle
 
 
 
@@ -324,8 +335,8 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
     issues: list[str] = []
     if sections[0].prose or sections[0].blocks:
         issues.append("orphan content before the first heading")
-    expected_middle = _C04_MIDDLE.get(kind)
-    if expected_middle is None:
+    expected_middle = middle_headings(kind, sections)
+    if not expected_middle:
         issues.append("frontmatter type must be 讲座, 访谈, 大会 or 演示")
     else:
         expected = _C04_START + expected_middle + _C04_END
@@ -334,19 +345,19 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
             issues.append(f"expected H2 sections in order: {' / '.join(expected)}")
     parent = ""
     children: list[str] = []
-    middle_headings = expected_middle or ()
+    middle = expected_middle
     for index, section in enumerate(sections[1:], 1):
         if section.level == 2:
             parent = section.heading
-        elif section.level != 3 or parent not in middle_headings:
+        elif section.level != 3 or parent not in middle:
             issues.append(f"unexpected heading: {section.heading}")
-        elif parent == _CONFERENCE_EVIDENCE:
+        elif parent in {_CONFERENCE_LEGACY, _CONFERENCE_MAIN}:
             children.append(section.heading)
         has_subheading = (
-            section.level == 2 and section.heading in middle_headings
+            section.level == 2 and section.heading in middle
             and index + 1 < len(sections) and sections[index + 1].level == 3
         )
-        if section.level == 2 and section.heading in {"话题", "有证据的 / 只是说法"} and not has_subheading:
+        if section.level == 2 and section.heading in {"话题", _CONFERENCE_LEGACY, _CONFERENCE_MAIN} and not has_subheading:
             issues.append(f"section needs subheadings: {section.heading}")
         elif section.level == 2 and not has_subheading and not any(
             char.isalnum() for claim in section.prose if not claim.startswith(">")
@@ -361,10 +372,16 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
         if section.heading == _C04_END[-1] and len(section.prose) > 1:
             orphan = section.prose[1].splitlines()[0]
             issues.append(f"orphan text after {_C04_END[-1]}: {orphan[:80]}")
-    if kind == "大会" and (
-        len(children) < 2 or children[-1] != _CONFERENCE_CLAIMS or children.count(_CONFERENCE_CLAIMS) != 1
-    ):
-        issues.append(f"{_CONFERENCE_EVIDENCE} needs at least one evidence subheading followed by {_CONFERENCE_CLAIMS}")
+    if kind == "大会":
+        legacy = _CONFERENCE_MAIN not in middle
+        claims = children.count(_CONFERENCE_CLAIMS)
+        if legacy and (len(children) < 2 or claims != 1 or children[-1] != _CONFERENCE_CLAIMS):
+            issues.append(f"{_CONFERENCE_LEGACY} needs at least one evidence subheading followed by {_CONFERENCE_CLAIMS}")
+        elif not legacy and (
+            not any(child != _CONFERENCE_CLAIMS for child in children)
+            or claims > 1 or (claims and children[-1] != _CONFERENCE_CLAIMS)
+        ):
+            issues.append(f"{_CONFERENCE_MAIN} needs topic subheadings, with {_CONFERENCE_CLAIMS} last when present")
     return issues
 
 
@@ -1070,7 +1087,7 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
                 if earlier != quote.stamp:
                     issues.append(f"end quotes starting at source second [{_fmt(first)}] need one continuous quote")
     valid = ctx.valid_quotes
-    middle = _C04_MIDDLE.get(ctx.fields.get("type"), ())
+    middle = middle_headings(ctx.fields.get("type"), ctx.sections)
     for parent, section in _with_parents(ctx.sections):
         for claim in [section.heading, *section.prose]:
             is_middle_claim = parent in middle and claim != section.heading and not _fixed_explanation(parent, claim)
@@ -1116,17 +1133,111 @@ def _remove_properties(text: str, fields: dict) -> str:
 
 _ZH_VERSION = re.compile(rf"第[ \t]*([0-9]+|[{_ZH_NUMERAL}]+)[ \t]*版")
 _V_VERSION = re.compile(r"(?<![A-Za-z0-9_])v([0-9]+)(?![A-Za-z0-9_]|\.[0-9])", re.IGNORECASE)
+_DATE_INTEGER = rf"(?:[0-9]{{1,2}}|[{_ZH_NUMERAL}]+)"
+_EN_MONTH_NAME = "|".join(sorted(_EN_MONTHS, key=len, reverse=True))
+_CALENDAR_DATES = (
+    re.compile(r"(?<![0-9])(?P<year>(?:19|20)[0-9]{2})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})(?![0-9])"),
+    re.compile(
+        rf"(?<![0-9{_ZH_NUMERAL}])(?:(?P<year>(?:19|20)[0-9]{{2}})[ \t]*年[ \t]*)?"
+        rf"(?P<month>{_DATE_INTEGER})[ \t]*月[ \t]*(?P<day>{_DATE_INTEGER})[ \t]*[日号]"
+    ),
+    re.compile(
+        rf"(?<![A-Za-z0-9])(?P<month>{_EN_MONTH_NAME})\.?[ \t]+"
+        r"(?P<day>[0-9]{1,2})(?:st|nd|rd|th)?(?![0-9])"
+        r"(?:,?[ \t]+(?P<year>(?:19|20)[0-9]{2})(?![0-9]))?", re.IGNORECASE,
+    ),
+    re.compile(
+        rf"(?<![A-Za-z0-9])(?P<day>[0-9]{{1,2}})(?:st|nd|rd|th)?[ \t]+(?P<month>{_EN_MONTH_NAME})(?![A-Za-z])"
+        r"(?:,?[ \t]+(?P<year>(?:19|20)[0-9]{2})(?![0-9]))?", re.IGNORECASE,
+    ),
+)
+_SPOKEN_YEAR = re.compile(
+    r"(?<![A-Za-z0-9])(?:(?:early|mid|late|in)[ \t-]+)+(?P<year>(?:19|20)?[0-9]{2})(?![A-Za-z0-9]|\.[0-9])",
+    re.IGNORECASE,
+)
+_ZH_YEAR = re.compile(
+    rf"(?<![A-Za-z0-9$€£¥{_ZH_NUMERAL}])(?P<year>(?:19|20)[0-9]{{2}}|[二两][〇零一二三四五六七八九]{{3}})[ \t]*年"
+)
+_QUANTITY_SUFFIX = re.compile(
+    r"^[ \t]*(?:%|[个個家人项項次秒分天周月元块塊张張份本台件]|美元|小时|小時"
+    r"|(?:hours?|minutes?|seconds?|days?|weeks?|months?|years?|images?|recordings?|stores?|markets?"
+    r"|models?|systems?|items?|users?|boxes|tests?|requests?|countries|pieces?|tokens?|percent|dollars?|bytes?|[KMGT]B)\b)", re.IGNORECASE,
+)
 
 
-def _remove_supported_versions(prose: str, excerpts: list[str]) -> str:
-    versions = {int(label) for excerpt in excerpts for label in _V_VERSION.findall(excerpt)}
+@dataclass(frozen=True)
+class NumberRange:
+    low: float
+    high: float
 
-    def replace(match: re.Match[str]) -> str:
-        label = match[1]
-        value = int(label) if label.isascii() else _chinese_integer(label)
-        return " " * len(match[0]) if value in versions else match[0]
 
-    return _ZH_VERSION.sub(replace, prose)
+@dataclass(frozen=True)
+class NumericValue:
+    kind: str
+    value: int | tuple[int, ...] | NumberRange
+    label: str
+
+    def supports(self, claim: NumericValue) -> bool:
+        if isinstance(self.value, NumberRange) and isinstance(claim.value, NumberRange):
+            return self.value.low <= claim.value.high and self.value.high >= claim.value.low
+        # Older notes can already cite a literal number for their version label.
+        if isinstance(self.value, NumberRange) and claim.kind == "version" and isinstance(claim.value, int):
+            return self.value.low <= claim.value <= self.value.high
+        return self.kind == claim.kind and self.value == claim.value
+
+
+def _integer_label(label: str) -> int:
+    return int(label) if label.isascii() else _chinese_integer(label)
+
+
+def canonical_numbers(text: str) -> tuple[str, list[NumericValue]]:
+    """Separate calendar values and versions before comparing ordinary quantities."""
+    values: list[NumericValue] = []
+
+    def calendar_date(match: re.Match[str]) -> str:
+        month_label, day_label = match["month"], match["day"]
+        month = _EN_MONTHS.get(month_label.casefold())
+        if month is None:
+            month = _integer_label(month_label)
+        day = _integer_label(day_label)
+        year = int(match["year"]) if match["year"] else None
+        try:
+            date(year or 2000, month, day)
+        except ValueError:
+            return match[0]
+        calendar = (year, month, day) if year is not None else (month, day)
+        values.append(NumericValue("date", calendar, match[0]))
+        values.append(NumericValue("month", month, month_label))
+        if year is not None:
+            values.append(NumericValue("year", year, match["year"]))
+            values.append(NumericValue("date", (month, day), match[0]))
+        return " " * len(match[0])
+
+    for pattern in _CALENDAR_DATES:
+        text = pattern.sub(calendar_date, text)
+
+    def version(match: re.Match[str]) -> str:
+        values.append(NumericValue("version", _integer_label(match[1]), match[1]))
+        return " " * len(match[0])
+
+    text = _V_VERSION.sub(version, _ZH_VERSION.sub(version, text))
+
+    def year_value(match: re.Match[str]) -> str:
+        if _QUANTITY_SUFFIX.match(text[match.end():]):
+            return match[0]
+        label = match["year"]
+        year = _integer_label(label)
+        if len(label) == 2:
+            year += 2000
+        values.append(NumericValue("year", year, label))
+        return " " * len(match[0])
+
+    text = _SPOKEN_YEAR.sub(year_value, text)
+    text = _ZH_YEAR.sub(year_value, text)
+    text, months = split_months(text)
+    values.extend(NumericValue("month", month, label) for month, label in months.items())
+    values.extend(NumericValue("number", NumberRange(low, high), label) for low, high, label in number_mentions(text))
+    return text, values
 
 
 def _adjacent_screen_excerpts(quotes: list[Quote]) -> list[str]:
@@ -1155,10 +1266,10 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
 
-    def mentions(text: str) -> list[tuple[float, float, str]]:
+    def canonical(text: str) -> tuple[str, list[NumericValue]]:
         if ctx.has_screen_file:
             text = re.sub(r"(?<=\d)[xX](?![A-Za-z0-9])", "×", text)
-        return number_mentions(text)
+        return canonical_numbers(text)
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
@@ -1176,18 +1287,12 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
             numeric_source = excerpts if ctx.has_screen_file else source
-            numeric_excerpts = [split_months(excerpt) for excerpt in numeric_source]
-            excerpt_months = {month for _, months in numeric_excerpts for month in months}
-            numeric_prose, prose_months = split_months(prose)
-            support = [mention for excerpt, _ in numeric_excerpts for mention in mentions(excerpt)]
+            support = [value for excerpt in numeric_source for value in canonical(excerpt)[1]]
+            numeric_prose, numeric_claims = canonical(prose)
             missing_numbers = {
-                label for low, high, label in mentions(_remove_supported_versions(numeric_prose, excerpts))
-                if not any(slow <= high and shigh >= low for slow, shigh, _ in support)
+                claim.label for claim in numeric_claims
+                if not any(value.supports(claim) for value in support)
             }
-            missing_numbers.update(
-                label for month, label in prose_months.items()
-                if month not in excerpt_months
-            )
             missing_names = {
                 name for name in proper_names(numeric_prose)
                 if not any(term_occurs(name, excerpt) for excerpt in source)
@@ -1218,12 +1323,25 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     return _result("C04c", issues, "numbers and names have end evidence")
 
 
+_NOTE_CHECKING_PROCESS = re.compile(
+    r"(?:后半句|前半句|原句|这句话|这段文字)[^。！？\n]{0,20}(?:没(?:有|能)?|未(?:能)?)[^。！？\n]{0,6}识别"
+    r"|(?:这里|本文)[^。！？\n]{0,12}(?:不补写|不补全|不当作成绩|只按口头说法记录)"
+    r"|(?:部分|这部分|这些文字|画面文字|字幕)[^。！？\n]{0,8}识别[^。！？\n]{0,8}(?:不确定|不完整|不清楚)"
+    r"|(?:口播|名字|姓名|术语|词语)[^。！？\n]{0,20}(?:自动字幕|字幕)[^。！？\n]{0,8}(?:写错|听错|识别错|误写)"
+)
+
+
 def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = caption_corrections(blocks, ctx.speech)
     cited_screen = [quote.text for quote in ctx.valid_quotes if quote.screen]
     corrected_spellings = [corrected for _, corrected in corrections]
     issues = explanation_issues(blocks, ctx.speech, [*corrected_spellings, *cited_screen])
+    for section in ctx.sections:
+        for prose in [section.heading, *section.prose]:
+            checking = _NOTE_CHECKING_PROCESS.search(prose)
+            if checking:
+                issues.append(f"{section.heading or '正文'}: remove note-checking commentary from prose: {checking[0]}")
     for original, corrected in dict.fromkeys(corrections):
         if original == corrected:
             continue
