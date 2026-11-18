@@ -32,6 +32,8 @@ jobs:
         run: python3 scripts/test_phase2e_item6_rerun.py
       - name: Frozen Phase 2E new-video pairs
         run: python3 scripts/test_phase2e_new_video.py
+      - name: Frozen Phase 2E slide grouping and selection
+        run: python3 scripts/test_phase2e_slides.py
       - name: RED-1 accepted note survives successful settle
         run: python3 scripts/test_regressions.py RegressionTests.test_red1_successful_settle_preserves_accepted_note
       - name: RED-2 old deposit survives failed settle
