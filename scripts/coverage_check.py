@@ -111,7 +111,7 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
     path = job / "selection.md"
     if not path.is_file():
         return [], ["selection.md is missing"]
-    units, issues = [], []
+    units, issues, slides = [], [], []
     for line_no, line in enumerate(_read(path).splitlines(), 1):
         if not line.strip():
             continue
@@ -119,9 +119,14 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
         if len(fields) == 4:
             time, category, decision, reason = fields
             if category and decision in {"留", "略"} and reason:
+                slide = rules.SLIDE_SELECTION.fullmatch(category)
+                moment = rules.clock_seconds(time)
+                if slide and moment is not None:
+                    slides.append((int(slide[1]), moment))
+                    continue
                 if (category.startswith(rules.SCREEN_TAG)
                         and category[len(rules.SCREEN_TAG):].strip()
-                        and rules.clock_seconds(time) is not None):
+                        and moment is not None):
                     # Screen selections list extra evidence without consuming a speech interval.
                     continue
                 match = re.fullmatch(_RANGE, time)
@@ -131,6 +136,22 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
         issues.append(f"selection.md line {line_no}: expected time range | category | 留 or 略 | reason")
     if not units:
         issues.append("selection.md has no usable units")
+    groups = rules.screen_slide_groups(job / rules.SCREEN_FILE)
+    if groups:
+        expected = dict(groups)
+        if [number for number, _ in groups] != list(range(1, len(groups) + 1)):
+            issues.append("screen.txt 幻灯片 numbers must start at 1 and increase in order")
+        selected = {}
+        for number, moment in slides:
+            if number in selected:
+                issues.append(f"幻灯片 {number} needs exactly one selection.md row")
+            selected[number] = moment
+            if number not in expected:
+                issues.append(f"幻灯片 {number} is absent from screen.txt")
+            elif moment != expected[number]:
+                issues.append(f"幻灯片 {number} selection time must match [{rules._fmt(expected[number])}]")
+        for number in sorted(expected.keys() - selected.keys()):
+            issues.append(f"幻灯片 {number} has no selection.md 留/略 row with a reason")
     return units, issues
 
 

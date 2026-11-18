@@ -676,6 +676,8 @@ SCREEN_TAG = "[画面]"
 UNCERTAIN_SCREEN_TAG = "[画面?]"
 SCREEN_FILE = "screen.txt"
 SCREEN_FRAMES = "screen-frames"
+SLIDE_MARKER = re.compile(r"^\[幻灯片 ([1-9][0-9]*)\](?:[ \t]+frame-[0-9]+\.png)?$")
+SLIDE_SELECTION = re.compile(r"^\[幻灯片 ([1-9][0-9]*)\](?:[ \t]+.+)?$")
 OMISSION_LINE = re.compile(r"^本文略去[｜|]\s*(.*?)\s*$")
 TIME_TOLERANCE = 15
 MISSING_TIMESTAMPS = "缺时间戳，请用带时间戳的转写重跑"
@@ -767,23 +769,55 @@ def screen_tag(text: str) -> str:
     return next((tag for tag in (SCREEN_TAG, UNCERTAIN_SCREEN_TAG) if text.startswith(tag)), "")
 
 
-def _screen_index(path: Path) -> dict[str, tuple[QuoteMatch, ...]]:
+def _screen_lines(path: Path, *, require_slides: bool = False) -> list[str] | None:
     try:
         content = path.read_bytes()
         lines = content.decode("utf-8-sig").splitlines()
     except (OSError, UnicodeError):
-        return {}
+        return None
     try:
         status = json.loads(path.with_name("status.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         status = None
     screen = status.get("screen_ocr") if isinstance(status, dict) else None
+    if require_slides and (not isinstance(screen, dict) or screen.get("mode") != "slides"):
+        return None
     if isinstance(screen, dict) and (
         screen.get("state") != "ready" or screen.get("sha256") != hashlib.sha256(content).hexdigest()
     ):
-        return {}
+        return None
+    return lines
+
+
+def screen_slide_groups(path: Path) -> list[tuple[int, int]]:
+    if screen_mode() != "slides":
+        return []
+    lines = _screen_lines(path, require_slides=True)
+    if lines is None:
+        return []
+    groups = []
+    for line in lines:
+        stamp, tagged = parse_stamp(line)
+        marker = SLIDE_MARKER.fullmatch(tagged)
+        if stamp is not None and marker:
+            groups.append((int(marker[1]), stamp))
+    if not groups:
+        try:
+            screen = json.loads(path.with_name("status.json").read_text(encoding="utf-8"))["screen_ocr"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return []
+        if type(screen.get("slide_count")) is int and screen["slide_count"] == 1:
+            for line in lines:
+                stamp, tagged = parse_stamp(line)
+                tag = screen_tag(tagged)
+                if stamp is not None and tag and tagged[len(tag):].strip():
+                    return [(1, stamp)]
+    return groups
+
+
+def _screen_index(path: Path) -> dict[str, tuple[QuoteMatch, ...]]:
     matches: dict[str, list[QuoteMatch]] = {}
-    for line_index, line in enumerate(lines):
+    for line_index, line in enumerate(_screen_lines(path) or []):
         stamp, tagged = parse_stamp(line)
         if stamp is None or not tagged.startswith(SCREEN_TAG):
             continue

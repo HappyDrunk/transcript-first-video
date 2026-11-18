@@ -206,6 +206,10 @@ def job_inputs(job: Path) -> dict:
             inputs["screen"] = hashlib.sha256(screen.read_bytes()).hexdigest()
         except FileNotFoundError:
             inputs["screen"] = None
+        screen_status = status.get("screen_ocr")
+        if (verify_rules.screen_mode() == "slides" and isinstance(screen_status, dict)
+                and "slide_count" in screen_status):
+            inputs["slide_count"] = screen_status["slide_count"]
     inputs["duration_seconds"] = status.get("duration_seconds")
     inputs["expected_lang"] = status.get("gate_lang") or status.get("expected_lang")
     return inputs
