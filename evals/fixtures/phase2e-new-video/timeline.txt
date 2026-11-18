@@ -1,0 +1,3 @@
+[00:00] Image recognition identifies objects in pictures, and speech recognition turns recorded voices into text. These techniques give an agent structured input before it decides which tool to call.
+[08:18] And so in late mid late 2023 early 24 the React paper became really popular. And so folks were looking at building um model um in a loop running a model in a loop where it could uh reason and act uh in a step-wise way.
+[13:02] the graphs were kind of popular like in in late 24 early 25 and so a lot of systems were now implemented using certain frameworks and they were now in production. Uh but then um Anthropic and OpenAI launched some amazing new model capabilities mid late 25 and what that was like tool calling became extremely reliable.
