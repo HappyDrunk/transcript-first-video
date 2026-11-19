@@ -110,6 +110,7 @@ def render_scaffold(
     caption_kind: str | None = None,
     caption_trust: str | None = None,
     skill_version: str = "unknown",
+    selection_end: str | None = None,
 ) -> str:
     """Frontmatter, empty single-note headings, and fill instructions.
 
@@ -145,6 +146,8 @@ def render_scaffold(
             "",
         ]
     )
+    if selection_end is not None:
+        lines.extend([f"本任务 selection.md 的语音选段从 00:00 到 {selection_end}。", ""])
     for heading in _SINGLE_NOTE_HEADINGS:
         if heading == "原文依据":
             lines.extend(["本文略去｜〈略项和时间范围，或无〉", ""])

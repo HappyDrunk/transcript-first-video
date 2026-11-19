@@ -681,14 +681,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--expected-lang")
     parser.add_argument("--confidence", type=float)
     parser.add_argument("--with-coverage", action="store_true", help="Run both checks on the canonical job files.")
+    parser.add_argument("--structure-only", action="store_true", help="Read-only draft structure preflight.")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.structure_only and (args.job is None or args.note is not None or args.transcript is not None
+                                or args.with_coverage):
+        parser.error("--structure-only requires only the canonical --job files")
     if args.with_coverage and (args.job is None or args.note is not None):
         parser.error("--with-coverage requires --job and does not accept --note")
     if args.job is not None:
         if not args.job.is_dir():
             _emit_verify({"allowed": False, "reasons": [f"job directory does not exist: {args.job}"]}, as_json=args.json)
             return 1
+        if args.structure_only:
+            import coverage_check
+            return _emit_verify(coverage_check.check_structure(args.job), as_json=args.json)
         with job_lock(args.job):
             result = check_job_submission(
                 args.job, note_arg=args.note, confidence=args.confidence,

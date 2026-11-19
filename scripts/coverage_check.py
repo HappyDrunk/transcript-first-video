@@ -187,20 +187,52 @@ def _has_omitted_excerpt(
     return False
 
 
+def selection_boundaries(units: list[SelectionUnit], endpoint: int | None) -> list[str]:
+    if units[0].start != 0 or any(left.end != right.start for left, right in zip(units, units[1:])):
+        return ["selection.md must cover the transcript in order without gaps or overlaps, starting at 00:00"]
+    if endpoint is None:
+        return ["selection.md timing cannot be verified without a transcript clock"]
+    if units[-1].end != endpoint:
+        return [f"selection.md must end at the transcript endpoint {rules._fmt(endpoint)}"]
+    return []
+
+
+def omission_issue(units: list[SelectionUnit], omission: str | None) -> list[str]:
+    expected = [(unit.start, unit.end) for unit in units if not unit.retained]
+    if omitted_ranges(omission) != expected:
+        return ["本文略去 must list the omitted selection.md ranges in order, or 无"]
+    return []
+
+
+def check_structure(job: Path) -> dict:
+    transcript = job / "transcript.txt"
+    raw = _read(transcript) if transcript.is_file() else ""
+    segments = rules.transcript_segments(raw, job / "segments.json")
+    endpoint = rules.selection_endpoint(segments, verify_note.read_job_status(job).get("duration_seconds"))
+    units, selection_issues = read_selection(job)
+    if not selection_issues:
+        selection_issues = selection_boundaries(units, endpoint)
+    note_path = job / "note.md"
+    note = _read(note_path) if note_path.is_file() else ""
+    if note.strip():
+        omission, issues = rules.caption_structure(note)
+        if not selection_issues:
+            issues.extend(omission_issue(units, omission))
+    else:
+        issues = ["note.md is missing or empty"]
+    issues.extend(selection_issues)
+    return {"allowed": not issues, "scope": "structure-only",
+            "selection_endpoint": rules._fmt(endpoint) if endpoint is not None else None,
+            "reasons": issues}
+
+
 def check_selection(
     job: Path, ctx: rules.RuleContext, duration: float | None,
 ) -> tuple[list[str], list[str]]:
     units, issues = read_selection(job)
-    if issues:
+    endpoint = rules.selection_endpoint(ctx.segments, duration)
+    if issues or (issues := selection_boundaries(units, endpoint)):
         return issues, []
-    if units[0].start != 0 or any(left.end != right.start for left, right in zip(units, units[1:])):
-        return ["selection.md must cover the transcript in order without gaps or overlaps, starting at 00:00"], []
-    if not ctx.has_clock:
-        return ["selection.md timing cannot be verified without a transcript clock"], []
-    latest = max(cue.start for cue in ctx.segments if cue.start is not None)
-    endpoint = max(math.ceil(duration or 0), math.floor(latest) + 1)
-    if units[-1].end != endpoint:
-        return [f"selection.md must end at the transcript endpoint {rules._fmt(endpoint)}"], []
 
     starts = [unit.start for unit in units]
 
@@ -213,9 +245,7 @@ def check_selection(
         return ["selection.md cannot assign every transcript cue to a unit"], []
 
     omitted = [unit for unit in units if not unit.retained]
-    expected = [(unit.start, unit.end) for unit in omitted]
-    if omitted_ranges(ctx.omission) != expected:
-        issues.append("本文略去 must list the omitted selection.md ranges in order, or 无")
+    issues.extend(omission_issue(units, ctx.omission))
 
     valid = ctx.valid_quotes
     hit = set()

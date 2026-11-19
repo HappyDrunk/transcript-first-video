@@ -400,6 +400,16 @@ def term_occurs(term: str, source: str) -> bool:
     return bool(re.search(_term_pattern(term), source, re.IGNORECASE))
 
 
+def caption_correction_pair(line: str) -> tuple[str, str] | None:
+    correction = _CAPTION_CORRECTION.fullmatch(line)
+    if correction is None:
+        return None
+    original = correction[1].strip().strip(_CORRECTION_QUOTES).strip()
+    target = _CORRECTION_TARGET.match(correction[2].strip())
+    corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip() if target else ""
+    return (original, corrected) if original and corrected else None
+
+
 def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[str, str]]:
     """Return original and corrected spellings backed by the transcript."""
     corrections: list[tuple[str, str]] = []
@@ -408,16 +418,9 @@ def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[
         if match is None or match.groups() != ("warning", "字幕更正"):
             continue
         for line in lines:
-            correction = _CAPTION_CORRECTION.fullmatch(line)
-            if correction is None:
-                continue
-            original = correction[1].strip().strip(_CORRECTION_QUOTES).strip()
-            target = _CORRECTION_TARGET.match(correction[2].strip())
-            if not original or target is None or not term_occurs(original, transcript):
-                continue
-            corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip()
-            if corrected:
-                corrections.append((original, corrected))
+            pair = caption_correction_pair(line)
+            if pair and term_occurs(pair[0], transcript):
+                corrections.append(pair)
     return corrections
 
 
@@ -859,6 +862,16 @@ def _checked_clock(value: object) -> float | None:
     return number if math.isfinite(number) and number >= 0 else None
 
 
+def selection_endpoint(segments: list[quality_gate.Segment], duration: object) -> int | None:
+    """Return the exclusive end of the last selection unit."""
+    latest = max((cue.start for cue in segments if cue.start is not None), default=None)
+    if latest is None:
+        return None
+    clock_end = max((cue.end for cue in segments if cue.end is not None
+                     and cue.start is not None and cue.end > cue.start), default=0)
+    return max(math.ceil(max(_checked_clock(duration) or 0, clock_end)), math.floor(latest) + 1)
+
+
 def transcript_segments(raw: str, sidecar: Path) -> list[quality_gate.Segment]:
     """Use real cue clocks. A sidecar must describe the same current transcript."""
     lines = []
@@ -971,6 +984,32 @@ def _cites(fields: dict, transcript: Path, *, job: bool) -> bool:
     return not job and declared.resolve() == expected
 
 
+def delivery_evidence(body: str) -> tuple[str, str | None, str | None]:
+    evidence = next((heading for heading in _HEADING.finditer(body)
+                     if heading.groups() == ("##", EVIDENCE_HEADING)), None)
+    if evidence is None:
+        return body, None, None
+    before = body[:evidence.start()].rstrip()
+    lines = before.splitlines()
+    omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
+    if omitted and omitted[1]:
+        return "\n".join(lines[:-1]), body[evidence.end():], omitted[1]
+    return before, body[evidence.end():], None
+
+
+def caption_structure(note: str) -> tuple[str | None, list[str]]:
+    body, _, omission = delivery_evidence(_FRONTMATTER.sub("", note, count=1))
+    _, blocks = delivery_parts(body)
+    issues = []
+    for header, *lines in blocks:
+        if "字幕更正" in header and (
+            not re.fullmatch(r">\s*\[!warning\]\s*字幕更正", header)
+            or not any(caption_correction_pair(line) for line in lines)
+        ):
+            issues.append("note.md 字幕更正 needs [!warning] 字幕更正 and a 字幕写作 X，实为 Y pair")
+    return omission, issues
+
+
 def build_context(
     transcript: Path,
     note: str,
@@ -990,22 +1029,13 @@ def build_context(
     note = re.sub(r"\A(?:# (?:expect|fixture_[a-z]+):[^\n]*\n)+", "", note)
     fields = knowledge_note.parse_frontmatter(note) or {}
     speech = "\n".join(cue.text for cue in segments)
-    body = _FRONTMATTER.sub("", note, count=1)
-    evidence_heading = next((heading for heading in _HEADING.finditer(body)
-                             if heading.groups() == ("##", EVIDENCE_HEADING)), None)
+    body, evidence, omission = delivery_evidence(_FRONTMATTER.sub("", note, count=1))
     quotes, evidence_errors = [], []
     screen_path = transcript.with_name(SCREEN_FILE)
     screen_enabled = job and screen_mode(transcript.parent) != "off"
     screen = _screen_index(screen_path) if screen_enabled else None
-    omission = None
-    if evidence_heading:
-        quotes, evidence_errors = _end_quotes(body[evidence_heading.end():], TranscriptIndex(segments), screen)
-        body = body[:evidence_heading.start()].rstrip()
-        lines = body.splitlines()
-        omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
-        if omitted and omitted[1]:
-            omission = omitted[1]
-            body = "\n".join(lines[:-1])
+    if evidence is not None:
+        quotes, evidence_errors = _end_quotes(evidence, TranscriptIndex(segments), screen)
     sections = delivery_sections(body)
     return RuleContext(
         transcript, note, tuple(status for status in (job_status, fields.get("job_status")) if status),
