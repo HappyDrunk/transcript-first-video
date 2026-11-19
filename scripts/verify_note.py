@@ -294,14 +294,15 @@ def job_inputs(job: Path) -> dict:
         else:
             inputs[key] = digest
     status = read_job_status(job)
-    if verify_rules.screen_mode() != "off":
+    mode = verify_rules.screen_mode(job)
+    if mode != "off":
         screen = job / verify_rules.SCREEN_FILE
         try:
             inputs["screen"] = hashlib.sha256(screen.read_bytes()).hexdigest()
         except FileNotFoundError:
             inputs["screen"] = None
         screen_status = status.get("screen_ocr")
-        if (verify_rules.screen_mode() == "slides" and isinstance(screen_status, dict)
+        if (mode == "slides" and isinstance(screen_status, dict)
                 and "slide_count" in screen_status):
             inputs["slide_count"] = screen_status["slide_count"]
     inputs["duration_seconds"] = status.get("duration_seconds")

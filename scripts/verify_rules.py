@@ -760,16 +760,21 @@ def parse_stamp(text: str) -> tuple[int | None, str]:
     return (stamp, text.strip()[match.end():].strip()) if stamp is not None else (None, text.strip())
 
 
-def screen_mode() -> str:
-    value = os.environ.get("TFV_SCREEN_MODE", "").strip().casefold()
-    return value if value in {"slides", "nameplate"} else "off"
+def screen_mode(job: Path | None = None) -> str:
+    if "TFV_SCREEN_MODE" in os.environ or job is None:
+        value = os.environ.get("TFV_SCREEN_MODE", "").strip().casefold()
+        return value if value in {"slides", "nameplate"} else "off"
+    source = _screen_source(job / SCREEN_FILE)
+    screen = source[1] if source is not None else None
+    mode = screen.get("mode") if screen is not None else None
+    return mode if isinstance(mode, str) and mode in {"slides", "nameplate"} else "off"
 
 
 def screen_tag(text: str) -> str:
     return next((tag for tag in (SCREEN_TAG, UNCERTAIN_SCREEN_TAG) if text.startswith(tag)), "")
 
 
-def _screen_lines(path: Path, *, require_slides: bool = False) -> list[str] | None:
+def _screen_source(path: Path) -> tuple[list[str], dict | None] | None:
     try:
         content = path.read_bytes()
         lines = content.decode("utf-8-sig").splitlines()
@@ -780,17 +785,25 @@ def _screen_lines(path: Path, *, require_slides: bool = False) -> list[str] | No
     except (OSError, ValueError):
         status = None
     screen = status.get("screen_ocr") if isinstance(status, dict) else None
-    if require_slides and (not isinstance(screen, dict) or screen.get("mode") != "slides"):
-        return None
     if isinstance(screen, dict) and (
         screen.get("state") != "ready" or screen.get("sha256") != hashlib.sha256(content).hexdigest()
     ):
+        return None
+    return lines, screen if isinstance(screen, dict) else None
+
+
+def _screen_lines(path: Path, *, require_slides: bool = False) -> list[str] | None:
+    source = _screen_source(path)
+    if source is None:
+        return None
+    lines, screen = source
+    if require_slides and (screen is None or screen.get("mode") != "slides"):
         return None
     return lines
 
 
 def screen_slide_groups(path: Path) -> list[tuple[int, int]]:
-    if screen_mode() != "slides":
+    if screen_mode(path.parent) != "slides":
         return []
     lines = _screen_lines(path, require_slides=True)
     if lines is None:
@@ -982,7 +995,7 @@ def build_context(
                              if heading.groups() == ("##", EVIDENCE_HEADING)), None)
     quotes, evidence_errors = [], []
     screen_path = transcript.with_name(SCREEN_FILE)
-    screen_enabled = job and screen_mode() != "off"
+    screen_enabled = job and screen_mode(transcript.parent) != "off"
     screen = _screen_index(screen_path) if screen_enabled else None
     omission = None
     if evidence_heading:
