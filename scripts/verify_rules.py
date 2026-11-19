@@ -1198,6 +1198,11 @@ _CALENDAR_DATES = (
         r"(?:,?[ \t]+(?P<year>(?:19|20)[0-9]{2})(?![0-9]))?", re.IGNORECASE,
     ),
 )
+_OCR_DATE_SEPARATOR = re.compile(
+    rf"(?<![A-Za-z0-9])((?:{_EN_MONTH_NAME})\.?[ \t]+[0-9]{{1,2}})\.(?=[ \t]+(?:19|20)[0-9]{{2}}"
+    r"(?:[ \t]+[0-9]{1,2}:[0-5][0-9]\b|[ \t]*$))", re.IGNORECASE,
+)
+_MILLISECONDS_SUFFIX = re.compile(r"(?<=\d)[ \t]*ms(?![A-Za-z0-9_])", re.IGNORECASE)
 _SPOKEN_YEAR = re.compile(
     r"(?<![A-Za-z0-9])(?:(?:early|mid|late|in)[ \t-]+)+(?P<year>(?:19|20)?[0-9]{2})(?![A-Za-z0-9]|\.[0-9])",
     re.IGNORECASE,
@@ -1237,8 +1242,12 @@ def _integer_label(label: str) -> int:
     return int(label) if label.isascii() else _chinese_integer(label)
 
 
-def canonical_numbers(text: str) -> tuple[str, list[NumericValue]]:
+def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[NumericValue]]:
     """Separate calendar values and versions before comparing ordinary quantities."""
+    if screen:
+        text = _OCR_DATE_SEPARATOR.sub(r"\1,", text)
+    # Keep the whole decimal before the number lexer meets a Latin suffix.
+    text = _MILLISECONDS_SUFFIX.sub(" 毫秒", text)
     values: list[NumericValue] = []
 
     def calendar_date(match: re.Match[str]) -> str:
@@ -1313,10 +1322,10 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
 
-    def canonical(text: str) -> tuple[str, list[NumericValue]]:
+    def canonical(text: str, *, screen: bool = False) -> tuple[str, list[NumericValue]]:
         if ctx.has_screen_file:
             text = re.sub(r"(?<=\d)[xX](?![A-Za-z0-9])", "×", text)
-        return canonical_numbers(text)
+        return canonical_numbers(text, screen=screen)
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
@@ -1333,9 +1342,15 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
-            numeric_source = excerpts if ctx.has_screen_file else source
-            support = [value for excerpt in numeric_source for value in canonical(excerpt)[1]]
-            numeric_prose, numeric_claims = canonical(prose)
+            support = [value for quote in evidence for value in canonical(quote.text, screen=quote.screen)[1]]
+            if not ctx.has_screen_file:
+                support.extend(value for excerpt in corrections for value in canonical(excerpt)[1])
+            numeric_text = prose
+            for quote in evidence:
+                if quote.screen and quote.text in numeric_text:
+                    # An exact reproduction of the cited OCR text is the same date.
+                    numeric_text = numeric_text.replace(quote.text, _OCR_DATE_SEPARATOR.sub(r"\1,", quote.text))
+            numeric_prose, numeric_claims = canonical(numeric_text)
             missing_numbers = {
                 claim.label for claim in numeric_claims
                 if not any(value.supports(claim) for value in support)

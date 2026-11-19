@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 
+import screen_ocr
 import verify_report
 
 
@@ -20,6 +21,30 @@ CORPUS = "phase3-c04c"
 
 
 class ConferenceC04cTests(unittest.TestCase):
+    def test_screen_writer_places_a_physical_boundary_between_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            staged = Path(temporary)
+            screenshot = staged / "frame-000001.png"
+            screenshot.touch()
+            frame = screen_ocr.Frame(screenshot, 205)
+            raw = [
+                (screen_ocr.Line("Left row one", 50, 20, 100, 24), True),
+                (screen_ocr.Line("Right title part one", 300, 25, 150, 40), True),
+                (screen_ocr.Line("Left uncertain row", 50, 70, 120, 20), False),
+                (screen_ocr.Line("Right title part two", 300, 75, 150, 40), True),
+            ]
+            refs = screen_ocr._write_evidence(staged, [frame], [raw], filter_watermarks=True,
+                                              slide_groups=[[frame]])
+            rows = (staged / "screen.txt").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(rows, [
+                "[03:25][画面] Left row one",
+                "[03:25][画面?] Left uncertain row",
+                "",
+                "[03:25][画面] Right title part one",
+                "[03:25][画面] Right title part two",
+            ])
+            self.assertEqual(refs, {screenshot.name: [1, 2, 4, 5]})
+
     def test_paired_samples(self) -> None:
         good = ROOT / "evals/good" / CORPUS
         bad = ROOT / "evals/adversarial" / CORPUS

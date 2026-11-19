@@ -334,72 +334,73 @@
 [03:20][画面?] 0 ACH $0.00
 [03:20][画面] T'ype your message..
 [03:25][幻灯片 9] frame-000030.png
+[03:25][画面] # OG Assiast
+[03:25][画面] Q Seanch
+[03:25][画面] Search
 [03:25][画面] Home
+[03:25][画面] Create Customer
 [03:25][画面] Cash Recaipts Management Center
 [03:25][画面] Workflows
 [03:25][画面] OG Assist
-[03:25][画面] Search
-[03:25][画面] Create Customer
-[03:25][画面] Origin Story
+[03:25][画面] Clouo
 [03:25][画面] Cloua
-[03:25][画面] One bet on
+[03:25][画面] Apply Penalty
+[03:25][画面] Process
+[03:25][画面] Welcome Gabe!
+[03:25][画面] Prepare Bit Run
+[03:25][画面] View Accounts
+[03:25][画面] ④ Create a Deposit
+[03:25][画面] Creane a Deposit
 [03:25][画面] Prepare Bill Run
 [03:25][画面] View Áccounts
 [03:25][画面] Charges
-[03:25][画面] Apply Penalty
 [03:25][画面] Payments
-[03:25][画面] Process
-[03:25][画面] ④ Create a Deposit
-[03:25][画面] Welcome Gabe!
 [03:25][画面] Summarize what happened in this workspace.
-[03:25][画面] agents, one
+[03:25][画面] Whart should i tackle fiest todiay?
 [03:25][画面] Workspace
 [03:25][画面] What should i tackle first today?
+[03:25][画面] Draft a respomse I can send to my tean
 [03:25][画面] Draft a response I can send to my team
 [03:25][画面] Days Sales Outstanding
-[03:25][画面] Total Amount Owed
 [03:25][画面] Total Payments Taken Today
+[03:25][画面] Total Amount Owed
+[03:25][画面] Create a quick action plan from my cuerent
+[03:25][画面] Creata a quick action plan trom my current
 [03:25][画面] $69
 [03:25][画面] 0
-[03:25][画面] Creata a quick action plan trom my current
 [03:25][画面] tasks
-[03:25][画面] immediate yes.
+[03:25][画面] larget <30 drys
+[03:25][画面?] As of Jurer Is. 2026 2:22 am
+[03:25][画面?] As of Jun 18_2026 2:22 jm
+[03:25][画面?] As of Aurie th.2020 2:22 am
 [03:25][画面] larget 30 dirys
 [03:25][画面?] As of Junir t8. 2026 2:22 am
-[03:25][画面?] As of Jun 18_2026 2:22 jm
 [03:25][画面] Receipts by Payment Method
+[03:25][画面?] Lm 2008
 [03:25][画面?] lamm. 2028
 [03:25][画面] @ Cash $0.00
-[03:25][画面] 0.0%
 [03:25][画面?] Check s0:00
+[03:25][画面] Itenk Dref S0.00
 [03:25][画面] llank Dreft S0.00
 [03:25][画面?] Money Order s0.00
+[03:25][画面] 0.0%
 [03:25][画面] Your billing breakdown awaits!
+[03:25][画面?] ACH $0:00
+[03:25][画面] Type your message.
 [03:25][画面] Type your mersage.
-[03:25][画面] A principal engineer spun up a team focused on Al agents and
 [03:25][画面] Oroar you stiert biing services. youll joer a bemutifut brsakdown oght Iere
 [03:25][画面?] $ ACV 50.00
+[03:25][画面?] 000 e /
+
+[03:25][画面] OpenGovT
+[03:25][画面] Origin Story
+[03:25][画面] One bet on
+[03:25][画面] agents, one
+[03:25][画面] immediate yes.
+[03:25][画面] A principal engineer spun up a team focused on Al agents and
 [03:25][画面] asked me to join. OG Assist grew from there. We started to
 [03:25][画面] integrate deeply with our products through frontend and
 [03:25][画面] backend tools.
-[03:25][画面] OpenGovT
-[03:25][画面] # OG Assiast
-[03:25][画面] Q Seanch
-[03:25][画面] Clouo
-[03:25][画面] Prepare Bit Run
-[03:25][画面] View Accounts
-[03:25][画面] Creane a Deposit
-[03:25][画面] Whart should i tackle fiest todiay?
-[03:25][画面] Create a quick action plan from my cuerent
-[03:25][画面] Draft a respomse I can send to my tean
-[03:25][画面] larget <30 drys
-[03:25][画面?] As of Jurer Is. 2026 2:22 am
-[03:25][画面?] As of Aurie th.2020 2:22 am
-[03:25][画面?] Lm 2008
-[03:25][画面] Itenk Dref S0.00
-[03:25][画面?] ACH $0:00
-[03:25][画面] Type your message.
-[03:25][画面?] 000 e /
 [03:28][画面] Check $0.00
 [03:28][画面] Money Order $0.00
 [03:28][画面] Cash ReceiptsManagement CenterWorkflows
@@ -901,22 +902,23 @@
 [10:24][画面] •Navigation for Cash Rteceipts, Management Center,
 [10:24][画面?] 0 ACH $0.00
 [10:30][幻灯片 15] frame-000089.png
-[10:30][画面] Humans in the Loop
-[10:30][画面] Please get my current entity and my current context
-[10:30][画面] Humans Remain
 [10:30][画面] Tool approval required
 [10:30][画面] getEntityDetails
-[10:30][画面] In Control
+[10:30][画面] getEntityOetails
 [10:30][画面] OG Assist is trying to make a tool call and needs your approval.
 [10:30][画面] Show arguments
 [10:30][画面] Reject
 [10:30][画面] Accept
+
+[10:30][画面] OpenGovT
+[10:30][画面] Humans in the Loop
+[10:30][画面] Please get my current entity and my current context
+[10:30][画面] Humans Remain
+[10:30][画面] In Control
+[10:30][画面] Tool Calls can be gated behind tool call approval UI requiring
 [10:30][画面] Tool Calls can be gated behind tool call approval Ul requiring
 [10:30][画面] manual intervention and explicit permission from a user prior to
 [10:30][画面] the agent taking action.
-[10:30][画面] OpenGovT
-[10:30][画面] getEntityOetails
-[10:30][画面] Tool Calls can be gated behind tool call approval UI requiring
 [11:20][幻灯片 16] frame-000096.png
 [11:20][画面] OG Assist
 [11:20][画面] Please create a PDF with beautiful art to
@@ -971,37 +973,38 @@
 [12:25][画面] that invest in fairness, education, transparency, and ethical
 [12:25][画面] design will be better prepared to benefit from innovation
 [12:25][画面] while reducing harm.
-[12:25][画面] Long Context
 [12:25][画面] Conclusion
-[12:25][画面] Holding more
 [12:25][画面] Technology is one of the defining forces of modern society.
 [12:25][画面] It has improved communication, healthcare, education,
 [12:25][画面] productivity, and access to information. It has connected
-[12:25][画面] than the window
 [12:25][画面] people across the world and created opportunities that
 [12:25][画面] previous generations could hardly imagine. Yet it has also
 [12:25][画面] introduced challenges involving privacy, inequality,
 [12:25][画面] misinformation, job disruption, and ethical responsibility.
 [12:25][画面] The central question is not whether society should accept
-[12:25][画面] allows.
 [12:25][画面] or reject technology. Technology is already deeply woven
 [12:25][画面] into modern life. The real question is how society can guide
 [12:25][画面] technology toward human well-being. Innovation should not
 [12:25][画面] only make systems faster or more profitable; it should make
 [12:25][画面] life more fair, informed, healthy, and meaningful.
 [12:25][画面] A better technological future is possible, but it requires
+[12:25][画面] intention. People must remain at the center of progress.
 [12:25][画面] intention, People must remain at the center of progress.
 [12:25][画面] When technology is developed with responsibility, inclusion,
 [12:25][画面] and accountability, it can help build a society that is not
 [12:25][画面] only more advanced, but also more humane.
+[12:25][画面] Type your message...
+[12:25][画面] +;Al can make mistakes, Please carefully check all outputs.
+[12:25][画面] Al can make mistakes, Please carefully check all outputs.
+
+[12:25][画面] Long Context
+[12:25][画面] Holding more
+[12:25][画面] than the window
+[12:25][画面] allows.
 [12:25][画面] Summarization compresses history as conversations grow;
 [12:25][画面] memory persists the facts that matter, so the agent stays
 [12:25][画面] coherent across long sessions. Also helps with memory and
-[12:25][画面] Type your message...
 [12:25][画面] recall of previous messages and responses.
-[12:25][画面] Al can make mistakes, Please carefully check all outputs.
-[12:25][画面] intention. People must remain at the center of progress.
-[12:25][画面] +;Al can make mistakes, Please carefully check all outputs.
 [12:32][画面] Al can make mistakes. Please carefully check all outputs.
 [12:32][画面] introduced challenges involving privacy, inequality.
 [12:32][画面] Type your message..
@@ -1253,16 +1256,13 @@
 [16:24][画面] import { LanguageModel, Tool, Toolkit } from "@effect/ai"
 [16:24][画面] import { Effect, Schema } from "effect"
 [16:24][画面] const GetDadJoke = Tool.make("GetDadJoke", {
-[16:24][画面] Tools & Skills
 [16:24][画面] description: "Get a hilarious dad joke from the ICanHazDadJoke API",
-[16:24][画面] One repo, every
 [16:24][画面] success: Schema.String,
 [16:24][画面] failure: Schema.Never,
-[16:24][画面] 8
 [16:24][画面] parameters: {
-[16:24][画面] tool.
-[16:24][画面] 9
+[16:24][画面] 8
 [16:24][画面] searchTerm: Schema.String.annotations({
+[16:24][画面] 9
 [16:24][画面] 10
 [16:24][画面] description: "The search term to use to find dad jokes"
 [16:24][画面] 11
@@ -1276,12 +1276,16 @@
 [16:24][画面] const generateDadJoke = LanguageModel.generateText({
 [16:24][画面] 18
 [16:24][画面] prompt: "Generate a dad joke about pirates",
-[16:24][画面] An enterprise contribution model keeps all tools and skills in a
 [16:24][画面] 19
 [16:24][画面] toolkit: DadJokeTools
-[16:24][画面] single repo so any engineer can extend what OG Assist can do.
 [16:24][画面] 20
 [16:24][画面] https://effect.website/docs/ai/tool-use/#4-give-the-tools-to-the-model
+
+[16:24][画面] Tools & Skills
+[16:24][画面] One repo, every
+[16:24][画面] tool.
+[16:24][画面] An enterprise contribution model keeps all tools and skills in a
+[16:24][画面] single repo so any engineer can extend what OG Assist can do.
 [16:32][画面] 3
 [16:32][画面] 6
 [16:32][画面] sin a s o s do
@@ -1292,31 +1296,32 @@
 [16:56][画面] 5
 [17:37][幻灯片 22] frame-000148.png
 [17:37][画面?] caffeinate·claude-157x52
-[17:37][画面?] 26-caffeinate-claude
 [17:37][画面?] gdemesa@MAC-Gabriel-De-Mesa ai % claude
 [17:37][画面?] Claude Code v2.1.183
-[17:37][画面?] Sonnet 4.6 with ligh effurt
 [17:37][画面] Clauds Enterprise
+[17:37][画面?] Sonnet 4.6 with ligh effurt
 [17:37][画面] -/Desktop/ai
+[17:37][画面?] I setup issue: NCP
+[17:37][画面] /doutor
 [17:37][画面?] 1 setup issue: MCP /doctor
-[17:37][画面] Developer Velocity
+[17:37][画面] au ea e aa s s es az
 [17:37][画面?] claude please say hi to the ai engineer conference 20261
-[17:37][画面] Building agents
+[17:37][画面?] Hey AI Engineer Conference 28261
 [17:37][画面?] Hey AI Engineer Conference 20261
+[17:37][画面] Sautéad For Zs
 [17:37][画面] Sauténid for Zs
 [17:37][画面?] PR 0809
+[17:37][画面?] 1009
 [17:37][画面] * for agents
+
+[17:37][画面] OpenGovT
+[17:37][画面?] 26-caffeinate-claude
+[17:37][画面] Developer Velocity
+[17:37][画面] Building agents
 [17:37][画面] with agents.
 [17:37][画面] Claude Code, Cursor, and cloud agents accelerate how the
 [17:37][画面] team writes, reviews, and ships building OG Assist with the
 [17:37][画面] same kind of tools we ship.
-[17:37][画面] OpenGovT
-[17:37][画面?] I setup issue: NCP
-[17:37][画面] /doutor
-[17:37][画面?] Hey AI Engineer Conference 28261
-[17:37][画面] au ea e aa s s es az
-[17:37][画面] Sautéad For Zs
-[17:37][画面?] 1009
 [17:44][画面?] ai — * Say hi to Al engineer conference 2026 - caffeinate claude — 157×52
 [17:44][画面] .n Molly's PR -node - claude
 [17:44][画面] atalog parity -node - claude

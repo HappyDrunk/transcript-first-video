@@ -17,7 +17,9 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
+from itertools import groupby
 from pathlib import Path
+from statistics import median
 from threading import BoundedSemaphore, Thread, enumerate as live_threads
 
 import quality_gate
@@ -489,6 +491,27 @@ def _fixed_watermarks(frames: list[Frame], results: list[list[tuple[Line, bool]]
     return watermarks
 
 
+def _reading_columns(items: list[tuple[Frame, Line, bool]]) -> list[list[tuple[Frame, Line, bool]]]:
+    """Split a frame at its widest clear gutter between vertically overlapping columns."""
+    by_x = sorted(items, key=lambda item: item[1].x)
+    gutter = median(item[1].height for item in items)
+    split = 0
+    right_edge = 0
+    for index, (_, line, _) in enumerate(by_x):
+        gap = line.x - right_edge
+        if gap > gutter and 2 <= index <= len(items) - 2:
+            left, right = by_x[:index], by_x[index:]
+            if max(min(item[1].y for item in side) for side in (left, right)) < min(
+                max(item[1].y + item[1].height for item in side) for side in (left, right)
+            ):
+                split, gutter = index, gap
+        right_edge = max(right_edge, line.x + line.width)
+    if not split:
+        return [items]
+    return [sorted(side, key=lambda item: (item[1].y, item[1].x))
+            for side in (by_x[:split], by_x[split:])]
+
+
 def _write_evidence(
     staged: Path, frames: list[Frame], results: list[list[tuple[Line, bool]]], *, filter_watermarks: bool,
     slide_groups: list[list[Frame]] | None = None,
@@ -526,12 +549,17 @@ def _write_evidence(
             first = group[0]
             rows.append(f"{quality_gate.format_stamp(first.seconds)}[幻灯片 {index}] {first.path.name}")
             retain(first)
-        for frame, line, trusted in lines:
-            if line.text in common and (frame, line, trusted) != preferred[line.text]:
-                continue
-            tag = SCREEN_TAG if trusted else UNCERTAIN_SCREEN_TAG
-            rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {line.text}")
-            retain(frame)
+        visible = [item for item in lines if item[1].text not in common or item == preferred[item[1].text]]
+        for frame, same_frame in groupby(visible, key=lambda item: item[0]):
+            items = list(same_frame)
+            columns = _reading_columns(items) if filter_watermarks else [items]
+            for column_number, column in enumerate(columns):
+                if column_number:
+                    rows.append("")  # A physical boundary stops quotes from joining columns.
+                for _, line, trusted in column:
+                    tag = SCREEN_TAG if trusted else UNCERTAIN_SCREEN_TAG
+                    rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {line.text}")
+                    retain(frame)
     (staged / SCREEN_FILE).write_text("\n".join(rows) + "\n", encoding="utf-8")
     return references
 
