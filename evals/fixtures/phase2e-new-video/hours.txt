@@ -1,0 +1,3 @@
+[00:00] Image recognition identifies objects in pictures, and speech recognition turns recorded voices into text. These techniques give an agent structured input before it decides which tool to call.
+[08:18] Finish the batch in 24 hours. Keep the pictures and recordings in separate folders before sending them to the appropriate recognition service.
+[13:02] Review the resulting structured input before choosing a tool. Keep a record of the observed failure and add that case to the next evaluation run.

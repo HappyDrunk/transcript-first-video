@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -23,6 +24,11 @@ import quality_gate
 from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREEN_TAG
 
 SLIDE_INTERVAL = 8
+SLIDE_GROUP_LEFT = 0.30
+SLIDE_GROUP_BOTTOM = 0.78
+SLIDE_GROUP_SIZE = (160, 90)
+SLIDE_GROUP_DIFFERENCE = 5.5
+SLIDE_COMMON_RATIO = 0.5
 NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
 NAMEPLATE_TIMEOUT = 120
@@ -230,6 +236,7 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
         if actual > 0:
             scan.budget = actual / 2
     frames, checksums = [], set()
+    previous_checksum = None
     for index, pts, details in _SHOWINFO.findall(result.stderr):
         seconds = float(pts)
         if not math.isfinite(seconds) or seconds < 0 or (mode == "nameplate" and seconds >= NAMEPLATE_SECONDS):
@@ -238,13 +245,74 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
         if not path.is_file():
             raise ScreenError(f"FFmpeg did not preserve the frame at {seconds:g}s")
         checksum = _CHECKSUM.search(details)
-        if checksum is None or checksum[1] not in checksums:
+        duplicate = checksum is not None and (
+            checksum[1] == previous_checksum if mode == "slides" else checksum[1] in checksums
+        )
+        if not duplicate:
             frames.append(Frame(path, seconds))
-            if checksum:
-                checksums.add(checksum[1])
+        previous_checksum = checksum[1] if checksum else None
+        if checksum:
+            checksums.add(checksum[1])
     if not frames:
         raise ScreenError("FFmpeg returned no timed frames")
     return frames
+
+
+def _gray_pixels(path: Path) -> bytes:
+    """Read only the gray8, non-interlaced, unfiltered PNG emitted below."""
+    png = path.read_bytes()
+    if png[:8] != b"\x89PNG\r\n\x1a\n" or png[24:29] != b"\x08\x00\x00\x00\x00":
+        raise ScreenError("slide thumbnail is not an unfiltered gray8 PNG")
+    width, height = int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+    chunks, cursor = [], 8
+    while cursor + 12 <= len(png):
+        length = int.from_bytes(png[cursor:cursor + 4], "big")
+        if png[cursor + 4:cursor + 8] == b"IDAT":
+            chunks.append(png[cursor + 8:cursor + 8 + length])
+        cursor += length + 12
+    try:
+        rows = zlib.decompress(b"".join(chunks))
+    except zlib.error as exc:
+        raise ScreenError("slide thumbnail PNG is unreadable") from exc
+    stride = width + 1
+    if not width or not height or len(rows) != stride * height or any(rows[::stride]):
+        raise ScreenError("slide thumbnail PNG has an unexpected row format")
+    return b"".join(rows[start + 1:start + stride] for start in range(0, len(rows), stride))
+
+
+def _group_frames(scan: Scan, ffmpeg: str, frames: list[Frame]) -> list[list[Frame]]:
+    if len(frames) < 2:
+        return [frames] if frames else []
+    groups: list[list[Frame]] = []
+    previous = None
+    width, height = SLIDE_GROUP_SIZE
+    filters = (
+        f"format=gray,crop=iw-trunc(iw*{SLIDE_GROUP_LEFT}):trunc(ih*{SLIDE_GROUP_BOTTOM})"
+        f":trunc(iw*{SLIDE_GROUP_LEFT}):0,scale={width}:{height}:flags=area"
+    )
+    for frame in frames:
+        thumbnail = frame.path.with_name(f"{frame.path.stem}-group.png")
+        try:
+            scan.run([
+                ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
+                "-filter_threads", "1", "-i", str(frame.path), "-vf", filters,
+                "-frames:v", "1", "-threads", "1", "-pix_fmt", "gray", "-pred", "none", str(thumbnail),
+            ], "slide grouping")
+            pixels = _gray_pixels(thumbnail)
+        finally:
+            thumbnail.unlink(missing_ok=True)
+        if previous is not None and len(previous) != len(pixels):
+            raise ScreenError("slide thumbnail dimensions changed during grouping")
+        difference = (
+            sum(abs(left - right) for left, right in zip(previous, pixels)) / len(pixels)
+            if previous is not None else SLIDE_GROUP_DIFFERENCE
+        )
+        if difference >= SLIDE_GROUP_DIFFERENCE:
+            groups.append([])
+        groups[-1].append(frame)
+        previous = pixels
+        scan.remaining()
+    return groups
 
 
 def _rapidocr(mode: str):
@@ -405,14 +473,11 @@ def _deduplicate(
     return sorted(chosen.values(), key=lambda item: item[0].seconds)
 
 
-def _write_evidence(
-    staged: Path, frames: list[Frame], results: list[list[tuple[Line, bool]]], *, filter_watermarks: bool,
-) -> dict[str, list[int]]:
+def _fixed_watermarks(frames: list[Frame], results: list[list[tuple[Line, bool]]]) -> set[str]:
     positions = defaultdict(list)
-    if filter_watermarks:
-        for index, lines in enumerate(results):
-            for line, _ in lines:
-                positions[line.text.casefold()].append((index, line))
+    for index, lines in enumerate(results):
+        for line, _ in lines:
+            positions[line.text.casefold()].append((index, line))
     majority = max(3, len(frames) // 2 + 1)
     watermarks = set()
     for text, occurrences in positions.items():
@@ -421,21 +486,52 @@ def _write_evidence(
             for _, line in occurrences
         ):
             watermarks.add(text)
+    return watermarks
 
-    chosen = _deduplicate(frames, results, watermarks)
-    if not chosen:
+
+def _write_evidence(
+    staged: Path, frames: list[Frame], results: list[list[tuple[Line, bool]]], *, filter_watermarks: bool,
+    slide_groups: list[list[Frame]] | None = None,
+) -> dict[str, list[int]]:
+    groups = slide_groups if slide_groups is not None else [frames]
+    # Preserve the established fixed-position filter for a single screen.
+    watermarks = _fixed_watermarks(frames, results) if filter_watermarks and len(groups) == 1 else set()
+    by_frame = dict(zip(frames, results))
+    chosen = [_deduplicate(group, [by_frame[frame] for frame in group], watermarks) for group in groups]
+    if not any(chosen):
         raise ScreenError("OCR found no screen text after filtering")
+    occurrences = defaultdict(set)
+    preferred = {}
+    for index, lines in enumerate(chosen):
+        for item in lines:
+            frame, line, trusted = item
+            occurrences[line.text].add(index)
+            previous = preferred.get(line.text)
+            if previous is None or trusted > previous[2]:
+                preferred[line.text] = item
+    common = {text for text, indices in occurrences.items() if len(indices) / len(groups) >= SLIDE_COMMON_RATIO}
     screenshots = staged / SCREEN_FRAMES
     screenshots.mkdir()
     references = {}
     rows = []
-    for frame, line, trusted in chosen:
-        tag = SCREEN_TAG if trusted else UNCERTAIN_SCREEN_TAG
-        rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {line.text}")
+
+    def retain(frame: Frame) -> None:
         if frame.path.name not in references:
             frame.path.replace(screenshots / frame.path.name)
             references[frame.path.name] = []
         references[frame.path.name].append(len(rows))
+
+    for index, (group, lines) in enumerate(zip(groups, chosen), 1):
+        if slide_groups is not None and len(groups) > 1:
+            first = group[0]
+            rows.append(f"{quality_gate.format_stamp(first.seconds)}[幻灯片 {index}] {first.path.name}")
+            retain(first)
+        for frame, line, trusted in lines:
+            if line.text in common and (frame, line, trusted) != preferred[line.text]:
+                continue
+            tag = SCREEN_TAG if trusted else UNCERTAIN_SCREEN_TAG
+            rows.append(f"{quality_gate.format_stamp(frame.seconds)}{tag} {line.text}")
+            retain(frame)
     (staged / SCREEN_FILE).write_text("\n".join(rows) + "\n", encoding="utf-8")
     return references
 
@@ -457,9 +553,14 @@ def extract(
             video = _download(scan, [*download_command, *download_options()], source, work)
             frames = _frames(scan, ffmpeg, video, work, mode)
             video.unlink()
+            groups = _group_frames(scan, ffmpeg, frames) if mode == "slides" else None
             ocr = scan.recognize(_rapidocr, mode)
             results = [_read_frame(scan, ffmpeg, ocr, mode, crop, frame) for frame in frames]
-            references = _write_evidence(staged, frames, results, filter_watermarks=mode == "slides")
+            references = _write_evidence(
+                staged, frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
+            )
+            if groups is not None:
+                status["slide_count"] = len(groups)
         scan.remaining()
         status.update(state="ready", path=SCREEN_FILE, screenshot_directory=SCREEN_FRAMES,
                       screenshot_lines=references,

@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Gate tests
         run: python3 scripts/test_gate.py
+      - name: Reading note output
+        run: python3 scripts/test_render_reading_note.py
       - name: Frozen regression samples (other work packages pending)
         run: python3 scripts/test_regressions.py
         continue-on-error: true
@@ -30,6 +32,14 @@ jobs:
         run: python3 scripts/test_phase2e_item6.py
       - name: Frozen Phase 2E item 6 rerun tests
         run: python3 scripts/test_phase2e_item6_rerun.py
+      - name: Frozen Phase 2E new-video pairs
+        run: python3 scripts/test_phase2e_new_video.py
+      - name: Frozen Phase 2E slide grouping and selection
+        run: python3 scripts/test_phase2e_slides.py
+      - name: Frozen Phase 2E formatting before submission
+        run: python3 scripts/test_phase2e_w10.py
+      - name: Frozen Phase 2E task screen-mode fallback
+        run: python3 scripts/test_phase2e_w10_mode.py
       - name: RED-1 accepted note survives successful settle
         run: python3 scripts/test_regressions.py RegressionTests.test_red1_successful_settle_preserves_accepted_note
       - name: RED-2 old deposit survives failed settle
