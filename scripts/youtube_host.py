@@ -929,7 +929,7 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
         archived, installed = [], []
         try:
             if replacing:
-                for path in (*old_notes, job / "selection.md"):
+                for path in (*old_notes, job / "selection.md", job / "review.md"):
                     target = verify_note.archive_file(path)
                     if target is not None:
                         archived.append((target, path))

@@ -310,14 +310,100 @@ def job_inputs(job: Path) -> dict:
     return inputs
 
 
-def repair_lock(status: dict) -> bool:
+def repair_lock(status: dict, *, review: bool = False) -> bool:
     repair_rounds = status.get("repair_rounds", 0)
     edit_rounds = status.get("edit_rounds", 0)
     return (
         status.get("status") == "not_deposited"
-        or (isinstance(repair_rounds, int) and not isinstance(repair_rounds, bool) and repair_rounds > 2)
+        or (isinstance(repair_rounds, int) and not isinstance(repair_rounds, bool) and repair_rounds > 2
+            and not (review and _review_retry(status)))
         or (isinstance(edit_rounds, int) and not isinstance(edit_rounds, bool) and edit_rounds > 2)
     )
+
+
+def _review_retry(status: dict) -> bool:
+    batch = status.get("review")
+    return (
+        isinstance(batch, dict) and batch.get("result") == "changes"
+        and batch.get("failures") == 1
+        and type(batch.get("initial_repair_rounds")) is int
+        and 0 <= batch["initial_repair_rounds"] <= 2
+        and status.get("repair_rounds") == batch["initial_repair_rounds"] + 1
+    )
+
+
+def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[bytes, dict] | None:
+    """Bind one independent review to its prior two-gate receipt, under the job lock."""
+    path = job / "review.md"
+    content = path.read_bytes() if path.exists() else b""
+    lines = content.splitlines()
+    first = lines[0].decode("utf-8-sig", errors="replace") if lines else ""
+    if not first.startswith("<!-- tfv-review:"):
+        if required:
+            raise ValueError("a Task review.md receipt is required before reading delivery")
+        return None
+    header = re.fullmatch(r"<!-- tfv-review: (.+) -->", first)
+    try:
+        receipt = json.loads(header[1]) if header else None
+    except ValueError:
+        receipt = None
+    if (not isinstance(receipt, dict) or not isinstance(receipt.get("inputs"), dict)
+            or receipt.get("result") not in ("changes", "clear")):
+        raise ValueError("invalid tfv-review receipt")
+
+    status = read_job_status(job)
+    if repair_lock(status, review=True):
+        raise ValueError(REPAIR_LIMIT_MESSAGE)
+    inputs = job_inputs(job)
+    batch = status.get("review")
+    if batch is None:
+        verifier, coverage = status.get("verifier"), status.get("coverage")
+        if (not isinstance(verifier, dict) or not isinstance(coverage, dict)
+                or verifier.get("allowed") is not True or coverage.get("allowed") is not True
+                or verifier.get("inputs") != receipt["inputs"]
+                or coverage.get("inputs") != receipt["inputs"]
+                or verifier.get("skill_version") != current_skill_version()):
+            raise ValueError("review inputs must first pass verify and coverage together")
+        batch = {
+            "inputs": receipt["inputs"], "result": receipt["result"], "revisions": [],
+            "failures": 0, "initial_repair_rounds": status.get("repair_rounds", 0),
+        }
+    elif (not isinstance(batch, dict) or batch.get("inputs") != receipt["inputs"]
+          or batch.get("result") != receipt["result"]):
+        raise ValueError("only the original review batch may be processed")
+
+    baseline = batch["inputs"]
+
+    def sources(values: dict) -> dict:
+        return {key: value for key, value in values.items()
+                if key not in {"note", "note_file", "selection"}}
+
+    if sources(inputs) != sources(baseline):
+        raise ValueError("review source evidence changed; the receipt is stale")
+    if batch["result"] == "clear" and inputs != baseline:
+        raise ValueError("a clear review only covers the unchanged reviewed inputs")
+    if batch.get("final_inputs") is not None and inputs != batch["final_inputs"]:
+        raise ValueError("this review batch is complete; no further review revision is allowed")
+
+    revisions = batch["revisions"]
+    previous = revisions[-1] if revisions else baseline
+    if inputs != previous:
+        if (len(revisions) >= 2 or (revisions and batch["failures"] != 1)
+                or inputs in revisions):
+            raise ValueError("the review correction allowance is exhausted")
+        revisions.append(inputs)
+        # The ordinary revision recorder must see this authorized review draft
+        # as already registered. No ordinary edit or failure count is removed.
+        status["note_digest"] = inputs["note"]
+        status["finished"] = False
+        status["verifier"] = None
+        status["coverage"] = {"allowed": False, "reasons": ["review draft awaits final checks"]}
+        if status.get("status") in {"finished", NO_EXTRACTABLE}:
+            status["status"] = "transcript_ready"
+    status["review"] = batch
+    status["review_rounds"] = 1 if batch["result"] == "changes" else 0
+    write_job_status(job, status)
+    return content, inputs
 
 
 def current_skill_version() -> str:
@@ -372,9 +458,24 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
     return data
 
 
+def _record_failure(data: dict, reasons: list[str], *, review: bool = False) -> None:
+    rounds = data.get("repair_rounds", 0)
+    if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
+        rounds = 0
+    data["repair_rounds"] = rounds + 1
+    data["failure_lines"] = reasons
+    if review:
+        data["review"]["failures"] += 1
+    review_failed = review and data["review"]["failures"] >= 2
+    if review_failed or (data["repair_rounds"] > 2 and not (review and _review_retry(data))):
+        data["status"] = "not_deposited"
+        data["locked"] = True
+        data["reason"] = REPAIR_LIMIT_MESSAGE
+
+
 def record_gate_result(
     job: Path, gate: str, allowed: bool, reasons: list[str], *, inputs: dict | None = None,
-    coverage: dict | None = None,
+    coverage: dict | None = None, review: bool = False,
 ) -> dict:
     """Persist a single submission, optionally containing both gate results."""
     data = read_job_status(job)
@@ -406,12 +507,7 @@ def record_gate_result(
     elif gate == "coverage":
         data["coverage"] = {"allowed": allowed, "reasons": reasons, "inputs": inputs if allowed else None}
     if not allowed:
-        data["repair_rounds"] = rounds + 1
-        data["failure_lines"] = reasons
-        if data["repair_rounds"] > 2:
-            data["status"] = "not_deposited"
-            data["locked"] = True
-            data["reason"] = REPAIR_LIMIT_MESSAGE
+        _record_failure(data, reasons, review=review)
     elif (gate == "coverage" or coverage is not None) and inputs is not None:
         verifier = data.get("verifier") or {}
         if (
@@ -424,6 +520,8 @@ def record_gate_result(
             data["note"] = "note.md"
             data["note_stale"] = False
             data.pop("failure_lines", None)
+            if review:
+                data["review"]["final_inputs"] = inputs
     write_job_status(job, data)
     return data
 
@@ -442,7 +540,9 @@ def archive_file(path: Path) -> Path | None:
     return target
 
 
-def apply_no_extractable(job: Path, reason: str, *, coverage_reasons: Sequence[str] = ()) -> dict:
+def apply_no_extractable(
+    job: Path, reason: str, *, coverage_reasons: Sequence[str] = (), review: bool = False,
+) -> dict:
     """Record that the note must not be deposited, archiving prior documents."""
     status_path = job / "status.json"
     data: dict = {}
@@ -458,10 +558,6 @@ def apply_no_extractable(job: Path, reason: str, *, coverage_reasons: Sequence[s
     archive_file(job / "delivery.md")
     data["status"] = NO_EXTRACTABLE
     data["finished"] = False
-    rounds = data.get("repair_rounds", 0)
-    if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
-        rounds = 0
-    data["repair_rounds"] = rounds + 1
     data["note"] = None
     data["delivery"] = None
     data["note_stale"] = True
@@ -474,11 +570,7 @@ def apply_no_extractable(job: Path, reason: str, *, coverage_reasons: Sequence[s
         "skill_version": current_skill_version(),
         "reasons": [reason],
     }
-    data["failure_lines"] = [reason, *coverage_reasons]
-    if data["repair_rounds"] > 2:
-        data["status"] = "not_deposited"
-        data["locked"] = True
-        data["reason"] = REPAIR_LIMIT_MESSAGE
+    _record_failure(data, [reason, *coverage_reasons], review=review)
     write_job_status(job, data)
     return data
 
@@ -511,11 +603,12 @@ def _emit_verify(result: dict, *, as_json: bool) -> int:
 
 def check_job_submission(
     job: Path, *, note_arg: str | None = None, confidence: float | None = None,
-    expected_lang: str | None = None, with_coverage: bool = False,
+    expected_lang: str | None = None, with_coverage: bool = False, reviewed_inputs: dict | None = None,
 ) -> dict:
     """Check and record one submission while the caller holds the job lock."""
+    review = reviewed_inputs is not None
     status = read_job_status(job)
-    if repair_lock(status):
+    if repair_lock(status, review=review):
         return {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}
 
     try:
@@ -523,6 +616,8 @@ def check_job_submission(
     except (OSError, RuntimeError) as exc:
         return {"allowed": False, "reasons": [str(exc)]}
     inputs = job_inputs(job)
+    if review and inputs != reviewed_inputs:
+        return {"allowed": False, "reasons": ["review draft changed before verification; rerun submission"]}
     try:
         note = _read_note(note_arg or str(job / "note.md"))
         if note_arg is not None and inputs["note"] != _note_digest(note):
@@ -536,7 +631,7 @@ def check_job_submission(
         result = {"allowed": False, "reasons": [f"C04a FAIL: {knowledge_note.ALL_INAPPLICABLE_REASON}"]}
     elif note is not None:
         status = record_note_revision(job, note)
-        if repair_lock(status):
+        if repair_lock(status, review=review):
             return {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}
         result = verify(
             job / "transcript.txt", note, job=True, confidence=confidence,
@@ -557,12 +652,14 @@ def check_job_submission(
             coverage["reasons"].append("C00 FAIL: job files changed during coverage; rerun both checks")
     if no_extractable and not changed:
         coverage_reasons = coverage["reasons"] if coverage is not None else []
-        status = apply_no_extractable(job, knowledge_note.ALL_INAPPLICABLE_REASON, coverage_reasons=coverage_reasons)
+        status = apply_no_extractable(
+            job, knowledge_note.ALL_INAPPLICABLE_REASON, coverage_reasons=coverage_reasons, review=review,
+        )
         result.update(status=NO_EXTRACTABLE, note_deleted=True)
     else:
         status = record_gate_result(
             job, "verify", result["allowed"], result["reasons"],
-            inputs=inputs if canonical_note else None, coverage=coverage,
+            inputs=inputs if canonical_note else None, coverage=coverage, review=review,
         )
     if coverage is not None:
         coverage["finished"] = status["finished"]
@@ -570,7 +667,7 @@ def check_job_submission(
         result["allowed"] = status["finished"]
         result["reasons"].extend(coverage["reasons"])
         result.setdefault("warnings", []).extend(coverage["warnings"])
-    if repair_lock(status) and (note is not None or with_coverage):
+    if repair_lock(status, review=review) and (note is not None or with_coverage):
         result["allowed"] = False
         result["reasons"].append(REPAIR_LIMIT_MESSAGE)
     return result

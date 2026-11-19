@@ -1,6 +1,8 @@
 # Single-note checks
 
-Run `python3 scripts/verify_note.py --job <dir>`, then `python3 scripts/coverage_check.py --job <dir>`. See the [delivery format](delivery-format.md) for the Markdown and selection templates.
+Run `python3 scripts/verify_note.py --job <dir> --with-coverage`, then the independent review below. Formal delivery uses the renderer with `--require-review`. See the [delivery format](delivery-format.md) for the Markdown, receipt, selection templates, and counts.
+
+R01 到 R17 和 Coverage C 不检查意思是否和引文一致，意思由复核步骤负责。
 
 | Rule | What it checks |
 | --- | --- |
@@ -26,3 +28,19 @@ The numeric checks cover Arabic digits, qualifying Chinese numerals, English num
 C04d applies the note-commentary check to headings and prose outside the three marked blocks and 原文依据. It catches incomplete-transcription explanations tied to a sentence or passage, statements that the author will leave out unidentified text, uncertain recognition described as “部分识别也不确定”, and claims that a spoken name or term was miswritten by automatic captions. Technical content about 图像识别、语音识别 or identifying an object remains valid. Caption errors belong in 字幕更正, while the end evidence preserves the original transcript.
 
 Verify and coverage share the repair limit. The status records completion after both pass on the same inputs. A successful transcript replacement resets the limit and archives previous writing. A failed acquisition preserves the previous deposit. Historical all-N/A notes are archived.
+
+## Independent semantic review
+
+Only after verify and coverage pass on the same inputs, give the evidence note, full transcript, and selection to a Task that did not write the note. Supply the complete passed `status.verifier.inputs` for its receipt. With screen evidence, also supply `screen.txt` and screenshots. The reviewer uses slide groups to find omitted tables and lists, opens doubtful screenshots and those supporting key numbers, and reads necessary surrounding transcript context. If a reading preview helps assess clarity or terms, generate it from the same note with `render_reading_note.render_note()`.
+
+Report only issues with a location and evidence. Follow this checklist. Do not repeat mechanical checks or add unrelated preferences.
+
+- Compare each claim with its evidence for negation, order, conditions, and causal direction. Check whether an analogy adds an unsupported conclusion. For 今天立刻动手一步, verify that the reader can perform the action with the stated prerequisites.
+- Find repeated passages and cases where speech and screen state the same point twice. Preserve useful differences such as precision or scope.
+- In interviews, verify who proposed, summarized, or opposed a point. The opening explains roles and any missing speaker labels. Mark the host's own views, extra numbers, and disagreements where they occur.
+- Check retained lists for missing items. Read omitted selection units for core claims, steps, or supporting numbers. Locate useful screen-only tables or lists that appear neither in the note nor as a distinct decision in selection. A slide row alone does not prove its useful content was considered.
+- List essential terms and basic words used technically without an explanation at first use. In Chinese prose, flag untranslated phrases that obstruct understanding while preserving useful original-language parentheses, proper names, and code. If a speaker's definition differs from a verifiable standard definition, check that the difference and attribution are clear.
+- For screen-only numbers, inspect the actual image for units, comparison targets, and conditions. Check compatibility with the note and spoken context. Remove uses unsupported by the image or contradicted by that context.
+- Find commentary in prose about preparing, checking, or selecting material, including new wording missed by C04d. Preserve legitimate source attribution, technical discussion of recognition, and marked caption corrections.
+
+The Task writes `review.md` with the bound receipt. Give each issue one row: note section or selection interval, original words or screenshot location, problem, and minimal change. Merge issues with the same cause. Use `clear` when the initial review finds no issue and `changes` when proposing a batch. The writer may reject a suggestion, leaving it in the receipt body with a one-sentence reason. Keep the Task's first-line judgment unchanged. The reviewer checks only this batch's treatment and affected evidence or selection. The scripts enforce input binding and bounded counting, not the semantic quality or the independence of the Task.
