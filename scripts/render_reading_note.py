@@ -230,13 +230,13 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
     check_destination(job, output)
 
     with verify_note.job_lock(job):
-        inputs = verify_note.job_inputs(job)
         result = verify_note.check_job_submission(job, with_coverage=True)
         coverage = result.get("coverage", {})
         for line in result["reasons"] + result.get("warnings", []) + coverage.get("not_checked", []):
             print(line, file=sys.stderr)
         if not result["allowed"]:
             raise RenderError("verify or coverage failed")
+        inputs = verify_note.job_inputs(job)
         verifier = verify_note.read_job_status(job).get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")

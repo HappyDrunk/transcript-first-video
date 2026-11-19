@@ -329,12 +329,34 @@ def _check_and_record(job: Path, delivery: Path | None) -> dict:
     status = verify_note.read_job_status(job)
     if verify_note.repair_lock(status):
         return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
+    try:
+        verify_note.prepare_job_note(job)
+    except (OSError, RuntimeError) as exc:
+        return {"ok": False, "reasons": [str(exc)], "warnings": [], "not_checked": []}
     inputs = verify_note.job_inputs(job)
     if inputs["note"] is not None:
         status = verify_note.record_note_revision(job, digest=inputs["note"])
         if verify_note.repair_lock(status):
             return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
-    result = check_job(job, delivery)
+    checked_delivery = delivery
+    delivery_bytes = None
+    if delivery is not None and inputs["note"] is not None:
+        try:
+            delivery_bytes = delivery.read_bytes()
+            formatted = verify_note.format_note_text(delivery_bytes.decode("utf-8")).encode("utf-8")
+            if formatted == (job / "note.md").read_bytes():
+                checked_delivery = job / "note.md"
+        except (OSError, UnicodeError):
+            pass
+    result = check_job(job, checked_delivery)
+    if delivery_bytes is not None:
+        try:
+            unchanged_delivery = delivery.read_bytes() == delivery_bytes
+        except OSError:
+            unchanged_delivery = False
+        if not unchanged_delivery:
+            result["ok"] = False
+            result["reasons"].append("C00 FAIL: delivery changed during coverage; rerun submission")
     if inputs != verify_note.job_inputs(job):
         result["ok"] = False
         result["reasons"].append("C00 FAIL: job files changed during coverage; rerun both checks")

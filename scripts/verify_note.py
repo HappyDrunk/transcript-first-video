@@ -179,6 +179,100 @@ def _note_digest(note: str) -> str:
     return hashlib.sha256(note.encode("utf-8")).hexdigest()
 
 
+_FORMAT_CLOCK = r"(?:[0-9]+[:：])?[0-9]{2,}[:：][0-5][0-9]"
+_FORMAT_QUOTE = re.compile(
+    rf"^(?P<prefix>[ \t]{{0,3}}[>＞])(?P<gap>[ \t\u3000]*)[\[［](?P<clock>{_FORMAT_CLOCK})[\]］](?P<tail>[^\r\n]*)(?P<end>\r\n|\r|\n)?$"
+)
+_FORMAT_SCREEN_TAG = re.compile(r"^(?P<gap>[ \t\u3000]*)[\[［](?P<tag>画面[?？]?)[\]］](?P<text>.*)$")
+_FORMAT_FRONTMATTER = re.compile(r"\A\ufeff?---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
+
+
+def _format_clock(clock: str) -> str | None:
+    canonical = clock.replace("：", ":")
+    return canonical if verify_rules.clock_seconds(canonical) is not None else None
+
+
+def _format_separator(text: str) -> str:
+    gap = re.match(r"[ \t\u3000]*", text)[0]
+    payload = text[len(gap):]
+    return (gap.replace("\u3000", " ") or (" " if payload else "")) + payload
+
+
+def _format_quote_line(line: str) -> str:
+    match = _FORMAT_QUOTE.fullmatch(line)
+    if match is None or (clock := _format_clock(match["clock"])) is None:
+        return line
+    tail = match["tail"]
+    screen = _FORMAT_SCREEN_TAG.fullmatch(tail)
+    if screen:
+        tag = screen["tag"].replace("？", "?")
+        tag_gap = screen["gap"].replace("\u3000", " ")
+        tail = f"{tag_gap}[{tag}]{_format_separator(screen['text'])}"
+    else:
+        tail = _format_separator(tail)
+    gap = match["gap"].replace("\u3000", " ") or " "
+    return f"{match['prefix'].replace('＞', '>')}{gap}[{clock}]{tail}{match['end'] or ''}"
+
+
+def format_note_text(note: str) -> str:
+    """Normalize quote headers in the final evidence section, preserving payloads."""
+    frontmatter = _FORMAT_FRONTMATTER.match(note)
+    if frontmatter is None:
+        return note
+    prefix = frontmatter[0]
+    lines = note[len(prefix):].splitlines(keepends=True)
+    evidence = None
+    for index, line in enumerate(lines):
+        heading = verify_rules._HEADING.fullmatch(line.rstrip("\r\n"))
+        if heading and heading.groups() == ("##", verify_rules.EVIDENCE_HEADING):
+            evidence = index + 1
+    if evidence is None or any(
+        line.strip() and not line.lstrip().startswith((">", "＞")) for line in lines[evidence:]
+    ):
+        return note
+    return prefix + "".join(lines[:evidence]) + "".join(_format_quote_line(line) for line in lines[evidence:])
+
+
+def _normalized_note_text(content: bytes) -> str:
+    return content.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+
+
+def prepare_job_note(job: Path) -> None:
+    """Write formatting under the job lock before fingerprints or revision counts."""
+    path = job / "note.md"
+    try:
+        original = path.read_bytes()
+    except FileNotFoundError:
+        return
+    try:
+        formatted = format_note_text(original.decode("utf-8")).encode("utf-8")
+    except UnicodeDecodeError:
+        return
+    if formatted == original:
+        return
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=job, delete=False) as output:
+            staged = Path(output.name)
+            output.write(formatted)
+        if path.read_bytes() != original:
+            raise RuntimeError("note.md changed during formatting; rerun submission")
+        status = read_job_status(job)
+        if status.get("note_digest") == _note_digest(_normalized_note_text(original)):
+            # Commit the digest first so a failed note replacement is safe to retry.
+            status["note_digest"] = _note_digest(_normalized_note_text(formatted))
+            status["finished"] = False
+            status["verifier"] = None
+            status["coverage"] = {"allowed": False, "reasons": ["note formatting changed after verification"]}
+            if status.get("status") == "finished":
+                status["status"] = "transcript_ready"
+            write_job_status(job, status)
+        staged.replace(path)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+
+
 def job_inputs(job: Path) -> dict:
     """Identify the exact note and context checked by both gates."""
     inputs = {}
@@ -194,7 +288,7 @@ def job_inputs(job: Path) -> dict:
             continue
         digest = hashlib.sha256(content).hexdigest()
         if key == "note":
-            normalized = content.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+            normalized = _normalized_note_text(content)
             inputs["note_file"] = digest
             inputs[key] = _note_digest(normalized)
         else:
@@ -423,9 +517,15 @@ def check_job_submission(
     if repair_lock(status):
         return {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}
 
+    try:
+        prepare_job_note(job)
+    except (OSError, RuntimeError) as exc:
+        return {"allowed": False, "reasons": [str(exc)]}
     inputs = job_inputs(job)
     try:
         note = _read_note(note_arg or str(job / "note.md"))
+        if note_arg is not None and inputs["note"] != _note_digest(note):
+            note = format_note_text(note)
     except SystemExit as exc:
         note = None
         result = {"allowed": False, "reasons": [str(exc)]}
