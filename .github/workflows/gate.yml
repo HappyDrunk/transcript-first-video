@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Gate tests
         run: python3 scripts/test_gate.py
+      - name: Reading note output
+        run: python3 scripts/test_render_reading_note.py
       - name: Frozen regression samples (other work packages pending)
         run: python3 scripts/test_regressions.py
         continue-on-error: true

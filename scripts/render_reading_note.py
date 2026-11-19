@@ -142,7 +142,11 @@ def render_body(body: str) -> str:
                     break
                 times.update(child.times)
             if times:
-                title += f"（{rules._fmt(min(times))}–{rules._fmt(max(times))}）"
+                start, end = min(times), max(times)
+                time_label = rules._fmt(start)
+                if end > start:
+                    time_label += f"–{rules._fmt(end)}"
+                title += f"（{time_label}）"
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
