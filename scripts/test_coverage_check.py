@@ -115,6 +115,51 @@ def _c04_reasons(result: dict) -> set[str]:
     return {rule for rule in failed_ids(result) if rule.startswith("C04")}
 
 
+class StructurePreflightTests(unittest.TestCase):
+    def test_preflight_uses_formal_endpoint_and_leaves_job_untouched(self) -> None:
+        rows = ARCS[:3]
+        note = _arc_note(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", note, _transcript(rows),
+                             _selection(181, [0, 60, 120]), 180.48)
+            before = {path.name: path.read_bytes() for path in job.iterdir()}
+            call = [sys.executable, "-X", "utf8", str(ROOT / "scripts/verify_note.py"),
+                    "--job", str(job), "--structure-only", "--json"]
+            one = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(one.returncode, 0, one.stdout + one.stderr)
+            self.assertTrue(cov.check_job(job)["ok"])
+            self.assertEqual({p.name: p.read_bytes() for p in job.iterdir()}, before)
+
+            (job / "selection.md").write_text(_selection(180, [0, 60, 120]), encoding="utf-8")
+            second = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(second.returncode, 2, second.stdout + second.stderr)
+            self.assertIn("03:01", second.stdout)
+            self.assertIn("03:01", " ".join(cov.check_job(job)["reasons"]))
+            self.assertEqual((job / "status.json").read_bytes(), before["status.json"])
+
+    def test_preflight_checks_correction_syntax_without_checking_its_claim(self) -> None:
+        rows = ARCS[:3]
+        source = _arc_note(rows)
+        header = "> [!warning] 字幕更正\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", source, _transcript(rows),
+                             _selection(181, [0, 60, 120]), 180.48)
+            call = [sys.executable, "-X", "utf8", str(ROOT / "scripts/verify_note.py"),
+                    "--job", str(job), "--structure-only", "--json"]
+            for correction, expected in (
+                ("> 字幕写作 phantom，实为 sample。", 0),
+                ("> 原字幕和修正写在这里。", 2),
+            ):
+                with self.subTest(correction=correction):
+                    note = source.replace("## 主线论点\n\n",
+                                          "## 主线论点\n\n" + header + correction + "\n\n")
+                    (job / "note.md").write_text(note, encoding="utf-8")
+                    result = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    if expected:
+                        self.assertIn("字幕更正", result.stdout)
+
+
 class CoverageCheckTests(unittest.TestCase):
     def _check(
         self,
