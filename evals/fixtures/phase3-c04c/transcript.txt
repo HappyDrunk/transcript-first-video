@@ -1,0 +1,461 @@
+[00:03] Hi everyone. My name is Gabe de Mesa.
+[00:06] I'm an engineer here at OpenGov and
+[00:07] today we're going to be talking about
+[00:10] agents in production, specifically how
+[00:13] OpenGov built and scaled OG Assist. Uh
+[00:14] so
+[00:15] um
+[00:17] this presentation is going to be
+[00:21] jam-packed with just so much good stuff.
+[00:22] Uh we're going to talk about uh AI
+[00:24] agents. We're going to talk about our
+[00:27] harness. We're going to talk about um
+[00:30] evals, observability, traces. We're
+[00:32] going to talk about um
+[00:35] tools and skills. Um
+[00:36] It's There's going to be a lot of good
+[00:38] stuff in here. We're going to talk to
+[00:41] you guys about uh what we do at OpenGov
+[00:43] and how we operate at the scale that uh
+[00:46] we operate at um in production, so
+[00:49] you'll be able to see a real use case
+[00:52] and workload uh with AI agents. Um so
+[00:56] without further ado, let's get started.
+[00:58] Okay, agenda. So just really quickly
+[01:01] going to go through uh high-level what
+[01:03] we're going to talk about today. Uh I'm
+[01:04] going to tell you guys a little bit
+[01:07] about OG Assist and what uh OpenGov is.
+[01:08] I'm going to tell you guys the origin
+[01:11] story of how this all kind of came to
+[01:13] be. Uh we're going to talk about OG
+[01:17] Assist's uh big bet on effect.
+[01:19] Uh a little bit into our core agent
+[01:21] loop. Uh we're going to talk about the
+[01:24] A2A protocol, evals, and sandboxing.
+[01:26] We're going to talk about how we manage
+[01:28] long context. We're going to talk about
+[01:29] um
+[01:31] monitoring, observability, how we
+[01:34] collect feedback uh and how we iterate
+[01:36] on that feedback. We're going to lastly
+[01:39] uh also talk about tools and skills and
+[01:42] how at OpenGov uh we use um
+[01:45] AI not only externally uh that we uh
+[01:47] serve to customers, but also internally
+[01:51] to improve our development workflows.
+[01:53] Just a little bit about me before we go
+[01:55] any further. My name is Gabe. I'm a
+[01:57] software engineer here at OpenGov. I
+[02:00] work on the AI agents team and
+[02:03] I'm one of the folks that helped build
+[02:04] OG Assist and some of the systems that
+[02:07] you guys will be seeing today.
+[02:09] So, a little bit about OpenGov. OpenGov
+[02:12] is a software company
+[02:14] on a mission to power more effective and
+[02:16] accountable government. So, OpenGov
+[02:18] sells ERP software. That's things like
+[02:20] budgeting, procurement, asset
+[02:23] management, and permitting. And
+[02:25] we were founded about 14 years ago and
+[02:27] what's cool is
+[02:28] um
+[02:30] we have this thing called OG Assist and
+[02:34] OG Assist is this little button on the
+[02:36] top of all of our products in the in the
+[02:39] navigation bar. And what's cool is
+[02:42] all of our product suites and product
+[02:44] teams
+[02:47] have built tools and skills in order to
+[02:51] power this button. So, for example, if I
+[02:52] open up
+[02:54] this this
+[02:56] if I click this button and I open up OG
+[02:58] Assist, it says, "Hey, I'm going to ask
+[03:00] about rate codes, which is very specific
+[03:02] to utility billing, the current product
+[03:04] that I'm in." And you can see that
+[03:06] inside of this kind of chat interface,
+[03:08] I'm able to speak to an agent and the
+[03:10] agent is able to make tool calls in
+[03:12] order to
+[03:15] look up information against data inside
+[03:18] of that suite. So, it's really cool
+[03:20] to be able to kind of first-party create
+[03:23] these experiences through the capability
+[03:28] Okay, so just a
+[03:31] quick story about how this all came to
+[03:32] be. So,
+[03:35] a little while back we we we saw that AI
+[03:37] was really starting to take off and a
+[03:39] principal uh spun up this new team
+[03:41] called the AI agents team and asked me
+[03:43] to join. And um
+[03:46] instantly I said yes and OG Assist
+[03:48] started to to grow and we started to
+[03:50] integrate OG Assist into all our
+[03:53] products. And uh not only our back-end
+[03:55] capabilities, but also our front-end
+[03:57] capabilities as well. So, you'll see
+[03:58] that one of the capabilities that we
+[04:01] give the agent is it's able to
+[04:04] um see what's on the screen and and see
+[04:07] and and and take action on what's on the
+[04:09] page. So, you could see that uh I'm
+[04:11] asking the agent here, "Hey, hey, what's
+[04:14] on the screen? Can you maybe highlight
+[04:15] uh some of the next steps that I could
+[04:17] take?" So, you can see that the agent
+[04:19] here is thinking. It's saying, "Okay,
+[04:21] what tools do I have available to use?"
+[04:23] And "Hey, let me go and highlight
+[04:25] something that you could actually click
+[04:27] on and and tell you more about it." So,
+[04:29] just another capability of OG Assistant.
+[04:30] Just a little
+[04:32] short story about how this all came to
+[04:38] So, the big bet on Effect. Um so, I
+[04:39] really wanted to include this slide
+[04:42] because um here on the Agents team, we
+[04:45] made a huge bet to
+[04:46] um
+[04:49] to to bet on Effect. And suffice to say
+[04:52] it's paid off in dividends.
+[04:55] Um we write Effect. So, Effect is this
+[04:58] library for TypeScript. It's open source
+[05:00] and it helps you write better um
+[05:01] TypeScript code.
+[05:02] Uh
+[05:04] you know, it's got a lot of uh stuff
+[05:05] baked in it like a
+[05:07] a schema similar to like Zod, if you've
+[05:11] ever used that. It's also got um things
+[05:14] for error handling, uh for logging, for
+[05:16] traces, for
+[05:17] uh it's just got so much in there. It
+[05:19] really helps write better code and
+[05:22] structure your code better and uh helps
+[05:23] with architecture, spinning up new
+[05:25] services for
+[05:27] uh and and for us on the Agents team,
+[05:30] really helping uh design and build the
+[05:32] the core agent loop. So, you'll see
+[05:34] throughout this presentation sprinkled
+[05:39] in um how Effect on our team uh has paid
+[05:41] off in dividends. So, we we really love
+[05:44] Effect here at OpenGov and we encourage
+[05:47] other folks to try it out and um
+[05:52] The Effect Native Loop.
+[05:54] So, originally we were on LangGraph and
+[05:56] that was fine until the team really
+[06:00] started to scale uh and our use cases
+[06:02] started to evolve.
+[06:04] So, we
+[06:07] decided to move over to our own kind of
+[06:09] Effect Native Agent Loop to have full
+[06:11] regency over this
+[06:13] uh Agent Loop such that if we have
+[06:16] complex use cases or features that we
+[06:19] need to build, we could kind of
+[06:22] get in we we had full control of the of
+[06:24] the Agent Loop. And not only that, but
+[06:25] now we're fully on Effect. So, all the
+[06:28] cool things you get with Effect is now
+[06:30] propagated throughout the entire Agent
+[06:32] Loop, like the tracing, structured
+[06:35] concurrency, the logging, everything is
+[06:37] more fine-grained control, and it it
+[06:40] really allows us to really unlock the
+[06:43] full potential uh having our own Agent
+[06:47] Loop from the ground up. Um so, another
+[06:48] thing I wanted to mention is on the left
+[06:51] side, you'll see a code example. This is
+[06:54] really the basics of the Effect Loop
+[06:56] that we're using. Uh we're using this
+[06:59] thing called the Effect AI package, and
+[07:01] in that package, there's this thing
+[07:03] called um
+[07:05] there's a chat and a language model. So,
+[07:07] with the chat, you can instantiate like
+[07:09] an a chat, for example, and then you
+[07:12] could stream text using
+[07:12] um
+[07:14] that that kind of
+[07:16] stream text function, you could pass in
+[07:18] a prompt. And what's cool is uh with a
+[07:21] language model under the hood uh of
+[07:23] since we're kind of doing dependency
+[07:24] injection,
+[07:26] we could pass in a different language
+[07:29] model if we were to uh hot swap to
+[07:31] another one, for example. So, really
+[07:34] just having full control of our own
+[07:36] Agent Loop just kind of gives us all the
+[07:38] levers, and it really just unlocks the
+[07:41] full capabilities of the model, and uh
+[07:43] for the team as well, to have full
+[07:46] agency over this this loop.
+[07:48] Another thing I wanted to mention is the
+[07:51] agent-to-agent protocol. So, here on the
+[07:53] agents team we've had a lot of success
+[07:55] with this protocol. So, this protocol
+[07:58] being the protocol that Google created.
+[08:01] Um kind of an open protocol for agents
+[08:03] to intercommunicate, but um we found
+[08:06] this very useful for uh defining our
+[08:09] agent routes. So, for example, in the
+[08:12] back end and our model and our schema to
+[08:14] follow this kind of
+[08:17] agent protocol. So, we modeled So, for
+[08:18] example, there's this thing called an
+[08:20] agent card which you see here and it's
+[08:22] got the name of the agent, a
+[08:25] description, etc., right? And having
+[08:28] this kind of rigorous protocol, this
+[08:31] rigorous spec really helped drive our
+[08:34] development and drive alignment because,
+[08:37] you know, all we had to do was um align
+[08:40] with this spec and follow this spec and
+[08:41] we knew that this was kind of the
+[08:45] contract that our front end and back end
+[08:48] would both consume and and produce. So,
+[08:52] um this uh I would say also has been
+[08:55] uh very helpful for us. And And what's
+[08:56] really cool is A2A has a lot of
+[08:58] extensions, right? So, you could extend
+[09:02] the protocol uh add in like metadata. Uh
+[09:04] there's also A2UI.
+[09:05] Um so,
+[09:09] lots of fun stuff uh with A2A protocol,
+[09:11] but uh this is kind of what's worked for
+[09:13] us. So, just sharing that with with you
+[09:15] folks.
+[09:18] Feedback and evals.
+[09:20] So, here the quote is, "Shipping is the
+[09:23] start, not the finish." So, what we do
+[09:26] here uh on the agents team is we have
+[09:28] kind of multiple ways we do evals and
+[09:30] collect feedback. Um
+[09:33] Obviously, you know, we'll have folks
+[09:35] uh call in or or email us or just let us
+[09:37] know and tell us, but the main way is we
+[09:39] have this thumbs up and thumbs down
+[09:42] mechanism and here someone is able to
+[09:44] tell us, "Hey, this this worked really
+[09:45] well. This was a great response." Or,
+[09:47] "That wasn't a great response." And that
+[09:49] signal we take and we're able to iterate
+[09:50] on.
+[09:51] Uh, and we can take it back and help
+[09:53] improve, uh,
+[09:55] you know, the response in the future.
+[09:58] Um, we also have automated evals, so
+[10:02] in in the in our CI we we have evals
+[10:04] that run against real completions, so we
+[10:06] could test the prompt against, "Hey, did
+[10:08] it hit some tools? Did it do what it's
+[10:10] supposed to do?" And that also helps
+[10:13] with our accuracy. So, uh, those
+[10:15] automated evals in conjunction with
+[10:18] collecting feedback really help us, um,
+[10:20] improve our
+[10:24] uh, our our tools, our skills,
+[10:26] um, our harness and and that's really
+[10:28] how how we're able to iterate so fast
+[10:31] and so quickly.
+[10:33] Humans in the loop. So, this is a really
+[10:35] cool feature we built where we
+[10:37] deterministically interrupt the agent
+[10:40] loop if there is a tool call approval
+[10:42] required. So, if an agent tries to make
+[10:45] a tool call that it needs human approval
+[10:48] for, it'll show this UI and the human
+[10:50] uh, can click accept or reject. So,
+[10:52] explicitly rejecting or explicitly
+[10:55] accepting, uh, the action that the agent
+[10:56] is trying to make. And this ensures
+[10:59] that, uh, you know, we're building trust
+[11:02] and also ensuring that, uh, you know,
+[11:03] we're being safe, especially when the
+[11:05] agent's trying to do a mutating
+[11:07] operation and always always always
+[11:10] making sure that, um, humans are in the
+[11:16] Sandboxing. So, another thing that we,
+[11:19] uh, worked on, um, kind of similar to
+[11:22] the safety slide we just saw was, um,
+[11:25] whenever an agent tries to execute code
+[11:28] or tries to create files, it does so in
+[11:30] a sandbox. So, we gave our agents
+[11:33] sandboxes such that it could spin up
+[11:35] these sandboxes on demand and it could
+[11:39] use those sandboxes to honestly write
+[11:42] code, execute code, create files and
+[11:43] it's kind of this safe ephemeral
+[11:47] isolated space such that the agent can
+[11:49] can can take action in there and not and
+[11:52] we don't have to worry about uh any risk
+[11:55] to you know our our production systems.
+[11:58] Um and it's it's really cool cuz they
+[12:01] also get uh tied uh tear down at the end
+[12:03] so um
+[12:04] in this example I said, "Hey, create a
+[12:07] PDF uh for the folks of the AI Engineer
+[12:11] Conference 2026." And um allow me to
+[12:12] download it so I could share it with
+[12:14] them. And you could see that the agent
+[12:16] created this really cool PDF inside of
+[12:19] that sandbox. So just really wanted to
+[12:20] cover the sandbox feature and just give
+[12:23] you a brief kind of overview of of
+[12:29] Long context. So
+[12:30] um
+[12:34] inside of Ogie Assist, we have hit many
+[12:37] hurdles like with especially with legacy
+[12:41] models now like with uh token limits or
+[12:43] just way too much just completely
+[12:46] overloaded with context especially as
+[12:49] conversations get longer. So we found
+[12:50] that
+[12:53] having some sort of
+[12:56] um rolling summarization was more
+[12:59] effective than you know always stuffing
+[13:02] in the latest and most recent uh
+[13:04] messages
+[13:05] uh
+[13:07] rather just you know give like a running
+[13:11] summary after n number of messages and
+[13:13] uh maybe you only want the like n minus
+[13:16] five most recent messages or n minus 10
+[13:18] most recent messages, right? Um and it
+[13:20] may be that you're only talking about a
+[13:22] specific topic now, but you may want to
+[13:24] refer to
+[13:26] uh context earlier like a hundred
+[13:29] messages above, then
+[13:30] um
+[13:32] it uh that's where kind of the the
+[13:34] memory component comes in cuz when you
+[13:36] have this rolling summary of a a really
+[13:38] long conversation, then you could do
+[13:42] recall over that uh summarization. And
+[13:44] um you know, if you ask the agent, "Hey,
+[13:45] remember that thing that we talked
+[13:47] about?" then the agent within the thread
+[13:48] will be like, "Yeah, I do know what you
+[13:50] were talking about. I have kind of this
+[13:52] short little tidbit." And it can, you
+[13:54] know, follow up and and and do more kind
+[13:56] of with that uh
+[13:58] summary rolling summary in mind. So,
+[13:59] that's kind of how we handled long
+[14:01] context and memory, and it's worked
+[14:03] pretty well for us. So, uh just wanted
+[14:06] to share a little bit about that and how
+[14:08] we've uh solved the long context
+[14:14] UI on the fly. So, um in this example, I
+[14:16] said to the agent, "Hey,
+[14:17] generate me a long essay, but give me
+[14:19] some examples about what the essay could
+[14:21] be about." So, what's really cool is the
+[14:24] agent had this primitive registered uh
+[14:26] uh this form, and it was able to build
+[14:29] out this form for me at runtime and give
+[14:31] me some options of what I could choose
+[14:33] from. So, it feels very personal and it
+[14:35] feels very kind of in the moment that
+[14:37] it's able to to give me these options
+[14:39] just at runtime. So,
+[14:40] um
+[14:43] this is kind of just a short little
+[14:44] um
+[14:46] thing I wanted to include here about
+[14:48] generative UI and how we
+[14:53] uh are able to render UIs on the fly.
+[14:57] You can't scale what you can't see. So,
+[14:58] um
+[15:00] this uh
+[15:03] this kind of section is about tracing uh
+[15:05] and observability. Really, what's cool
+[15:08] about Effect is you kind of get tracing
+[15:11] out of the box. Um you know, when you
+[15:13] use these effect functions, they all get
+[15:15] kind of tagged automatically with like
+[15:18] these spans, and kind of the span gets
+[15:21] picked up and feeds into these traces so
+[15:24] that you can kind of get these kind of
+[15:27] drill downs of these function calls. So,
+[15:30] here's an example of a trace from the
+[15:33] effect team. I have it linked. You could
+[15:35] see that like, "Hey, when you hit this
+[15:37] API, go to this endpoint, to this
+[15:40] handler." And you know, etc. And it
+[15:42] takes And what what's really cool is you
+[15:44] could profile all your traces, right?
+[15:46] So, this takes a total of this many
+[15:48] seconds and you can see where the
+[15:50] bottleneck is here. If there's a
+[15:52] failure, you can cross-reference data
+[15:54] across services. So, really, really
+[15:57] important, especially working in agentic
+[16:00] systems where we're we're integrating
+[16:02] with other teams and other APIs and
+[16:04] other um
+[16:06] other platform capabilities. So,
+[16:09] what's cool with effect is you get all
+[16:12] this tracing out of the box and it
+[16:14] really makes building this agentic
+[16:16] experience, debugging it, and
+[16:19] maintaining it just a breeze.
+[16:22] Tools and skills. So,
+[16:24] uh not only did we make a big bet on
+[16:26] effect, but we also made a big bet on
+[16:28] tools and skills. So, we believe that
+[16:30] tools and skills are really all you
+[16:31] need.
+[16:33] And in this case, you could see on the
+[16:37] left, we have this tool called get dad
+[16:39] joke. And this is kind of the effect way
+[16:42] and kind of the building blocks of how
+[16:44] we do things here at OpenGov, but
+[16:46] you know, this is pulled from the effect
+[16:49] website, but you could see, "Hey, this
+[16:50] is how you make a tool." And then you
+[16:51] add it to a tool kit, which is a
+[16:53] collection of tools, and then you can
+[16:56] register this this tool kit with the
+[16:59] with the language model. So, for
+[17:01] example, if you had a prompt that said,
+[17:03] "Hey, generate some dad jokes about
+[17:05] pirates." Well, guess what? The agent
+[17:10] has a tool uh that can help get
+[17:12] a dad joke. So,
+[17:13] um
+[17:15] really, this is the the building blocks
+[17:17] of how we did tools
+[17:20] and eventually skills and
+[17:23] really just is has paid off wonderfully
+[17:26] for for our organization. So,
+[17:28] um really recommend trying out this
+[17:30] effect AI package from
+[17:34] uh effect and um just trying out
+[17:38] building out your own tools and skills.
+[17:41] Developer velocity. So, not only do we
+[17:43] build agents for our customers, but we
+[17:48] also use agents um here internally uh in
+[17:50] OpenGov. So, we uh use a lot of Claude
+[17:53] and Cursor uh and it's just really been
+[17:55] a game-changer for our team.
+[17:56] Um it's funny because we're building
+[17:59] tools and skills for customer-facing uh
+[18:01] agents and and that has been great, but
+[18:03] we're also building them internally as
+[18:04] well to help accelerate our development
+[18:06] workflows. So, things like Claude,
+[18:09] Cursor, Claude agents, they really help
+[18:11] accelerate how we read, write, review
+[18:15] code and and ship. Um so, it's it's just
+[18:17] been such an accelerate. So, definitely
+[18:19] just wanted to mention that uh before we
+[18:24] That's it. Thanks so much for watching.
+[18:26] You've made it to the end. Let's build
