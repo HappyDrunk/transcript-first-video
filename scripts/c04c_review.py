@@ -111,8 +111,7 @@ def final(content: bytes, original: list[dict], verdicts: dict,
         else:
             remaining[row["id"]] = row
     needed = {key for key, verdict in verdicts.items() if verdict != "误报"}
-    if any(_identity(original_by_id[key]) == _identity(row) for key in needed for row in remaining.values()):
-        raise ValueError("an unresolved C04c finding remains in the current note")
+    unresolved = {_identity(original_by_id[key]) for key in needed}
     body = " ".join(prose_without_times(delivery_evidence(note)[0]).split())
     confirmed, final_verdicts = set(), {}
     final_digest = None
@@ -135,7 +134,10 @@ def final(content: bytes, original: list[dict], verdicts: dict,
         raise ValueError("uncleared C04c warnings need decisions on the current draft")
     if remaining and final_digest != digest(current):
         raise ValueError("final C04c warning snapshot is missing or stale")
-    if confirmed != needed:
-        raise ValueError("C04c true or unsupported warnings need confirmed corrections")
+    if any(verdict == "误报" and _identity(remaining[key]) in unresolved
+           for key, verdict in final_verdicts.items()):
+        raise ValueError("an unresolved C04c finding remains in the current note")
     if any(value == "真错" for value in final_verdicts.values()):
         raise ConfirmedError("the C04c follow-up found a true error in this review draft")
+    if confirmed != needed:
+        raise ValueError("C04c true or unsupported warnings need confirmed corrections")
