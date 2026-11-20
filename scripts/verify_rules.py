@@ -826,6 +826,13 @@ def parse_stamp(text: str) -> tuple[int | None, str]:
 
 
 def screen_mode(job: Path | None = None) -> str:
+    screen = _screen_status(job) if job is not None else None
+    if screen is not None and "requested_mode" in screen:
+        mode = screen.get("mode")
+        if mode in ("slides", "nameplate") and _screen_source(job / SCREEN_FILE, screen) is not None:
+            return mode
+        return "off"
+    # Archives before the host recorded its choice retain the older override.
     if "TFV_SCREEN_MODE" in os.environ or job is None:
         value = os.environ.get("TFV_SCREEN_MODE", "").strip().casefold()
         return value if value in {"slides", "nameplate"} else "off"
@@ -839,22 +846,28 @@ def screen_tag(text: str) -> str:
     return next((tag for tag in (SCREEN_TAG, UNCERTAIN_SCREEN_TAG) if text.startswith(tag)), "")
 
 
-def _screen_source(path: Path) -> tuple[list[str], dict | None] | None:
+def _screen_status(job: Path) -> dict | None:
+    try:
+        status = json.loads((job / "status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    screen = status.get("screen_ocr") if isinstance(status, dict) else None
+    return screen if isinstance(screen, dict) else None
+
+
+def _screen_source(path: Path, screen: dict | None = None) -> tuple[list[str], dict | None] | None:
     try:
         content = path.read_bytes()
         lines = content.decode("utf-8-sig").splitlines()
     except (OSError, UnicodeError):
         return None
-    try:
-        status = json.loads(path.with_name("status.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        status = None
-    screen = status.get("screen_ocr") if isinstance(status, dict) else None
-    if isinstance(screen, dict) and (
+    if screen is None:
+        screen = _screen_status(path.parent)
+    if screen is not None and (
         screen.get("state") != "ready" or screen.get("sha256") != hashlib.sha256(content).hexdigest()
     ):
         return None
-    return lines, screen if isinstance(screen, dict) else None
+    return lines, screen
 
 
 def _screen_lines(path: Path, *, require_slides: bool = False) -> list[str] | None:

@@ -239,6 +239,8 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_revie
 
     with verify_note.job_lock(job):
         status = verify_note.read_job_status(job)
+        if status.get("status") == verify_note.SCREEN_PENDING:
+            raise RenderError(verify_note.SCREEN_PENDING_MESSAGE)
         if verify_note.repair_lock(status, review=True):
             raise RenderError(verify_note.lock_message(status))
         verify_note.prepare_job_note(job)

@@ -89,7 +89,9 @@ The host writes the transcript and a blank scaffold. Write the selection and evi
 
 ## Optional YouTube screen text
 
-Screen capture defaults to `off`. Use `TFV_SCREEN_MODE=slides` for talks with slides or `TFV_SCREEN_MODE=nameplate` to read lower thirds in the first 180 seconds. When this variable is unset, the verifier, coverage check, and reading renderer use the job's ready `screen_ocr.mode` only if its SHA-256 matches the job's `screen.txt`. Explicit settings keep their existing behavior. The transcript still determines whether the job can proceed.
+With `TFV_SCREEN_MODE` unset, the YouTube host saves the transcript, then samples up to four pairs at 10%, 33%, 56%, and 80% within 45 seconds, including stream lookup and download. It uses the same system or environment proxy for both yt-dlp and FFmpeg during sampling. The first pair with enough stable text starts a full slide scan. A demo screen can trigger the scan, and sparse, brief, or very late slides can be missed. Use `TFV_SCREEN_MODE=slides` to skip sampling and scan the full video, `TFV_SCREEN_MODE=nameplate` for lower thirds in the first 180 seconds, or `TFV_SCREEN_MODE=off` for subtitles only.
+
+Wait for `next_step: write-note` in `status.json`. Missing dependencies, no qualifying sample, errors, and timeouts leave a usable transcript when the caption gate passed. The host records the outcome as `screen_ocr.result` and the effective mode as `screen_ocr.mode`. For these jobs all checks read the stored mode and require a matching `screen.txt` SHA-256 for screen citations. Rerun acquisition to change modes. Screen dependencies are optional and the host does not install them.
 
 ```bash
 export TFV_SCREEN_MODE=slides
@@ -172,7 +174,7 @@ python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw 
 
 主机写下文稿和空白脚手架。先通读并写取舍，再写证据版。写完后运行阅读版脚本，它先执行 verify 和 coverage，两项通过且当前任务状态为 `finished` 后写入阅读版。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检用 `bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
 
-YouTube 抓取画面默认关闭。带幻灯片的大会或讲座用 `TFV_SCREEN_MODE=slides`，只找片头三分钟内的人名条用 `TFV_SCREEN_MODE=nameplate`。未设该环境变量时，验稿、覆盖检查和阅读版转换使用任务 `status.json` 中已就绪且与本任务 `screen.txt` SHA-256 一致的画面模式。明确设置时保持原有行为。识别失败或超时会记入 `status.json`，任务继续使用字幕。虚拟机重建后须重新安装 FFmpeg、RapidOCR 和 ONNX Runtime。[画面识别的安装和用法](#optional-youtube-screen-text)
+YouTube 默认先保存字幕，再限时 45 秒抽样画面。发现稳定文字才完整扫描。用 `TFV_SCREEN_MODE=slides` 跳过抽样完整扫描，`nameplate` 读取片头三分钟人名条，`off` 只用字幕。画面结果记入 `status.json` 后，等 `next_step` 为 `write-note` 再写稿。缺依赖、没有发现、失败或超时都继续用字幕。送检采用任务状态里的实际模式，改变模式需重跑获取。[画面识别的安装和用法](#optional-youtube-screen-text)
 
 ### 笔记
 

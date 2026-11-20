@@ -391,18 +391,16 @@ class Phase2ETests(unittest.TestCase):
         self.assertFalse(status["locked"], status)
         return job, status, tools
 
-    def test_host_default_and_explicit_off_do_not_probe_screen_tools(self) -> None:
-        for name, mode in [("default", None), ("off", "off")]:
-            with self.subTest(mode=mode):
-                job, _, tools = self.host(name, mode)
-                self.assertFalse((job / "screen.txt").exists())
-                self.assertFalse(any(event[1] in {"ffmpeg", "tesseract", *OCR_VERSIONS} for event in tools.events),
-                                 tools.events)
-                self.assertFalse(tools.videos, tools.videos)
+    def test_host_explicit_off_does_not_probe_screen_tools(self) -> None:
+        job, _, tools = self.host("off", "off")
+        self.assertFalse((job / "screen.txt").exists())
+        self.assertFalse(any(event[1] in {"ffmpeg", "tesseract", *OCR_VERSIONS} for event in tools.events),
+                         tools.events)
+        self.assertFalse(tools.videos, tools.videos)
 
     def assert_host_fallback(self, *, missing: str | None = None,
                              timeout: bool = False) -> None:
-        baseline, before, _ = self.host("speech-only", None)
+        baseline, before, _ = self.host("speech-only", "off")
         job, status, tools = self.host("candidate", "slides", missing=missing, timeout=timeout)
         self.assertEqual((job / "transcript.txt").read_bytes(), (baseline / "transcript.txt").read_bytes())
         for key in ("gate", "repair_rounds", "edit_rounds"):

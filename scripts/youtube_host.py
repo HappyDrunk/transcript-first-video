@@ -922,14 +922,6 @@ def finalize_job(
                            if selection_end is not None else None),
         )
         staged_scaffold.write_text(scaffold_body, encoding="utf-8")
-        mode = verify_rules.screen_mode()
-        if screen_download is not None and mode != "off":
-            screen = screen_ocr.extract(
-                staged, mode, source, screen_download, media_duration, _screen_download_options,
-            )
-            if "reason" in screen:
-                screen["reason"] = redact(screen["reason"])
-            base["screen_ocr"] = screen
         base.update(
             {
                 "status": "transcript_ready",
@@ -954,8 +946,53 @@ def finalize_job(
                 "exit_code": 0,
             }
         )
-        _publish_transcript(job_dir, staged, base)
-    return base
+        if screen_download is None:
+            _publish_transcript(job_dir, staged, base)
+            return base
+        request = verify_rules.screen_mode() if "TFV_SCREEN_MODE" in os.environ else "auto"
+        if request == "off":
+            base["screen_ocr"] = {"requested_mode": "off", "mode": "off", "state": "disabled", "result": "disabled"}
+            _publish_transcript(job_dir, staged, base)
+            return base
+        pending = {
+            **base, "status": verify_note.SCREEN_PENDING, "next_step": "wait-for-screen",
+            "reason": verify_note.SCREEN_PENDING_MESSAGE,
+            "screen_ocr": {"requested_mode": request, "mode": "off", "state": "pending", "attempt": staged.name},
+        }
+        _publish_transcript(job_dir, staged, pending)
+        base.update({key: pending[key] for key in ("note", "delivery", "note_stale")})
+        base["screen_ocr"] = _screen_result(staged, request, source, screen_download, media_duration)
+        return _publish_screen(job_dir, staged, base)
+
+
+def _screen_fallback(screen: dict, result: str, reason: str = "") -> dict:
+    fallback = {**screen, "state": "fallback", "mode": "off", "result": result}
+    if reason:
+        fallback["reason"] = redact(re.sub(r"\w+://\S+", "<URL>", reason))
+    if result == "not_found":
+        fallback["hint"] = "No slides found. If the video has slides, rerun with TFV_SCREEN_MODE=slides."
+    elif result == "missing_dependencies":
+        fallback["hint"] = "Using subtitles only. For screen OCR, install rapidocr and onnxruntime in this Python and put ffmpeg and yt-dlp on PATH."
+    return fallback
+
+
+def _screen_result(staged: Path, request: str, source: str, command: list[str], duration: float | None) -> dict:
+    screen = {"requested_mode": request}
+    try:
+        mode = request
+        if request == "auto":
+            sample = screen_ocr.sample_slides(staged, source, command, _screen_download_options)
+            screen["sample"] = sample
+            if sample["result"] != "slides_detected":
+                return _screen_fallback(screen, sample["result"], sample.get("reason", ""))
+            mode = "slides"
+        result = screen_ocr.extract(staged, mode, source, command, duration, _screen_download_options)
+        if result.get("state") == "ready":
+            return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
+        screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
+        return _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
+    except Exception as exc:
+        return _screen_fallback(screen, screen_ocr.failure_result(exc), str(exc))
 
 
 def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
@@ -986,9 +1023,7 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
                     target.replace(saved)
                     archived.append((saved, target))
                 source = staged / name
-                if name not in optional or (
-                    payload.get("screen_ocr", {}).get("state") == "ready"
-                ):
+                if name not in optional:
                     source.replace(target)
                     installed.append((target, source))
             for key, path in zip(("note", "delivery"), old_notes):
@@ -1000,6 +1035,39 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
             for saved, target in reversed(archived):
                 saved.replace(target)
             raise
+
+
+def _publish_screen(job: Path, staged: Path, payload: dict) -> dict:
+    """Finish the same acquisition that installed the transcript."""
+    with verify_note.job_lock(job):
+        current = verify_note.read_job_status(job)
+        pending = current.get("screen_ocr")
+        if (current.get("status") != verify_note.SCREEN_PENDING
+                or not isinstance(pending, dict) or pending.get("attempt") != staged.name):
+            return {**current, "exit_code": 2, "reason": "another acquisition superseded this screen attempt"}
+        if "last_attempt" in current:
+            payload["last_attempt"] = current["last_attempt"]
+        installed = []
+        screen = payload["screen_ocr"]
+        if screen["state"] == "ready":
+            try:
+                for name in (verify_rules.SCREEN_FILE, verify_rules.SCREEN_FRAMES):
+                    target = job / name
+                    (staged / name).replace(target)
+                    installed.append(target)
+            except OSError as exc:
+                for target in installed:
+                    target.replace(staged / target.name)
+                installed.clear()
+                context = {key: screen[key] for key in ("requested_mode", "sample") if key in screen}
+                payload["screen_ocr"] = _screen_fallback(context, "error", str(exc))
+        try:
+            verify_note.write_job_status(job, {key: value for key, value in payload.items() if key != "exit_code"})
+        except OSError:
+            for target in installed:
+                target.replace(staged / target.name)
+            raise
+    return payload
 
 
 def _record_failed_attempt(job: Path, payload: dict) -> None:
@@ -1112,9 +1180,7 @@ def run_host(
     caption = None
     metadata: dict[str, str] = {}
     base_cmd = ytdlp_base()
-    screen_download = None
-    if verify_rules.screen_mode() != "off":
-        screen_download = base_cmd or []
+    screen_download = base_cmd or []
     if base_cmd is None:
         attempts.append({"source": "yt-dlp", "ok": False, "detail": "yt-dlp is not installed"})
     else:
@@ -1248,6 +1314,8 @@ def _emit(payload: dict, as_json: bool) -> int:
             print(f"scaffold: {public['scaffold']}")
         if public.get("note"):
             print(f"note: {public['note']}")
+        if hint := public.get("screen_ocr", {}).get("hint"):
+            print(hint, file=sys.stderr)
     return code
 
 

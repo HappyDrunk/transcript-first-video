@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 import coverage_check
+import render_reading_note
 import screen_ocr
 import verify_note
 import verify_rules
@@ -40,7 +41,8 @@ class ScreenHostTests(unittest.TestCase):
             patch.dict(os.environ, env, clear=True),
             patch.object(youtube_host, "ytdlp_base", return_value=["fetch"]),
             patch.object(youtube_host, "fetch_ytdlp_captions", return_value={
-                "text": TRANSCRIPT, "source": "yt-dlp", "language": "en",
+                "text": TRANSCRIPT + "\n[01:59] That concludes the demonstration.\n",
+                "source": "yt-dlp", "language": "en",
                 "kind": "manual", "media_duration": 120,
             }),
             patch.object(screen_ocr, "sample_slides", create=True,
@@ -62,6 +64,9 @@ class ScreenHostTests(unittest.TestCase):
         before = (self.job / "status.json").read_bytes()
         self.assertIn("screen", verify_note.check_job_submission(self.job)["reasons"][0].lower())
         self.assertIn("screen", coverage_check._check_and_record(self.job, None)["reasons"][0].lower())
+        self.assertFalse(coverage_check.check_structure(self.job)["allowed"])
+        with self.assertRaisesRegex(render_reading_note.RenderError, "Screen acquisition is pending"):
+            render_reading_note.render_job(self.job, self.out / "reading.md", keep_frontmatter=False)
         self.assertEqual((self.job / "status.json").read_bytes(), before)
 
     def ready_screen(self, staging, mode, *args):
@@ -136,6 +141,34 @@ class ScreenHostTests(unittest.TestCase):
         self.assertFalse((self.job / "screen.txt").exists())
         self.assertTrue((self.job / "transcript.txt").is_file())
 
+    def test_partial_publication_of_full_scan_rolls_back_screen_file(self):
+        def incomplete(staging, mode, *args):
+            self.check_pending()
+            screen = b"not yet published"
+            (staging / "screen.txt").write_bytes(screen)
+            return {"state": "ready", "mode": mode, "sha256": hashlib.sha256(screen).hexdigest()}
+
+        result, _, _ = self.host("slides", full=incomplete)
+
+        self.assertEqual(result["next_step"], "write-note")
+        self.assertEqual(result["screen_ocr"]["result"], "error")
+        self.assertFalse((self.job / "screen.txt").exists())
+
+    def test_superseded_scan_cannot_publish_over_newer_acquisition(self):
+        def old_scan(*args):
+            with patch.dict(os.environ, {MODE: "off"}):
+                newer = youtube_host.run_host(
+                    video_id=VIDEO, source=SOURCE, out_dir=self.out, expected_lang="en",
+                    asr_choice="off", verify=True,
+                )
+            self.assertEqual(newer["screen_ocr"]["requested_mode"], "off")
+            return {"result": "not_found"}
+
+        result, _, _ = self.host(sample=old_scan)
+
+        self.assertEqual(result["exit_code"], 2)
+        self.assertEqual(verify_note.read_job_status(self.job)["screen_ocr"]["result"], "disabled")
+
 
 class SampleTests(unittest.TestCase):
     def trial(self, hits, *, fault=None):
@@ -175,7 +208,9 @@ class SampleTests(unittest.TestCase):
 
         self.assertEqual(windows, [100, 330])
         self.assertEqual(result["result"], "slides_detected")
-        self.assertEqual(budgets, [45, 45, 45])
+        self.assertEqual(result["timeout_seconds"], 45)
+        self.assertEqual(len(budgets), 3)
+        self.assertTrue(all(0 < budget <= 45 for budget in budgets))
         self.assertEqual(commands[0][commands[0].index("--proxy") + 1], "http://proxy.test:8080")
         for args in commands[1:]:
             self.assertEqual(args[args.index("-http_proxy") + 1], "http://proxy.test:8080")
