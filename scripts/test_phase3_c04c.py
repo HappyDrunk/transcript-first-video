@@ -124,7 +124,12 @@ class Whue9NormalizationTests(unittest.TestCase):
 
     def test_calendar_year_does_not_match_a_count_or_percent(self) -> None:
         _, claims = rules.canonical_numbers("活动在 2025 年开始。")
-        for quote in ("They invited 2025 engineers to the event.", "The figure grew by 2025%."):
+        for quote in (
+            "They invited 2025 engineers to the event.",
+            "The figure grew by 2025%.",
+            "They spent 2025 million dollars on the program.",
+            "会上到了 2025 个工程师。",
+        ):
             with self.subTest(quote=quote):
                 _, values = rules.canonical_numbers(quote)
                 self.assertFalse(any(value.supports(claims[0]) for value in values))
