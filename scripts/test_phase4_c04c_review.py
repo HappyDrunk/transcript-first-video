@@ -18,7 +18,7 @@ import render_reading_note
 
 ROOT = Path(__file__).resolve().parents[1]
 CLAIM = "stopping two centimeters below the rim"
-BAD = NOTE.replace(CLAIM, "stopping 21.1 centimeters below the rim")
+BAD = NOTE.replace(CLAIM, "stopping 21.1 centimeters below the rim", 1)
 HINT = "所链引文里没有这个词或数：补挂出处，或改正文"
 
 
