@@ -75,6 +75,10 @@ class Phase2EItem6RerunTests(unittest.TestCase):
 
     def assert_fails_rule(self, job: Path, rule: str, phrase: str) -> None:
         code, result = self.verify(job)
+        if rule == "C04c":
+            self.assertEqual(code == 0, not result["reasons"], result)
+            self.assertIn(phrase, {row["term"] for row in result["c04c"]}, result)
+            return
         self.assertNotEqual(code, 0, result)
         reasons = [reason for reason in result["reasons"] if reason.startswith(f"{rule} FAIL:")]
         self.assertIn(phrase, "\n".join(reasons), result)
@@ -83,6 +87,7 @@ class Phase2EItem6RerunTests(unittest.TestCase):
         code, result = self.verify(job)
         self.assertEqual(code, 0, result["reasons"])
         self.assertTrue(result["allowed"], result)
+        self.assertFalse(result["c04c"], result)
 
     def test_caption_errors_are_refused_in_prose(self) -> None:
         cases = (

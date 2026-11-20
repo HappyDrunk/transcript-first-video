@@ -153,8 +153,8 @@ class Phase2EItem6Tests(unittest.TestCase):
         self.assertFalse(result["allowed"], result)
         status = self.status(job)
         self.assertFalse(status["finished"], status)
-        self.assertTrue(status["locked"], status)
-        self.assertEqual(status["status"], "not_deposited", status)
+        self.assertFalse(status["locked"], status)
+        self.assertEqual(status["status"], "needs_user_input", status)
         self.assertEqual(status["edit_rounds"], 4, status)
         self.assertEqual(status["repair_rounds"], 1, status)
 
@@ -167,13 +167,13 @@ class Phase2EItem6Tests(unittest.TestCase):
             status = self.status(job)
             self.assertEqual(status["edit_rounds"], 1, status)
             self.assertEqual(status["repair_rounds"], failed_submissions, status)
-            self.assertEqual(bool(status.get("locked")), failed_submissions == 3, status)
-        self.assertEqual(status["status"], "not_deposited", status)
-        self.assertIn("未交：已超过 2 轮", result["reasons"])
+            self.assertFalse(status.get("locked"), status)
+        self.assertEqual(status["status"], "needs_user_input", status)
+        self.assertTrue(result["issues"].endswith("issues.md"), result)
 
         code, result = self.verify(job, "--with-coverage")
         self.assertNotEqual(code, 0, result)
-        self.assertIn("未交：已超过 2 轮", result["reasons"])
+        self.assertTrue(result["issues"].endswith("issues.md"), result)
         self.assertEqual(self.status(job), status)
 
     def test_renderer_lists_both_failures_without_creating_reading_copy(self) -> None:
@@ -229,8 +229,8 @@ class Phase2EItem6Tests(unittest.TestCase):
         bad_note = bad_note.replace("（fell back on one）", "（fell back on all axes）", 1)
         self.set_note(job, bad_note)
         code, result = self.verify(job, screen=True)
-        self.assertNotEqual(code, 0, result)
-        self.assertTrue(any(reason.startswith("C04c FAIL:") for reason in result["reasons"]), result)
+        self.assertEqual(code, 0, result)
+        self.assertTrue(result["c04c"], result)
 
     def test_month_evidence_does_not_support_other_values_or_names(self) -> None:
         for name, claim, unsupported in (
@@ -241,9 +241,8 @@ class Phase2EItem6Tests(unittest.TestCase):
             with self.subTest(case=name):
                 job, _ = self.conference_job(name, (f"{claim} ⏱ 08:16",), (MONTH_LINE,))
                 code, result = self.verify(job, screen=True)
-                self.assertNotEqual(code, 0, result)
-                reasons = "\n".join(reason for reason in result["reasons"] if reason.startswith("C04c FAIL:"))
-                self.assertIn(unsupported, reasons)
+                self.assertEqual(code, 0, result)
+                self.assertIn(unsupported.split("'")[1], {row["term"] for row in result["c04c"]}, result)
 
     def test_conference_evidence_can_use_step_headings(self) -> None:
         job, note = self.conference_job("steps")
