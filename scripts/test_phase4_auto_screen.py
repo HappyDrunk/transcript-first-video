@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -227,6 +229,192 @@ class SampleTests(unittest.TestCase):
         self.assertEqual(result["result"], "timeout")
         self.assertEqual(len(commands), 2)
         self.assertEqual(windows, [])
+
+
+class AutoScreenBudgetTests(unittest.TestCase):
+    DURATION = 1000
+    HINT = (
+        "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
+    )
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.out = Path(folder.name)
+        self.job = self.out / f"youtube_{VIDEO}"
+
+    @contextmanager
+    def ocr_io(self, seconds_per_call, model_load_seconds=0):
+        elapsed = 0.0
+        recognition = SimpleNamespace(
+            boxes=[[(10, y), (240, y), (240, y + 16), (10, y + 16)]
+                   for y in (40, 140, 240)],
+            txts=[
+                "Project milestones and scope",
+                "Deployment readiness checklist",
+                "Customer feedback and next steps",
+            ],
+            scores=[0.99, 0.99, 0.99],
+        )
+        stream = json.dumps({
+            "duration": self.DURATION,
+            "height": 480,
+            "url": "https://media.example/track",
+        })
+
+        def run(scan, args, step, **kwargs):
+            scan.remaining()
+            if step == "yt-dlp sample stream":
+                return SimpleNamespace(stdout=stream)
+            if step == "FFmpeg sample frames":
+                for index in (1, 2):
+                    Path(args[-1].replace("%02d", f"{index:02d}")).write_bytes(b"image")
+            elif step == "video download":
+                Path(args[args.index("-o") + 1].replace("%(ext)s", "mp4")).write_bytes(b"video")
+            elif step == "frame extraction":
+                # One retained frame drives both real OCR passes without thumbnail grouping.
+                Path(args[-1].replace("%06d", "000001")).write_bytes(b"image")
+                return SimpleNamespace(
+                    stderr="[Parsed_showinfo_1 @ 0x1] n: 0 pts: 0 pts_time:0 checksum:ABCD\n",
+                )
+            elif step == "FFmpeg half transform":
+                Path(args[-1]).write_bytes(b"image")
+            else:
+                self.fail(f"Unexpected external command: {step}")
+            return SimpleNamespace(stdout="", stderr="")
+
+        def recognize(scan, operation, *args):
+            nonlocal elapsed
+            scan.remaining()
+            if operation is screen_ocr._rapidocr:
+                elapsed += model_load_seconds
+                value = model
+            else:
+                self.assertIs(operation, model)
+                elapsed += seconds_per_call
+                value = recognition
+            scan.remaining()
+            return value
+
+        model = object()
+        with (
+            patch.dict(os.environ, {"TFV_SLIDE_CROP": ""}),
+            patch.object(screen_ocr.Scan, "probe", return_value="ffmpeg"),
+            patch.object(screen_ocr.Scan, "run", autospec=True, side_effect=run),
+            patch.object(screen_ocr.Scan, "recognize", autospec=True, side_effect=recognize)
+            as recognize_call,
+            patch.object(screen_ocr, "getproxies", return_value={}),
+            patch.object(screen_ocr.time, "monotonic", side_effect=lambda: elapsed),
+        ):
+            yield recognize_call
+
+    def host(self, seconds_per_call, *, mode=None, model_load_seconds=0):
+        env = {key: value for key, value in os.environ.items() if key != MODE}
+        if mode is not None:
+            env[MODE] = mode
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(youtube_host, "ytdlp_base", return_value=["fetch"]),
+            patch.object(youtube_host, "fetch_ytdlp_captions", return_value={
+                "text": TRANSCRIPT + "\n[01:59] That concludes the demonstration.\n",
+                "source": "yt-dlp",
+                "language": "en",
+                "kind": "manual",
+                "media_duration": self.DURATION,
+            }),
+            self.ocr_io(seconds_per_call, model_load_seconds),
+            patch.object(screen_ocr, "sample_slides", wraps=screen_ocr.sample_slides) as sample,
+            patch.object(screen_ocr, "extract", wraps=screen_ocr.extract) as extract,
+        ):
+            result = youtube_host.run_host(
+                video_id=VIDEO, source=SOURCE, out_dir=self.out, expected_lang="en",
+                asr_choice="off", verify=True,
+            )
+        return result, sample, extract
+
+    def test_auto_skips_full_scan_when_estimate_exceeds_budget(self):
+        baseline, _, _ = self.host(5.0, mode="off")
+        self.assertEqual(baseline["exit_code"], 0)
+        transcript = self.job / "transcript.txt"
+        expected_transcript = transcript.read_bytes()
+        stale_screen = self.job / "screen.txt"
+
+        for seconds_per_call in (5.0, 3.0):
+            with self.subTest(seconds_per_call=seconds_per_call):
+                stale_screen.write_bytes(b"stale screen evidence\n")
+
+                result, sample, extract = self.host(seconds_per_call)
+
+                sample.assert_called_once()
+                self.assertEqual(result["screen_ocr"]["sample"]["result"], "slides_detected")
+                self.assertEqual(extract.call_count, 0)
+                self.assertEqual(result["exit_code"], 0)
+                self.assertEqual(result["next_step"], "write-note")
+                self.assertEqual(transcript.read_bytes(), expected_transcript)
+                self.assertFalse(stale_screen.exists())
+
+                status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+                self.assertEqual(status["next_step"], "write-note")
+                screen = status["screen_ocr"]
+                self.assertEqual(screen, result["screen_ocr"])
+                self.assertEqual((screen["mode"], screen["state"]), ("off", "fallback"))
+                reason = screen["reason"].strip()
+                self.assertRegex(reason, r"(?i)estimat|预计|预估|估算")
+                self.assertRegex(reason, r"(?i)budget|预算")
+                self.assertRegex(
+                    reason,
+                    r"(?i)exceed|over|greater|longer|above|insufficient|<|>|超[过出]|不足",
+                )
+                self.assertEqual(screen["hint"], self.HINT)
+                with patch.dict(os.environ, {MODE: "slides"}):
+                    self.assertEqual(verify_rules.screen_mode(self.job), "off")
+
+                stderr = io.StringIO()
+                with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                    self.assertEqual(youtube_host._emit(result, as_json=False), 0)
+                self.assertIn(self.HINT, stderr.getvalue().splitlines())
+
+    def assert_slides_ready(self, result, extract):
+        extract.assert_called_once()
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["next_step"], "write-note")
+        self.assertEqual(result["screen_ocr"]["mode"], "slides")
+        self.assertEqual(result["screen_ocr"]["state"], "ready")
+
+    def test_auto_scans_when_estimate_fits_budget(self):
+        for seconds_per_call in (0.2, 2.0):
+            with self.subTest(seconds_per_call=seconds_per_call):
+                result, sample, extract = self.host(seconds_per_call)
+
+                sample.assert_called_once()
+                self.assertEqual(result["screen_ocr"]["sample"]["result"], "slides_detected")
+                self.assert_slides_ready(result, extract)
+
+    def test_explicit_slides_bypasses_sampling_with_slow_ocr(self):
+        result, sample, extract = self.host(5.0, mode="slides")
+
+        sample.assert_not_called()
+        self.assert_slides_ready(result, extract)
+
+    def test_direct_slides_extraction_finishes_with_slow_ocr(self):
+        with self.ocr_io(5.0) as recognize:
+            result = screen_ocr.extract(
+                self.out, "slides", SOURCE, ["fetch"], self.DURATION, lambda: [],
+            )
+
+        self.assertEqual(result["state"], "ready", result)
+        self.assertEqual(result["mode"], "slides")
+        self.assertEqual(result["timeout_seconds"], 500)
+        self.assertEqual(result["elapsed_seconds"], 10.0)
+        self.assertEqual(recognize.call_count, 3)  # Model initialization and two OCR passes.
+        self.assertTrue((self.out / "screen.txt").is_file())
+
+    def test_auto_estimate_excludes_slow_model_initialization(self):
+        result, sample, extract = self.host(0.2, model_load_seconds=20.0)
+
+        sample.assert_called_once()
+        self.assertEqual(result["screen_ocr"]["sample"]["result"], "slides_detected")
+        self.assert_slides_ready(result, extract)
 
 
 if __name__ == "__main__":
