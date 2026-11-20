@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 
 from verify_rules import canonical_numbers, delivery_evidence, prose_without_times
 
@@ -97,10 +98,16 @@ def _identity(row: dict) -> tuple:
 def final(content: bytes, original: list[dict], verdicts: dict,
           current: list[dict], note: str) -> None:
     original_by_id = {row["id"]: row for row in original}
-    carried = {_identity(row) for row in original if verdicts[row["id"]] == "误报"}
-    remaining = {row["id"]: row for row in current if _identity(row) not in carried}
+    carried = Counter(_identity(row) for row in original if verdicts[row["id"]] == "误报")
+    remaining = {}
+    for row in current:
+        identity = _identity(row)
+        if carried[identity]:
+            carried[identity] -= 1
+        else:
+            remaining[row["id"]] = row
     needed = {key for key, verdict in verdicts.items() if verdict != "误报"}
-    if any(_identity(original_by_id[key]) == _identity(row) for key in needed for row in current):
+    if any(_identity(original_by_id[key]) == _identity(row) for key in needed for row in remaining.values()):
         raise ValueError("an unresolved C04c finding remains in the current note")
     body = " ".join(prose_without_times(delivery_evidence(note)[0]).split())
     confirmed, final_verdicts = set(), {}
