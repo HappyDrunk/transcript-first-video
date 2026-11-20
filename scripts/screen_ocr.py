@@ -28,6 +28,7 @@ import quality_gate
 from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREEN_TAG
 
 SLIDE_INTERVAL = 8
+SLIDE_OCR_PASSES = 2
 SLIDE_GROUP_LEFT = 0.30
 SLIDE_GROUP_BOTTOM = 0.78
 SLIDE_GROUP_SIZE = (160, 90)
@@ -358,8 +359,14 @@ def _rapidocr(mode: str):
 
 def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> bool:
     readings = []
+    frame_ocr_times = getattr(scan, "frame_ocr_times", None)
     for path in paths:
-        result = scan.recognize(ocr, path.read_bytes())
+        frame = path.read_bytes()
+        started = time.monotonic()
+        result = scan.recognize(ocr, frame)
+        elapsed = time.monotonic() - started
+        if frame_ocr_times is not None and math.isfinite(elapsed) and elapsed > 0:
+            frame_ocr_times.append(elapsed)
         lines = {}
         for box, text, score in zip(result.boxes if result.boxes is not None else (),
                                     result.txts or (), result.scores or ()):
@@ -382,6 +389,7 @@ def sample_slides(
     """Check at most four pairs for stable screen text before the full scan."""
     # Leave time to terminate the child and discard its temporary frames.
     scan = Scan("slides", None, budget=AUTO_SAMPLE_TIMEOUT - AUTO_SAMPLE_CLEANUP_SECONDS)
+    scan.frame_ocr_times = []
     status = {"groups_checked": 0, "timeout_seconds": AUTO_SAMPLE_TIMEOUT}
     try:
         if not download_command:
@@ -399,6 +407,7 @@ def sample_slides(
         duration, height = float(info["duration"]), int(info["height"])
         if not media.startswith("https://") or not math.isfinite(duration) or duration <= 0 or height <= 0:
             raise ScreenError("sample stream has no usable HTTPS video or duration")
+        status["duration"] = duration
         headers = "".join(f"{name}: {value}\r\n" for name, value in info.get("http_headers", {}).items())
         network = (["-http_proxy", proxy] if proxy else []) + (["-headers", headers] if headers else [])
         with tempfile.TemporaryDirectory(prefix="sample-", dir=staged) as temp:
@@ -428,6 +437,10 @@ def sample_slides(
                     break
     except Exception as exc:
         status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
+    if scan.frame_ocr_times:
+        status["mean_frame_ocr_seconds"] = round(
+            sum(scan.frame_ocr_times) / len(scan.frame_ocr_times), 6
+        )
     status["elapsed_seconds"] = round(time.monotonic() - scan.started, 3)
     return status
 

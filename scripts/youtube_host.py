@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -985,6 +986,47 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             screen["sample"] = sample
             if sample["result"] != "slides_detected":
                 return _screen_fallback(screen, sample["result"], sample.get("reason", ""))
+            if (
+                not isinstance(duration, (int, float))
+                or isinstance(duration, bool)
+                or not math.isfinite(duration)
+                or duration <= 0
+            ):
+                sampled_duration = sample.get("duration")
+                duration = (
+                    sampled_duration
+                    if isinstance(sampled_duration, (int, float))
+                    and not isinstance(sampled_duration, bool)
+                    and math.isfinite(sampled_duration)
+                    and sampled_duration > 0
+                    else None
+                )
+            budget = duration / 2 if duration else screen_ocr.UNKNOWN_DURATION_TIMEOUT
+            latency = sample.get("mean_frame_ocr_seconds")
+            if (
+                duration is not None
+                and isinstance(latency, (int, float))
+                and not isinstance(latency, bool)
+                and math.isfinite(latency)
+                and latency > 0
+            ):
+                frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
+                estimated = latency * screen_ocr.SLIDE_OCR_PASSES * frames
+                if estimated > budget:
+                    screen["timeout_seconds"] = budget
+                    if math.isfinite(estimated):
+                        screen["estimated_seconds"] = round(estimated, 3)
+                        reason = (
+                            f"Estimated full-scan OCR time ({estimated:.1f}s) "
+                            f"exceeds full-scan budget ({budget:.1f}s)."
+                        )
+                    else:
+                        reason = "Estimated full-scan OCR time exceeds full-scan budget."
+                    fallback = _screen_fallback(screen, "timeout", reason)
+                    fallback["hint"] = (
+                        "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
+                    )
+                    return fallback
             mode = "slides"
         result = screen_ocr.extract(staged, mode, source, command, duration, _screen_download_options)
         if result.get("state") == "ready":
