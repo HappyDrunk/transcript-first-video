@@ -33,9 +33,9 @@ EMPTY_SECTION = re.compile(
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 JOB_FILES = (
     "note.md", "transcript.txt", "selection.md", "status.json", "segments.json", ".status.lock", "delivery.md",
-    rules.SCREEN_FILE,
+    rules.SCREEN_FILE, "review.md",
 )
-ARCHIVED_NOTE = re.compile(r"(?:note|delivery)\.prev(?:\.[0-9]+)?\.md", re.IGNORECASE)
+ARCHIVED_NOTE = re.compile(r"(?:note|delivery|review)\.prev(?:\.[0-9]+)?\.md", re.IGNORECASE)
 
 
 class RenderError(ValueError):
@@ -211,7 +211,7 @@ def check_destination(job: Path, output: Path) -> None:
             raise RenderError(f"--output would overwrite {name}: {output}")
 
 
-def check_finished(job: Path, inputs: dict, verifier: dict) -> None:
+def check_finished(job: Path, inputs: dict, verifier: dict, review: bytes | None = None) -> None:
     if verify_note.job_inputs(job) != inputs:
         raise RenderError("job files changed during rendering; rerun both checks")
     status = verify_note.read_job_status(job)
@@ -220,9 +220,14 @@ def check_finished(job: Path, inputs: dict, verifier: dict) -> None:
             or not isinstance(coverage, dict)
             or coverage.get("allowed") is not True or coverage.get("inputs") != inputs):
         raise RenderError("verify and coverage must finish on the current job files")
+    if review is not None:
+        if (job / "review.md").read_bytes() != review:
+            raise RenderError("review.md changed during rendering")
+        if status.get("review", {}).get("final_inputs") != inputs:
+            raise RenderError("review processing must finish on the current job files")
 
 
-def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
+def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_review: bool = False) -> None:
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
@@ -230,7 +235,13 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
     check_destination(job, output)
 
     with verify_note.job_lock(job):
-        result = verify_note.check_job_submission(job, with_coverage=True)
+        status = verify_note.read_job_status(job)
+        if verify_note.repair_lock(status, review=True):
+            raise RenderError(verify_note.lock_message(status))
+        verify_note.prepare_job_note(job)
+        receipt = verify_note.prepare_review_submission(job, required=require_review)
+        review, reviewed_inputs = receipt if receipt is not None else (None, None)
+        result = verify_note.check_job_submission(job, with_coverage=True, reviewed_inputs=reviewed_inputs)
         coverage = result.get("coverage", {})
         for line in result["reasons"] + result.get("warnings", []) + coverage.get("not_checked", []):
             print(line, file=sys.stderr)
@@ -240,7 +251,7 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
         verifier = verify_note.read_job_status(job).get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
-        check_finished(job, inputs, verifier)
+        check_finished(job, inputs, verifier, review)
         note = (job / "note.md").read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
@@ -253,7 +264,7 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool) -> None:
                 temp = Path(staged.name)
                 staged.write(markdown)
             check_destination(job, output)
-            check_finished(job, inputs, verifier)
+            check_finished(job, inputs, verifier, review)
             temp.replace(output)
         finally:
             if temp is not None:
@@ -265,9 +276,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--task-dir", type=Path, required=True, help="Job directory containing the evidence note")
     parser.add_argument("--output", type=Path, required=True, help="Full path for the reading Markdown file")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
+    parser.add_argument("--require-review", action="store_true", help="Require a bound independent Task review receipt")
     args = parser.parse_args(argv)
     try:
-        render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter)
+        render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter, require_review=args.require_review)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)
         return 1

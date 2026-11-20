@@ -144,13 +144,18 @@ class Phase2EItem6Tests(unittest.TestCase):
 
         self.set_note(job, repaired_note.replace("收好种子前", "收种子之前"))
         code, result = self.verify(job, "--with-coverage")
+        self.assertEqual(code, 0, result)
+        self.assertEqual(self.status(job)["edit_rounds"], 3)
+
+        self.set_note(job, repaired_note.replace("收好种子前", "收种前"))
+        code, result = self.verify(job, "--with-coverage")
         self.assertNotEqual(code, 0, result)
         self.assertFalse(result["allowed"], result)
         status = self.status(job)
         self.assertFalse(status["finished"], status)
         self.assertTrue(status["locked"], status)
         self.assertEqual(status["status"], "not_deposited", status)
-        self.assertEqual(status["edit_rounds"], 3, status)
+        self.assertEqual(status["edit_rounds"], 4, status)
         self.assertEqual(status["repair_rounds"], 1, status)
 
     def test_joint_check_keeps_the_failed_submission_limit(self) -> None:

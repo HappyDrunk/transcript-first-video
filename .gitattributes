@@ -1,2 +1,3 @@
 /evals/fixtures/red6b/* -text
+/evals/fixtures/phase3-c04c/screen.txt -text
 *.sh text eol=lf

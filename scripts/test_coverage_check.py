@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import coverage_check as cov
 import verify_note
@@ -113,6 +115,132 @@ def _check_note(job: Path) -> dict:
 
 def _c04_reasons(result: dict) -> set[str]:
     return {rule for rule in failed_ids(result) if rule.startswith("C04")}
+
+
+class MixedScriptGroundingTests(unittest.TestCase):
+    def test_cross_language_examples_keep_the_english_overlap_gate(self) -> None:
+        excerpt = "Reformat the document and isolate tabular content before running the indexing jobs."
+        rows = [(30, excerpt), *ARCS[1:3]]
+        cases = (
+            ("先做 normalization decomposition configuration 再检查输出。", True),
+            ("We isolate tabular fragments while reviewers examine unrelated excerpts.", False),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, (claim, ok) in enumerate(cases):
+                with self.subTest(claim=claim):
+                    note = _arc_note(rows).replace(excerpt + " ⏱ 00:30", claim + " ⏱ 00:30", 1)
+                    job = _write_job(Path(tmp) / str(index), note, _transcript(rows), None, 180)
+                    result = _check_note(job)
+                    self.assertEqual("C04b" not in failed_ids(result), ok, result["reasons"])
+                    if not ok:
+                        self.assertIn("needs three shared content tokens", " ".join(result["reasons"]))
+
+    def test_word_forms_need_support_in_the_linked_excerpt(self) -> None:
+        cases = (
+            ("PDF", "PDFs", True), ("PDFs", "PDF", True),
+            ("PDF’s", "PDF", True), ("PDF", "PDF's", True),
+            ("PDF", "DOCXs", False),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, (claim, evidence, ok) in enumerate(cases):
+                with self.subTest(claim=claim, evidence=evidence):
+                    excerpt = f"We process {evidence} in batches and keep the original layout intact for readers."
+                    rows = [(30, excerpt), (90, "The separate appendix discusses PDF handling for older tools."), ARCS[2]]
+                    note = _arc_note(rows).replace(excerpt + " ⏱ 00:30",
+                                                  f"这一步处理 {claim} 文件。 ⏱ 00:30", 1)
+                    job = _write_job(Path(tmp) / str(index), note, _transcript(rows), None, 180)
+                    result = _check_note(job)
+                    self.assertEqual("C04c" not in failed_ids(result), ok, result["reasons"])
+
+
+class StructurePreflightTests(unittest.TestCase):
+    def test_preflight_uses_formal_endpoint_and_leaves_job_untouched(self) -> None:
+        rows = ARCS[:3]
+        note = _arc_note(rows)
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", note, _transcript(rows),
+                             _selection(181, [0, 60, 120]), 180.48)
+            before = {path.name: path.read_bytes() for path in job.iterdir()}
+            call = [sys.executable, "-X", "utf8", str(ROOT / "scripts/verify_note.py"),
+                    "--job", str(job), "--structure-only", "--json"]
+            one = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(one.returncode, 0, one.stdout + one.stderr)
+            self.assertTrue(cov.check_job(job)["ok"])
+            self.assertEqual({p.name: p.read_bytes() for p in job.iterdir()}, before)
+
+            (job / "selection.md").write_text(_selection(180, [0, 60, 120]), encoding="utf-8")
+            second = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(second.returncode, 2, second.stdout + second.stderr)
+            self.assertIn("03:01", second.stdout)
+            self.assertIn("03:01", " ".join(cov.check_job(job)["reasons"]))
+            self.assertEqual((job / "status.json").read_bytes(), before["status.json"])
+
+    def test_preflight_checks_correction_syntax_without_checking_its_claim(self) -> None:
+        rows = ARCS[:3]
+        source = _arc_note(rows)
+        header = "> [!warning] 字幕更正\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp) / "job", source, _transcript(rows),
+                             _selection(181, [0, 60, 120]), 180.48)
+            call = [sys.executable, "-X", "utf8", str(ROOT / "scripts/verify_note.py"),
+                    "--job", str(job), "--structure-only", "--json"]
+            for correction, expected in (
+                ("> 字幕写作 phantom，实为 sample。", 0),
+                ("> 原字幕和修正写在这里。", 2),
+            ):
+                with self.subTest(correction=correction):
+                    note = source.replace("## 主线论点\n\n",
+                                          "## 主线论点\n\n" + header + correction + "\n\n")
+                    (job / "note.md").write_text(note, encoding="utf-8")
+                    result = subprocess.run(call, capture_output=True, text=True, encoding="utf-8")
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    if expected:
+                        self.assertIn("字幕更正", result.stdout)
+
+
+class ScreenSelectionDecisionTests(unittest.TestCase):
+    def test_picture_citations_follow_their_own_selection(self) -> None:
+        rows = [*ARCS[:3], (210, ARCS[3][1]), (270, ARCS[4][1])]
+        transcript = _transcript(rows)
+        picture = "Specific detail from the projected page"
+        cases = (
+            ("omitted speech, retained item", "略", "留", "留", True),
+            ("retained slide, omitted item", "留", "留", "略", False),
+            ("omitted speech, retained slide", "略", "留", None, True),
+            ("retained speech, omitted slide", "留", "略", None, False),
+            ("omitted speech, ungrouped picture", "略", None, None, False),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, (name, speech, slide, item, expected) in enumerate(cases):
+                with self.subTest(name=name):
+                    quotes = rows if speech == "留" else [rows[0], *rows[2:]]
+                    omitted = "无" if speech == "留" else "寒暄（01:00–02:00）"
+                    note = _arc_note(quotes, omitted=omitted).replace(
+                        "## 可复用做法", "画面另有说明。 ⏱ 01:30\n\n## 可复用做法", 1)
+                    note += f"> [01:30][画面] {picture}\n"
+                    selection = _selection(300, [0, 60, 120, 180, 240]).replace(
+                        "01:00–02:00 | 内容 | 留", f"01:00–02:00 | 内容 | {speech}")
+                    screen = f"[01:30][画面] {picture}\n"
+                    if slide is not None:
+                        screen = "[01:30][幻灯片 1] frame-000001.png\n" + screen
+                        selection += f"01:30 | [幻灯片 1] 画面 | {slide} | 页面取舍\n"
+                    if item is not None:
+                        other = "留" if item == "略" else "略"
+                        selection += f"01:30 | [画面] {picture} | {item} | 画面项目取舍\n"
+                        selection += f"01:30 | [画面] Another detail | {other} | 同秒另一项目\n"
+                    job = _write_job(Path(tmp) / str(index), note, transcript, selection, 300)
+                    (job / "screen.txt").write_bytes(screen.encode())
+                    status = verify_note.read_job_status(job)
+                    status["screen_ocr"] = {
+                        "state": "ready", "mode": "slides",
+                        "sha256": hashlib.sha256(screen.encode()).hexdigest(),
+                    }
+                    verify_note.write_job_status(job, status)
+                    with patch.dict("os.environ", {"TFV_SCREEN_MODE": "slides"}):
+                        result = cov.check_job(job)
+                    self.assertEqual(result["ok"], expected, result["reasons"])
+                    if not expected:
+                        self.assertEqual(failed_ids(result), {"S01"}, result["reasons"])
 
 
 class CoverageCheckTests(unittest.TestCase):

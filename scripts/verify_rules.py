@@ -400,6 +400,16 @@ def term_occurs(term: str, source: str) -> bool:
     return bool(re.search(_term_pattern(term), source, re.IGNORECASE))
 
 
+def caption_correction_pair(line: str) -> tuple[str, str] | None:
+    correction = _CAPTION_CORRECTION.fullmatch(line)
+    if correction is None:
+        return None
+    original = correction[1].strip().strip(_CORRECTION_QUOTES).strip()
+    target = _CORRECTION_TARGET.match(correction[2].strip())
+    corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip() if target else ""
+    return (original, corrected) if original and corrected else None
+
+
 def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[str, str]]:
     """Return original and corrected spellings backed by the transcript."""
     corrections: list[tuple[str, str]] = []
@@ -408,16 +418,9 @@ def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[
         if match is None or match.groups() != ("warning", "字幕更正"):
             continue
         for line in lines:
-            correction = _CAPTION_CORRECTION.fullmatch(line)
-            if correction is None:
-                continue
-            original = correction[1].strip().strip(_CORRECTION_QUOTES).strip()
-            target = _CORRECTION_TARGET.match(correction[2].strip())
-            if not original or target is None or not term_occurs(original, transcript):
-                continue
-            corrected = target[0].strip().strip(_CORRECTION_QUOTES).strip()
-            if corrected:
-                corrections.append((original, corrected))
+            pair = caption_correction_pair(line)
+            if pair and term_occurs(pair[0], transcript):
+                corrections.append(pair)
     return corrections
 
 
@@ -650,7 +653,7 @@ def _content_tokens(text: str) -> set[str]:
 
 def _script_counts(text: str) -> tuple[int, int]:
     cjk = sum(len(run) for run in _CJK_RUN.findall(text))
-    latin = sum(len(word) for word in _LATIN_WORD.findall(text))
+    latin = len(_LATIN_WORD.findall(text))
     return cjk, latin
 
 
@@ -859,6 +862,16 @@ def _checked_clock(value: object) -> float | None:
     return number if math.isfinite(number) and number >= 0 else None
 
 
+def selection_endpoint(segments: list[quality_gate.Segment], duration: object) -> int | None:
+    """Return the exclusive end of the last selection unit."""
+    latest = max((cue.start for cue in segments if cue.start is not None), default=None)
+    if latest is None:
+        return None
+    clock_end = max((cue.end for cue in segments if cue.end is not None
+                     and cue.start is not None and cue.end > cue.start), default=0)
+    return max(math.ceil(max(_checked_clock(duration) or 0, clock_end)), math.floor(latest) + 1)
+
+
 def transcript_segments(raw: str, sidecar: Path) -> list[quality_gate.Segment]:
     """Use real cue clocks. A sidecar must describe the same current transcript."""
     lines = []
@@ -971,6 +984,32 @@ def _cites(fields: dict, transcript: Path, *, job: bool) -> bool:
     return not job and declared.resolve() == expected
 
 
+def delivery_evidence(body: str) -> tuple[str, str | None, str | None]:
+    evidence = next((heading for heading in _HEADING.finditer(body)
+                     if heading.groups() == ("##", EVIDENCE_HEADING)), None)
+    if evidence is None:
+        return body, None, None
+    before = body[:evidence.start()].rstrip()
+    lines = before.splitlines()
+    omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
+    if omitted and omitted[1]:
+        return "\n".join(lines[:-1]), body[evidence.end():], omitted[1]
+    return before, body[evidence.end():], None
+
+
+def caption_structure(note: str) -> tuple[str | None, list[str]]:
+    body, _, omission = delivery_evidence(_FRONTMATTER.sub("", note, count=1))
+    _, blocks = delivery_parts(body)
+    issues = []
+    for header, *lines in blocks:
+        if "字幕更正" in header and (
+            not re.fullmatch(r">\s*\[!warning\]\s*字幕更正", header)
+            or not any(caption_correction_pair(line) for line in lines)
+        ):
+            issues.append("note.md 字幕更正 needs [!warning] 字幕更正 and a 字幕写作 X，实为 Y pair")
+    return omission, issues
+
+
 def build_context(
     transcript: Path,
     note: str,
@@ -990,22 +1029,13 @@ def build_context(
     note = re.sub(r"\A(?:# (?:expect|fixture_[a-z]+):[^\n]*\n)+", "", note)
     fields = knowledge_note.parse_frontmatter(note) or {}
     speech = "\n".join(cue.text for cue in segments)
-    body = _FRONTMATTER.sub("", note, count=1)
-    evidence_heading = next((heading for heading in _HEADING.finditer(body)
-                             if heading.groups() == ("##", EVIDENCE_HEADING)), None)
+    body, evidence, omission = delivery_evidence(_FRONTMATTER.sub("", note, count=1))
     quotes, evidence_errors = [], []
     screen_path = transcript.with_name(SCREEN_FILE)
     screen_enabled = job and screen_mode(transcript.parent) != "off"
     screen = _screen_index(screen_path) if screen_enabled else None
-    omission = None
-    if evidence_heading:
-        quotes, evidence_errors = _end_quotes(body[evidence_heading.end():], TranscriptIndex(segments), screen)
-        body = body[:evidence_heading.start()].rstrip()
-        lines = body.splitlines()
-        omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
-        if omitted and omitted[1]:
-            omission = omitted[1]
-            body = "\n".join(lines[:-1])
+    if evidence is not None:
+        quotes, evidence_errors = _end_quotes(evidence, TranscriptIndex(segments), screen)
     sections = delivery_sections(body)
     return RuleContext(
         transcript, note, tuple(status for status in (job_status, fields.get("job_status")) if status),
@@ -1198,6 +1228,11 @@ _CALENDAR_DATES = (
         r"(?:,?[ \t]+(?P<year>(?:19|20)[0-9]{2})(?![0-9]))?", re.IGNORECASE,
     ),
 )
+_OCR_DATE_SEPARATOR = re.compile(
+    rf"(?<![A-Za-z0-9])((?:{_EN_MONTH_NAME})\.?[ \t]+[0-9]{{1,2}})\.(?=[ \t]+(?:19|20)[0-9]{{2}}"
+    r"(?:[ \t]+[0-9]{1,2}:[0-5][0-9]\b|[ \t]*$))", re.IGNORECASE,
+)
+_MILLISECONDS_SUFFIX = re.compile(r"(?<=\d)[ \t]*ms(?![A-Za-z0-9_])", re.IGNORECASE)
 _SPOKEN_YEAR = re.compile(
     r"(?<![A-Za-z0-9])(?:(?:early|mid|late|in)[ \t-]+)+(?P<year>(?:19|20)?[0-9]{2})(?![A-Za-z0-9]|\.[0-9])",
     re.IGNORECASE,
@@ -1237,8 +1272,12 @@ def _integer_label(label: str) -> int:
     return int(label) if label.isascii() else _chinese_integer(label)
 
 
-def canonical_numbers(text: str) -> tuple[str, list[NumericValue]]:
+def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[NumericValue]]:
     """Separate calendar values and versions before comparing ordinary quantities."""
+    if screen:
+        text = _OCR_DATE_SEPARATOR.sub(r"\1,", text)
+    # Keep the whole decimal before the number lexer meets a Latin suffix.
+    text = _MILLISECONDS_SUFFIX.sub(" 毫秒", text)
     values: list[NumericValue] = []
 
     def calendar_date(match: re.Match[str]) -> str:
@@ -1307,16 +1346,38 @@ def _adjacent_screen_excerpts(quotes: list[Quote]) -> list[str]:
     return joined
 
 
+def _grounding_word(match: re.Match[str]) -> str:
+    word = match[0].casefold().replace("’", "'")
+    if word.endswith("'s"):
+        word = word[:-2]
+    elif word.endswith("s'"):
+        word = word[:-1]
+    if len(word) < 4 or word.endswith(("ss", "us", "is")):
+        return word
+    if word.endswith("ies") and word[-4] not in "aeiou":
+        return word[:-3] + "y"
+    if word.endswith(("sses", "shes", "ches", "xes", "zzes")):
+        return word[:-2]
+    return word[:-1] if word.endswith("s") else word
+
+
+def _grounded_term_occurs(term: str, source: str) -> bool:
+    """Accept regular English plurals and possessives in the same evidence."""
+    return term_occurs(term, source) or term_occurs(
+        _LATIN_WORD.sub(_grounding_word, term), _LATIN_WORD.sub(_grounding_word, source)
+    )
+
+
 def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     issues, unknown_quoted = [], {}
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
 
-    def canonical(text: str) -> tuple[str, list[NumericValue]]:
+    def canonical(text: str, *, screen: bool = False) -> tuple[str, list[NumericValue]]:
         if ctx.has_screen_file:
             text = re.sub(r"(?<=\d)[xX](?![A-Za-z0-9])", "×", text)
-        return canonical_numbers(text)
+        return canonical_numbers(text, screen=screen)
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
@@ -1333,16 +1394,22 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
-            numeric_source = excerpts if ctx.has_screen_file else source
-            support = [value for excerpt in numeric_source for value in canonical(excerpt)[1]]
-            numeric_prose, numeric_claims = canonical(prose)
+            support = [value for quote in evidence for value in canonical(quote.text, screen=quote.screen)[1]]
+            if not ctx.has_screen_file:
+                support.extend(value for excerpt in corrections for value in canonical(excerpt)[1])
+            numeric_text = prose
+            for quote in evidence:
+                if quote.screen and quote.text in numeric_text:
+                    # An exact reproduction of the cited OCR text is the same date.
+                    numeric_text = numeric_text.replace(quote.text, _OCR_DATE_SEPARATOR.sub(r"\1,", quote.text))
+            numeric_prose, numeric_claims = canonical(numeric_text)
             missing_numbers = {
                 claim.label for claim in numeric_claims
                 if not any(value.supports(claim) for value in support)
             }
             missing_names = {
                 name for name in proper_names(numeric_prose)
-                if not any(term_occurs(name, excerpt) for excerpt in source)
+                if not any(_grounded_term_occurs(name, excerpt) for excerpt in source)
             }
             supported_originals = set()
             original_excerpts = [*excerpts, *_adjacent_screen_excerpts(evidence)]
@@ -1350,7 +1417,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 original = (match[1] or match[2]).strip()
                 if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
                     continue
-                if any(term_occurs(original, excerpt) for excerpt in original_excerpts):
+                if any(_grounded_term_occurs(original, excerpt) for excerpt in original_excerpts):
                     supported_originals.add(match.start())
                 else:
                     issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
@@ -1359,7 +1426,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                     continue
                 term = (match[1] or match[2]).strip()
                 if term and not term.startswith("[") and term.casefold() not in _PROPER_SKIP:
-                    if not any(term_occurs(term, excerpt) for excerpt in source):
+                    if not any(_grounded_term_occurs(term, excerpt) for excerpt in source):
                         unknown_quoted.setdefault(term.casefold(), term)
             issues.extend(f"{section.heading}: number {label!r} is absent from the end evidence"
                           for label in sorted(missing_numbers))

@@ -1,0 +1,2307 @@
+[
+  {
+    "start": 3.19,
+    "end": 3.2,
+    "text": "Hi everyone. My name is Gabe de Mesa."
+  },
+  {
+    "start": 6.11,
+    "end": 6.12,
+    "text": "I'm an engineer here at OpenGov and"
+  },
+  {
+    "start": 7.43,
+    "end": 7.44,
+    "text": "today we're going to be talking about"
+  },
+  {
+    "start": 10.07,
+    "end": 10.08,
+    "text": "agents in production, specifically how"
+  },
+  {
+    "start": 13.87,
+    "end": 13.88,
+    "text": "OpenGov built and scaled OG Assist. Uh"
+  },
+  {
+    "start": 14.95,
+    "end": 14.96,
+    "text": "so"
+  },
+  {
+    "start": 15.83,
+    "end": 15.84,
+    "text": "um"
+  },
+  {
+    "start": 17.55,
+    "end": 17.56,
+    "text": "this presentation is going to be"
+  },
+  {
+    "start": 21.11,
+    "end": 21.12,
+    "text": "jam-packed with just so much good stuff."
+  },
+  {
+    "start": 22.91,
+    "end": 22.92,
+    "text": "Uh we're going to talk about uh AI"
+  },
+  {
+    "start": 24.55,
+    "end": 24.56,
+    "text": "agents. We're going to talk about our"
+  },
+  {
+    "start": 27.87,
+    "end": 27.88,
+    "text": "harness. We're going to talk about um"
+  },
+  {
+    "start": 30.67,
+    "end": 30.68,
+    "text": "evals, observability, traces. We're"
+  },
+  {
+    "start": 32.87,
+    "end": 32.88,
+    "text": "going to talk about um"
+  },
+  {
+    "start": 35.43,
+    "end": 35.44,
+    "text": "tools and skills. Um"
+  },
+  {
+    "start": 36.83,
+    "end": 36.84,
+    "text": "It's There's going to be a lot of good"
+  },
+  {
+    "start": 38.67,
+    "end": 38.68,
+    "text": "stuff in here. We're going to talk to"
+  },
+  {
+    "start": 41.15,
+    "end": 41.16,
+    "text": "you guys about uh what we do at OpenGov"
+  },
+  {
+    "start": 43.63,
+    "end": 43.64,
+    "text": "and how we operate at the scale that uh"
+  },
+  {
+    "start": 46.87,
+    "end": 46.88,
+    "text": "we operate at um in production, so"
+  },
+  {
+    "start": 49.35,
+    "end": 49.36,
+    "text": "you'll be able to see a real use case"
+  },
+  {
+    "start": 52.51,
+    "end": 52.52,
+    "text": "and workload uh with AI agents. Um so"
+  },
+  {
+    "start": 56.11,
+    "end": 56.12,
+    "text": "without further ado, let's get started."
+  },
+  {
+    "start": 58.91,
+    "end": 58.92,
+    "text": "Okay, agenda. So just really quickly"
+  },
+  {
+    "start": 61.31,
+    "end": 61.32,
+    "text": "going to go through uh high-level what"
+  },
+  {
+    "start": 63.27,
+    "end": 63.28,
+    "text": "we're going to talk about today. Uh I'm"
+  },
+  {
+    "start": 64.15,
+    "end": 64.16,
+    "text": "going to tell you guys a little bit"
+  },
+  {
+    "start": 67.55,
+    "end": 67.56,
+    "text": "about OG Assist and what uh OpenGov is."
+  },
+  {
+    "start": 68.91,
+    "end": 68.92,
+    "text": "I'm going to tell you guys the origin"
+  },
+  {
+    "start": 71.31,
+    "end": 71.32,
+    "text": "story of how this all kind of came to"
+  },
+  {
+    "start": 73.99,
+    "end": 74.0,
+    "text": "be. Uh we're going to talk about OG"
+  },
+  {
+    "start": 77.75,
+    "end": 77.76,
+    "text": "Assist's uh big bet on effect."
+  },
+  {
+    "start": 79.63,
+    "end": 79.64,
+    "text": "Uh a little bit into our core agent"
+  },
+  {
+    "start": 81.03,
+    "end": 81.04,
+    "text": "loop. Uh we're going to talk about the"
+  },
+  {
+    "start": 84.31,
+    "end": 84.32,
+    "text": "A2A protocol, evals, and sandboxing."
+  },
+  {
+    "start": 86.15,
+    "end": 86.16,
+    "text": "We're going to talk about how we manage"
+  },
+  {
+    "start": 88.83,
+    "end": 88.84,
+    "text": "long context. We're going to talk about"
+  },
+  {
+    "start": 89.43,
+    "end": 89.44,
+    "text": "um"
+  },
+  {
+    "start": 91.39,
+    "end": 91.4,
+    "text": "monitoring, observability, how we"
+  },
+  {
+    "start": 94.15,
+    "end": 94.16,
+    "text": "collect feedback uh and how we iterate"
+  },
+  {
+    "start": 96.55,
+    "end": 96.56,
+    "text": "on that feedback. We're going to lastly"
+  },
+  {
+    "start": 99.43,
+    "end": 99.44,
+    "text": "uh also talk about tools and skills and"
+  },
+  {
+    "start": 102.83,
+    "end": 102.84,
+    "text": "how at OpenGov uh we use um"
+  },
+  {
+    "start": 105.71,
+    "end": 105.72,
+    "text": "AI not only externally uh that we uh"
+  },
+  {
+    "start": 107.63,
+    "end": 107.64,
+    "text": "serve to customers, but also internally"
+  },
+  {
+    "start": 111.59,
+    "end": 111.6,
+    "text": "to improve our development workflows."
+  },
+  {
+    "start": 113.31,
+    "end": 113.32,
+    "text": "Just a little bit about me before we go"
+  },
+  {
+    "start": 115.67,
+    "end": 115.68,
+    "text": "any further. My name is Gabe. I'm a"
+  },
+  {
+    "start": 117.79,
+    "end": 117.8,
+    "text": "software engineer here at OpenGov. I"
+  },
+  {
+    "start": 120.35,
+    "end": 120.36,
+    "text": "work on the AI agents team and"
+  },
+  {
+    "start": 123.03,
+    "end": 123.04,
+    "text": "I'm one of the folks that helped build"
+  },
+  {
+    "start": 124.91,
+    "end": 124.92,
+    "text": "OG Assist and some of the systems that"
+  },
+  {
+    "start": 127.91,
+    "end": 127.92,
+    "text": "you guys will be seeing today."
+  },
+  {
+    "start": 129.79,
+    "end": 129.8,
+    "text": "So, a little bit about OpenGov. OpenGov"
+  },
+  {
+    "start": 132.11,
+    "end": 132.12,
+    "text": "is a software company"
+  },
+  {
+    "start": 134.39,
+    "end": 134.4,
+    "text": "on a mission to power more effective and"
+  },
+  {
+    "start": 136.71,
+    "end": 136.72,
+    "text": "accountable government. So, OpenGov"
+  },
+  {
+    "start": 138.59,
+    "end": 138.6,
+    "text": "sells ERP software. That's things like"
+  },
+  {
+    "start": 140.27,
+    "end": 140.28,
+    "text": "budgeting, procurement, asset"
+  },
+  {
+    "start": 143.15,
+    "end": 143.16,
+    "text": "management, and permitting. And"
+  },
+  {
+    "start": 145.99,
+    "end": 146.0,
+    "text": "we were founded about 14 years ago and"
+  },
+  {
+    "start": 147.67,
+    "end": 147.68,
+    "text": "what's cool is"
+  },
+  {
+    "start": 148.43,
+    "end": 148.44,
+    "text": "um"
+  },
+  {
+    "start": 150.91,
+    "end": 150.92,
+    "text": "we have this thing called OG Assist and"
+  },
+  {
+    "start": 154.39,
+    "end": 154.4,
+    "text": "OG Assist is this little button on the"
+  },
+  {
+    "start": 156.59,
+    "end": 156.6,
+    "text": "top of all of our products in the in the"
+  },
+  {
+    "start": 159.99,
+    "end": 160.0,
+    "text": "navigation bar. And what's cool is"
+  },
+  {
+    "start": 162.71,
+    "end": 162.72,
+    "text": "all of our product suites and product"
+  },
+  {
+    "start": 164.07,
+    "end": 164.08,
+    "text": "teams"
+  },
+  {
+    "start": 167.75,
+    "end": 167.76,
+    "text": "have built tools and skills in order to"
+  },
+  {
+    "start": 171.39,
+    "end": 171.4,
+    "text": "power this button. So, for example, if I"
+  },
+  {
+    "start": 172.83,
+    "end": 172.84,
+    "text": "open up"
+  },
+  {
+    "start": 174.75,
+    "end": 174.76,
+    "text": "this this"
+  },
+  {
+    "start": 176.43,
+    "end": 176.44,
+    "text": "if I click this button and I open up OG"
+  },
+  {
+    "start": 178.51,
+    "end": 178.52,
+    "text": "Assist, it says, \"Hey, I'm going to ask"
+  },
+  {
+    "start": 180.27,
+    "end": 180.28,
+    "text": "about rate codes, which is very specific"
+  },
+  {
+    "start": 182.35,
+    "end": 182.36,
+    "text": "to utility billing, the current product"
+  },
+  {
+    "start": 184.27,
+    "end": 184.28,
+    "text": "that I'm in.\" And you can see that"
+  },
+  {
+    "start": 186.229,
+    "end": 186.239,
+    "text": "inside of this kind of chat interface,"
+  },
+  {
+    "start": 188.509,
+    "end": 188.519,
+    "text": "I'm able to speak to an agent and the"
+  },
+  {
+    "start": 190.55,
+    "end": 190.56,
+    "text": "agent is able to make tool calls in"
+  },
+  {
+    "start": 192.27,
+    "end": 192.28,
+    "text": "order to"
+  },
+  {
+    "start": 195.03,
+    "end": 195.04,
+    "text": "look up information against data inside"
+  },
+  {
+    "start": 198.31,
+    "end": 198.32,
+    "text": "of that suite. So, it's really cool"
+  },
+  {
+    "start": 200.71,
+    "end": 200.72,
+    "text": "to be able to kind of first-party create"
+  },
+  {
+    "start": 203.11,
+    "end": 203.12,
+    "text": "these experiences through the capability"
+  },
+  {
+    "start": 208.99,
+    "end": 209.0,
+    "text": "Okay, so just a"
+  },
+  {
+    "start": 211.15,
+    "end": 211.16,
+    "text": "quick story about how this all came to"
+  },
+  {
+    "start": 212.79,
+    "end": 212.8,
+    "text": "be. So,"
+  },
+  {
+    "start": 215.949,
+    "end": 215.959,
+    "text": "a little while back we we we saw that AI"
+  },
+  {
+    "start": 217.99,
+    "end": 218.0,
+    "text": "was really starting to take off and a"
+  },
+  {
+    "start": 219.63,
+    "end": 219.64,
+    "text": "principal uh spun up this new team"
+  },
+  {
+    "start": 221.229,
+    "end": 221.239,
+    "text": "called the AI agents team and asked me"
+  },
+  {
+    "start": 223.47,
+    "end": 223.48,
+    "text": "to join. And um"
+  },
+  {
+    "start": 226.19,
+    "end": 226.2,
+    "text": "instantly I said yes and OG Assist"
+  },
+  {
+    "start": 228.67,
+    "end": 228.68,
+    "text": "started to to grow and we started to"
+  },
+  {
+    "start": 230.91,
+    "end": 230.92,
+    "text": "integrate OG Assist into all our"
+  },
+  {
+    "start": 233.55,
+    "end": 233.56,
+    "text": "products. And uh not only our back-end"
+  },
+  {
+    "start": 235.31,
+    "end": 235.32,
+    "text": "capabilities, but also our front-end"
+  },
+  {
+    "start": 237.07,
+    "end": 237.08,
+    "text": "capabilities as well. So, you'll see"
+  },
+  {
+    "start": 238.87,
+    "end": 238.88,
+    "text": "that one of the capabilities that we"
+  },
+  {
+    "start": 241.35,
+    "end": 241.36,
+    "text": "give the agent is it's able to"
+  },
+  {
+    "start": 244.63,
+    "end": 244.64,
+    "text": "um see what's on the screen and and see"
+  },
+  {
+    "start": 247.67,
+    "end": 247.68,
+    "text": "and and and take action on what's on the"
+  },
+  {
+    "start": 249.83,
+    "end": 249.84,
+    "text": "page. So, you could see that uh I'm"
+  },
+  {
+    "start": 251.51,
+    "end": 251.52,
+    "text": "asking the agent here, \"Hey, hey, what's"
+  },
+  {
+    "start": 254.23,
+    "end": 254.24,
+    "text": "on the screen? Can you maybe highlight"
+  },
+  {
+    "start": 255.83,
+    "end": 255.84,
+    "text": "uh some of the next steps that I could"
+  },
+  {
+    "start": 257.71,
+    "end": 257.72,
+    "text": "take?\" So, you can see that the agent"
+  },
+  {
+    "start": 259.99,
+    "end": 260.0,
+    "text": "here is thinking. It's saying, \"Okay,"
+  },
+  {
+    "start": 261.63,
+    "end": 261.64,
+    "text": "what tools do I have available to use?\""
+  },
+  {
+    "start": 263.51,
+    "end": 263.52,
+    "text": "And \"Hey, let me go and highlight"
+  },
+  {
+    "start": 265.35,
+    "end": 265.36,
+    "text": "something that you could actually click"
+  },
+  {
+    "start": 267.51,
+    "end": 267.52,
+    "text": "on and and tell you more about it.\" So,"
+  },
+  {
+    "start": 269.47,
+    "end": 269.48,
+    "text": "just another capability of OG Assistant."
+  },
+  {
+    "start": 270.79,
+    "end": 270.8,
+    "text": "Just a little"
+  },
+  {
+    "start": 272.59,
+    "end": 272.6,
+    "text": "short story about how this all came to"
+  },
+  {
+    "start": 278.23,
+    "end": 278.24,
+    "text": "So, the big bet on Effect. Um so, I"
+  },
+  {
+    "start": 279.95,
+    "end": 279.96,
+    "text": "really wanted to include this slide"
+  },
+  {
+    "start": 282.63,
+    "end": 282.64,
+    "text": "because um here on the Agents team, we"
+  },
+  {
+    "start": 285.19,
+    "end": 285.2,
+    "text": "made a huge bet to"
+  },
+  {
+    "start": 286.47,
+    "end": 286.48,
+    "text": "um"
+  },
+  {
+    "start": 289.47,
+    "end": 289.48,
+    "text": "to to bet on Effect. And suffice to say"
+  },
+  {
+    "start": 292.03,
+    "end": 292.04,
+    "text": "it's paid off in dividends."
+  },
+  {
+    "start": 295.59,
+    "end": 295.6,
+    "text": "Um we write Effect. So, Effect is this"
+  },
+  {
+    "start": 298.03,
+    "end": 298.04,
+    "text": "library for TypeScript. It's open source"
+  },
+  {
+    "start": 300.31,
+    "end": 300.32,
+    "text": "and it helps you write better um"
+  },
+  {
+    "start": 301.95,
+    "end": 301.96,
+    "text": "TypeScript code."
+  },
+  {
+    "start": 302.59,
+    "end": 302.6,
+    "text": "Uh"
+  },
+  {
+    "start": 304.43,
+    "end": 304.44,
+    "text": "you know, it's got a lot of uh stuff"
+  },
+  {
+    "start": 305.71,
+    "end": 305.72,
+    "text": "baked in it like a"
+  },
+  {
+    "start": 307.75,
+    "end": 307.76,
+    "text": "a schema similar to like Zod, if you've"
+  },
+  {
+    "start": 311.27,
+    "end": 311.28,
+    "text": "ever used that. It's also got um things"
+  },
+  {
+    "start": 314.15,
+    "end": 314.16,
+    "text": "for error handling, uh for logging, for"
+  },
+  {
+    "start": 316.11,
+    "end": 316.12,
+    "text": "traces, for"
+  },
+  {
+    "start": 317.99,
+    "end": 318.0,
+    "text": "uh it's just got so much in there. It"
+  },
+  {
+    "start": 319.71,
+    "end": 319.72,
+    "text": "really helps write better code and"
+  },
+  {
+    "start": 322.23,
+    "end": 322.24,
+    "text": "structure your code better and uh helps"
+  },
+  {
+    "start": 323.79,
+    "end": 323.8,
+    "text": "with architecture, spinning up new"
+  },
+  {
+    "start": 325.51,
+    "end": 325.52,
+    "text": "services for"
+  },
+  {
+    "start": 327.35,
+    "end": 327.36,
+    "text": "uh and and for us on the Agents team,"
+  },
+  {
+    "start": 330.39,
+    "end": 330.4,
+    "text": "really helping uh design and build the"
+  },
+  {
+    "start": 332.43,
+    "end": 332.44,
+    "text": "the core agent loop. So, you'll see"
+  },
+  {
+    "start": 334.35,
+    "end": 334.36,
+    "text": "throughout this presentation sprinkled"
+  },
+  {
+    "start": 339.51,
+    "end": 339.52,
+    "text": "in um how Effect on our team uh has paid"
+  },
+  {
+    "start": 341.79,
+    "end": 341.8,
+    "text": "off in dividends. So, we we really love"
+  },
+  {
+    "start": 344.19,
+    "end": 344.2,
+    "text": "Effect here at OpenGov and we encourage"
+  },
+  {
+    "start": 347.43,
+    "end": 347.44,
+    "text": "other folks to try it out and um"
+  },
+  {
+    "start": 352.59,
+    "end": 352.6,
+    "text": "The Effect Native Loop."
+  },
+  {
+    "start": 354.95,
+    "end": 354.96,
+    "text": "So, originally we were on LangGraph and"
+  },
+  {
+    "start": 356.95,
+    "end": 356.96,
+    "text": "that was fine until the team really"
+  },
+  {
+    "start": 360.15,
+    "end": 360.16,
+    "text": "started to scale uh and our use cases"
+  },
+  {
+    "start": 362.51,
+    "end": 362.52,
+    "text": "started to evolve."
+  },
+  {
+    "start": 364.43,
+    "end": 364.44,
+    "text": "So, we"
+  },
+  {
+    "start": 367.11,
+    "end": 367.12,
+    "text": "decided to move over to our own kind of"
+  },
+  {
+    "start": 369.15,
+    "end": 369.16,
+    "text": "Effect Native Agent Loop to have full"
+  },
+  {
+    "start": 371.31,
+    "end": 371.32,
+    "text": "regency over this"
+  },
+  {
+    "start": 373.91,
+    "end": 373.92,
+    "text": "uh Agent Loop such that if we have"
+  },
+  {
+    "start": 376.43,
+    "end": 376.44,
+    "text": "complex use cases or features that we"
+  },
+  {
+    "start": 379.47,
+    "end": 379.48,
+    "text": "need to build, we could kind of"
+  },
+  {
+    "start": 382.19,
+    "end": 382.2,
+    "text": "get in we we had full control of the of"
+  },
+  {
+    "start": 384.03,
+    "end": 384.04,
+    "text": "the Agent Loop. And not only that, but"
+  },
+  {
+    "start": 385.87,
+    "end": 385.88,
+    "text": "now we're fully on Effect. So, all the"
+  },
+  {
+    "start": 388.31,
+    "end": 388.32,
+    "text": "cool things you get with Effect is now"
+  },
+  {
+    "start": 390.71,
+    "end": 390.72,
+    "text": "propagated throughout the entire Agent"
+  },
+  {
+    "start": 392.51,
+    "end": 392.52,
+    "text": "Loop, like the tracing, structured"
+  },
+  {
+    "start": 395.35,
+    "end": 395.36,
+    "text": "concurrency, the logging, everything is"
+  },
+  {
+    "start": 397.83,
+    "end": 397.84,
+    "text": "more fine-grained control, and it it"
+  },
+  {
+    "start": 400.27,
+    "end": 400.28,
+    "text": "really allows us to really unlock the"
+  },
+  {
+    "start": 403.11,
+    "end": 403.12,
+    "text": "full potential uh having our own Agent"
+  },
+  {
+    "start": 407.03,
+    "end": 407.04,
+    "text": "Loop from the ground up. Um so, another"
+  },
+  {
+    "start": 408.99,
+    "end": 409.0,
+    "text": "thing I wanted to mention is on the left"
+  },
+  {
+    "start": 411.67,
+    "end": 411.68,
+    "text": "side, you'll see a code example. This is"
+  },
+  {
+    "start": 414.79,
+    "end": 414.8,
+    "text": "really the basics of the Effect Loop"
+  },
+  {
+    "start": 416.909,
+    "end": 416.919,
+    "text": "that we're using. Uh we're using this"
+  },
+  {
+    "start": 419.99,
+    "end": 420.0,
+    "text": "thing called the Effect AI package, and"
+  },
+  {
+    "start": 421.71,
+    "end": 421.72,
+    "text": "in that package, there's this thing"
+  },
+  {
+    "start": 423.55,
+    "end": 423.56,
+    "text": "called um"
+  },
+  {
+    "start": 425.47,
+    "end": 425.48,
+    "text": "there's a chat and a language model. So,"
+  },
+  {
+    "start": 427.31,
+    "end": 427.32,
+    "text": "with the chat, you can instantiate like"
+  },
+  {
+    "start": 429.19,
+    "end": 429.2,
+    "text": "an a chat, for example, and then you"
+  },
+  {
+    "start": 432.31,
+    "end": 432.32,
+    "text": "could stream text using"
+  },
+  {
+    "start": 432.99,
+    "end": 433.0,
+    "text": "um"
+  },
+  {
+    "start": 434.63,
+    "end": 434.64,
+    "text": "that that kind of"
+  },
+  {
+    "start": 436.31,
+    "end": 436.32,
+    "text": "stream text function, you could pass in"
+  },
+  {
+    "start": 438.95,
+    "end": 438.96,
+    "text": "a prompt. And what's cool is uh with a"
+  },
+  {
+    "start": 441.95,
+    "end": 441.96,
+    "text": "language model under the hood uh of"
+  },
+  {
+    "start": 443.27,
+    "end": 443.28,
+    "text": "since we're kind of doing dependency"
+  },
+  {
+    "start": 444.55,
+    "end": 444.56,
+    "text": "injection,"
+  },
+  {
+    "start": 446.95,
+    "end": 446.96,
+    "text": "we could pass in a different language"
+  },
+  {
+    "start": 449.99,
+    "end": 450.0,
+    "text": "model if we were to uh hot swap to"
+  },
+  {
+    "start": 451.95,
+    "end": 451.96,
+    "text": "another one, for example. So, really"
+  },
+  {
+    "start": 454.15,
+    "end": 454.16,
+    "text": "just having full control of our own"
+  },
+  {
+    "start": 456.07,
+    "end": 456.08,
+    "text": "Agent Loop just kind of gives us all the"
+  },
+  {
+    "start": 458.03,
+    "end": 458.04,
+    "text": "levers, and it really just unlocks the"
+  },
+  {
+    "start": 461.07,
+    "end": 461.08,
+    "text": "full capabilities of the model, and uh"
+  },
+  {
+    "start": 463.31,
+    "end": 463.32,
+    "text": "for the team as well, to have full"
+  },
+  {
+    "start": 466.35,
+    "end": 466.36,
+    "text": "agency over this this loop."
+  },
+  {
+    "start": 468.95,
+    "end": 468.96,
+    "text": "Another thing I wanted to mention is the"
+  },
+  {
+    "start": 471.83,
+    "end": 471.84,
+    "text": "agent-to-agent protocol. So, here on the"
+  },
+  {
+    "start": 473.71,
+    "end": 473.72,
+    "text": "agents team we've had a lot of success"
+  },
+  {
+    "start": 475.51,
+    "end": 475.52,
+    "text": "with this protocol. So, this protocol"
+  },
+  {
+    "start": 478.59,
+    "end": 478.6,
+    "text": "being the protocol that Google created."
+  },
+  {
+    "start": 481.03,
+    "end": 481.04,
+    "text": "Um kind of an open protocol for agents"
+  },
+  {
+    "start": 483.31,
+    "end": 483.32,
+    "text": "to intercommunicate, but um we found"
+  },
+  {
+    "start": 486.91,
+    "end": 486.92,
+    "text": "this very useful for uh defining our"
+  },
+  {
+    "start": 489.67,
+    "end": 489.68,
+    "text": "agent routes. So, for example, in the"
+  },
+  {
+    "start": 492.67,
+    "end": 492.68,
+    "text": "back end and our model and our schema to"
+  },
+  {
+    "start": 494.63,
+    "end": 494.64,
+    "text": "follow this kind of"
+  },
+  {
+    "start": 497.07,
+    "end": 497.08,
+    "text": "agent protocol. So, we modeled So, for"
+  },
+  {
+    "start": 498.55,
+    "end": 498.56,
+    "text": "example, there's this thing called an"
+  },
+  {
+    "start": 500.79,
+    "end": 500.8,
+    "text": "agent card which you see here and it's"
+  },
+  {
+    "start": 502.71,
+    "end": 502.72,
+    "text": "got the name of the agent, a"
+  },
+  {
+    "start": 505.79,
+    "end": 505.8,
+    "text": "description, etc., right? And having"
+  },
+  {
+    "start": 508.47,
+    "end": 508.48,
+    "text": "this kind of rigorous protocol, this"
+  },
+  {
+    "start": 511.909,
+    "end": 511.919,
+    "text": "rigorous spec really helped drive our"
+  },
+  {
+    "start": 514.31,
+    "end": 514.32,
+    "text": "development and drive alignment because,"
+  },
+  {
+    "start": 517.11,
+    "end": 517.12,
+    "text": "you know, all we had to do was um align"
+  },
+  {
+    "start": 520.11,
+    "end": 520.12,
+    "text": "with this spec and follow this spec and"
+  },
+  {
+    "start": 521.79,
+    "end": 521.8,
+    "text": "we knew that this was kind of the"
+  },
+  {
+    "start": 525.47,
+    "end": 525.48,
+    "text": "contract that our front end and back end"
+  },
+  {
+    "start": 528.99,
+    "end": 529.0,
+    "text": "would both consume and and produce. So,"
+  },
+  {
+    "start": 532.829,
+    "end": 532.839,
+    "text": "um this uh I would say also has been"
+  },
+  {
+    "start": 535.11,
+    "end": 535.12,
+    "text": "uh very helpful for us. And And what's"
+  },
+  {
+    "start": 536.87,
+    "end": 536.88,
+    "text": "really cool is A2A has a lot of"
+  },
+  {
+    "start": 538.79,
+    "end": 538.8,
+    "text": "extensions, right? So, you could extend"
+  },
+  {
+    "start": 542.07,
+    "end": 542.08,
+    "text": "the protocol uh add in like metadata. Uh"
+  },
+  {
+    "start": 544.15,
+    "end": 544.16,
+    "text": "there's also A2UI."
+  },
+  {
+    "start": 545.79,
+    "end": 545.8,
+    "text": "Um so,"
+  },
+  {
+    "start": 549.07,
+    "end": 549.08,
+    "text": "lots of fun stuff uh with A2A protocol,"
+  },
+  {
+    "start": 551.59,
+    "end": 551.6,
+    "text": "but uh this is kind of what's worked for"
+  },
+  {
+    "start": 553.75,
+    "end": 553.76,
+    "text": "us. So, just sharing that with with you"
+  },
+  {
+    "start": 555.99,
+    "end": 556.0,
+    "text": "folks."
+  },
+  {
+    "start": 558.39,
+    "end": 558.4,
+    "text": "Feedback and evals."
+  },
+  {
+    "start": 560.47,
+    "end": 560.48,
+    "text": "So, here the quote is, \"Shipping is the"
+  },
+  {
+    "start": 563.07,
+    "end": 563.08,
+    "text": "start, not the finish.\" So, what we do"
+  },
+  {
+    "start": 566.31,
+    "end": 566.32,
+    "text": "here uh on the agents team is we have"
+  },
+  {
+    "start": 568.51,
+    "end": 568.52,
+    "text": "kind of multiple ways we do evals and"
+  },
+  {
+    "start": 570.63,
+    "end": 570.64,
+    "text": "collect feedback. Um"
+  },
+  {
+    "start": 573.07,
+    "end": 573.08,
+    "text": "Obviously, you know, we'll have folks"
+  },
+  {
+    "start": 575.75,
+    "end": 575.76,
+    "text": "uh call in or or email us or just let us"
+  },
+  {
+    "start": 577.95,
+    "end": 577.96,
+    "text": "know and tell us, but the main way is we"
+  },
+  {
+    "start": 579.43,
+    "end": 579.44,
+    "text": "have this thumbs up and thumbs down"
+  },
+  {
+    "start": 582.67,
+    "end": 582.68,
+    "text": "mechanism and here someone is able to"
+  },
+  {
+    "start": 584.19,
+    "end": 584.2,
+    "text": "tell us, \"Hey, this this worked really"
+  },
+  {
+    "start": 585.47,
+    "end": 585.48,
+    "text": "well. This was a great response.\" Or,"
+  },
+  {
+    "start": 587.43,
+    "end": 587.44,
+    "text": "\"That wasn't a great response.\" And that"
+  },
+  {
+    "start": 589.23,
+    "end": 589.24,
+    "text": "signal we take and we're able to iterate"
+  },
+  {
+    "start": 590.07,
+    "end": 590.08,
+    "text": "on."
+  },
+  {
+    "start": 591.75,
+    "end": 591.76,
+    "text": "Uh, and we can take it back and help"
+  },
+  {
+    "start": 593.35,
+    "end": 593.36,
+    "text": "improve, uh,"
+  },
+  {
+    "start": 595.75,
+    "end": 595.76,
+    "text": "you know, the response in the future."
+  },
+  {
+    "start": 598.87,
+    "end": 598.88,
+    "text": "Um, we also have automated evals, so"
+  },
+  {
+    "start": 602.31,
+    "end": 602.32,
+    "text": "in in the in our CI we we have evals"
+  },
+  {
+    "start": 604.39,
+    "end": 604.4,
+    "text": "that run against real completions, so we"
+  },
+  {
+    "start": 606.59,
+    "end": 606.6,
+    "text": "could test the prompt against, \"Hey, did"
+  },
+  {
+    "start": 608.51,
+    "end": 608.52,
+    "text": "it hit some tools? Did it do what it's"
+  },
+  {
+    "start": 610.87,
+    "end": 610.88,
+    "text": "supposed to do?\" And that also helps"
+  },
+  {
+    "start": 613.51,
+    "end": 613.52,
+    "text": "with our accuracy. So, uh, those"
+  },
+  {
+    "start": 615.59,
+    "end": 615.6,
+    "text": "automated evals in conjunction with"
+  },
+  {
+    "start": 618.83,
+    "end": 618.84,
+    "text": "collecting feedback really help us, um,"
+  },
+  {
+    "start": 620.71,
+    "end": 620.72,
+    "text": "improve our"
+  },
+  {
+    "start": 624.03,
+    "end": 624.04,
+    "text": "uh, our our tools, our skills,"
+  },
+  {
+    "start": 626.59,
+    "end": 626.6,
+    "text": "um, our harness and and that's really"
+  },
+  {
+    "start": 628.95,
+    "end": 628.96,
+    "text": "how how we're able to iterate so fast"
+  },
+  {
+    "start": 631.43,
+    "end": 631.44,
+    "text": "and so quickly."
+  },
+  {
+    "start": 633.31,
+    "end": 633.32,
+    "text": "Humans in the loop. So, this is a really"
+  },
+  {
+    "start": 635.67,
+    "end": 635.68,
+    "text": "cool feature we built where we"
+  },
+  {
+    "start": 637.43,
+    "end": 637.44,
+    "text": "deterministically interrupt the agent"
+  },
+  {
+    "start": 640.43,
+    "end": 640.44,
+    "text": "loop if there is a tool call approval"
+  },
+  {
+    "start": 642.75,
+    "end": 642.76,
+    "text": "required. So, if an agent tries to make"
+  },
+  {
+    "start": 645.07,
+    "end": 645.08,
+    "text": "a tool call that it needs human approval"
+  },
+  {
+    "start": 648.15,
+    "end": 648.16,
+    "text": "for, it'll show this UI and the human"
+  },
+  {
+    "start": 650.47,
+    "end": 650.48,
+    "text": "uh, can click accept or reject. So,"
+  },
+  {
+    "start": 652.63,
+    "end": 652.64,
+    "text": "explicitly rejecting or explicitly"
+  },
+  {
+    "start": 655.07,
+    "end": 655.08,
+    "text": "accepting, uh, the action that the agent"
+  },
+  {
+    "start": 656.79,
+    "end": 656.8,
+    "text": "is trying to make. And this ensures"
+  },
+  {
+    "start": 659.15,
+    "end": 659.16,
+    "text": "that, uh, you know, we're building trust"
+  },
+  {
+    "start": 662.11,
+    "end": 662.12,
+    "text": "and also ensuring that, uh, you know,"
+  },
+  {
+    "start": 663.99,
+    "end": 664.0,
+    "text": "we're being safe, especially when the"
+  },
+  {
+    "start": 665.63,
+    "end": 665.64,
+    "text": "agent's trying to do a mutating"
+  },
+  {
+    "start": 667.75,
+    "end": 667.76,
+    "text": "operation and always always always"
+  },
+  {
+    "start": 670.71,
+    "end": 670.72,
+    "text": "making sure that, um, humans are in the"
+  },
+  {
+    "start": 676.99,
+    "end": 677.0,
+    "text": "Sandboxing. So, another thing that we,"
+  },
+  {
+    "start": 679.35,
+    "end": 679.36,
+    "text": "uh, worked on, um, kind of similar to"
+  },
+  {
+    "start": 682.91,
+    "end": 682.92,
+    "text": "the safety slide we just saw was, um,"
+  },
+  {
+    "start": 685.71,
+    "end": 685.72,
+    "text": "whenever an agent tries to execute code"
+  },
+  {
+    "start": 688.55,
+    "end": 688.56,
+    "text": "or tries to create files, it does so in"
+  },
+  {
+    "start": 690.79,
+    "end": 690.8,
+    "text": "a sandbox. So, we gave our agents"
+  },
+  {
+    "start": 693.11,
+    "end": 693.12,
+    "text": "sandboxes such that it could spin up"
+  },
+  {
+    "start": 695.67,
+    "end": 695.68,
+    "text": "these sandboxes on demand and it could"
+  },
+  {
+    "start": 699.19,
+    "end": 699.2,
+    "text": "use those sandboxes to honestly write"
+  },
+  {
+    "start": 702.19,
+    "end": 702.2,
+    "text": "code, execute code, create files and"
+  },
+  {
+    "start": 703.99,
+    "end": 704.0,
+    "text": "it's kind of this safe ephemeral"
+  },
+  {
+    "start": 707.51,
+    "end": 707.52,
+    "text": "isolated space such that the agent can"
+  },
+  {
+    "start": 709.67,
+    "end": 709.68,
+    "text": "can can take action in there and not and"
+  },
+  {
+    "start": 712.67,
+    "end": 712.68,
+    "text": "we don't have to worry about uh any risk"
+  },
+  {
+    "start": 715.75,
+    "end": 715.76,
+    "text": "to you know our our production systems."
+  },
+  {
+    "start": 718.07,
+    "end": 718.08,
+    "text": "Um and it's it's really cool cuz they"
+  },
+  {
+    "start": 721.07,
+    "end": 721.08,
+    "text": "also get uh tied uh tear down at the end"
+  },
+  {
+    "start": 723.15,
+    "end": 723.16,
+    "text": "so um"
+  },
+  {
+    "start": 724.71,
+    "end": 724.72,
+    "text": "in this example I said, \"Hey, create a"
+  },
+  {
+    "start": 727.75,
+    "end": 727.76,
+    "text": "PDF uh for the folks of the AI Engineer"
+  },
+  {
+    "start": 731.31,
+    "end": 731.32,
+    "text": "Conference 2026.\" And um allow me to"
+  },
+  {
+    "start": 732.47,
+    "end": 732.48,
+    "text": "download it so I could share it with"
+  },
+  {
+    "start": 734.39,
+    "end": 734.4,
+    "text": "them. And you could see that the agent"
+  },
+  {
+    "start": 736.95,
+    "end": 736.96,
+    "text": "created this really cool PDF inside of"
+  },
+  {
+    "start": 739.07,
+    "end": 739.08,
+    "text": "that sandbox. So just really wanted to"
+  },
+  {
+    "start": 740.67,
+    "end": 740.68,
+    "text": "cover the sandbox feature and just give"
+  },
+  {
+    "start": 743.67,
+    "end": 743.68,
+    "text": "you a brief kind of overview of of"
+  },
+  {
+    "start": 749.27,
+    "end": 749.28,
+    "text": "Long context. So"
+  },
+  {
+    "start": 750.55,
+    "end": 750.56,
+    "text": "um"
+  },
+  {
+    "start": 754.39,
+    "end": 754.4,
+    "text": "inside of Ogie Assist, we have hit many"
+  },
+  {
+    "start": 757.47,
+    "end": 757.48,
+    "text": "hurdles like with especially with legacy"
+  },
+  {
+    "start": 761.43,
+    "end": 761.44,
+    "text": "models now like with uh token limits or"
+  },
+  {
+    "start": 763.829,
+    "end": 763.839,
+    "text": "just way too much just completely"
+  },
+  {
+    "start": 766.79,
+    "end": 766.8,
+    "text": "overloaded with context especially as"
+  },
+  {
+    "start": 769.91,
+    "end": 769.92,
+    "text": "conversations get longer. So we found"
+  },
+  {
+    "start": 770.99,
+    "end": 771.0,
+    "text": "that"
+  },
+  {
+    "start": 773.47,
+    "end": 773.48,
+    "text": "having some sort of"
+  },
+  {
+    "start": 776.27,
+    "end": 776.28,
+    "text": "um rolling summarization was more"
+  },
+  {
+    "start": 779.43,
+    "end": 779.44,
+    "text": "effective than you know always stuffing"
+  },
+  {
+    "start": 782.87,
+    "end": 782.88,
+    "text": "in the latest and most recent uh"
+  },
+  {
+    "start": 784.07,
+    "end": 784.08,
+    "text": "messages"
+  },
+  {
+    "start": 785.07,
+    "end": 785.08,
+    "text": "uh"
+  },
+  {
+    "start": 787.87,
+    "end": 787.88,
+    "text": "rather just you know give like a running"
+  },
+  {
+    "start": 791.07,
+    "end": 791.08,
+    "text": "summary after n number of messages and"
+  },
+  {
+    "start": 793.829,
+    "end": 793.839,
+    "text": "uh maybe you only want the like n minus"
+  },
+  {
+    "start": 796.43,
+    "end": 796.44,
+    "text": "five most recent messages or n minus 10"
+  },
+  {
+    "start": 798.829,
+    "end": 798.839,
+    "text": "most recent messages, right? Um and it"
+  },
+  {
+    "start": 800.79,
+    "end": 800.8,
+    "text": "may be that you're only talking about a"
+  },
+  {
+    "start": 802.91,
+    "end": 802.92,
+    "text": "specific topic now, but you may want to"
+  },
+  {
+    "start": 804.43,
+    "end": 804.44,
+    "text": "refer to"
+  },
+  {
+    "start": 806.35,
+    "end": 806.36,
+    "text": "uh context earlier like a hundred"
+  },
+  {
+    "start": 809.15,
+    "end": 809.16,
+    "text": "messages above, then"
+  },
+  {
+    "start": 810.55,
+    "end": 810.56,
+    "text": "um"
+  },
+  {
+    "start": 812.35,
+    "end": 812.36,
+    "text": "it uh that's where kind of the the"
+  },
+  {
+    "start": 814.07,
+    "end": 814.08,
+    "text": "memory component comes in cuz when you"
+  },
+  {
+    "start": 816.39,
+    "end": 816.4,
+    "text": "have this rolling summary of a a really"
+  },
+  {
+    "start": 818.67,
+    "end": 818.68,
+    "text": "long conversation, then you could do"
+  },
+  {
+    "start": 822.67,
+    "end": 822.68,
+    "text": "recall over that uh summarization. And"
+  },
+  {
+    "start": 824.59,
+    "end": 824.6,
+    "text": "um you know, if you ask the agent, \"Hey,"
+  },
+  {
+    "start": 825.87,
+    "end": 825.88,
+    "text": "remember that thing that we talked"
+  },
+  {
+    "start": 827.51,
+    "end": 827.52,
+    "text": "about?\" then the agent within the thread"
+  },
+  {
+    "start": 828.99,
+    "end": 829.0,
+    "text": "will be like, \"Yeah, I do know what you"
+  },
+  {
+    "start": 830.35,
+    "end": 830.36,
+    "text": "were talking about. I have kind of this"
+  },
+  {
+    "start": 832.39,
+    "end": 832.4,
+    "text": "short little tidbit.\" And it can, you"
+  },
+  {
+    "start": 834.71,
+    "end": 834.72,
+    "text": "know, follow up and and and do more kind"
+  },
+  {
+    "start": 836.43,
+    "end": 836.44,
+    "text": "of with that uh"
+  },
+  {
+    "start": 838.63,
+    "end": 838.64,
+    "text": "summary rolling summary in mind. So,"
+  },
+  {
+    "start": 839.99,
+    "end": 840.0,
+    "text": "that's kind of how we handled long"
+  },
+  {
+    "start": 841.51,
+    "end": 841.52,
+    "text": "context and memory, and it's worked"
+  },
+  {
+    "start": 843.71,
+    "end": 843.72,
+    "text": "pretty well for us. So, uh just wanted"
+  },
+  {
+    "start": 846.31,
+    "end": 846.32,
+    "text": "to share a little bit about that and how"
+  },
+  {
+    "start": 848.51,
+    "end": 848.52,
+    "text": "we've uh solved the long context"
+  },
+  {
+    "start": 854.43,
+    "end": 854.44,
+    "text": "UI on the fly. So, um in this example, I"
+  },
+  {
+    "start": 856.47,
+    "end": 856.48,
+    "text": "said to the agent, \"Hey,"
+  },
+  {
+    "start": 857.99,
+    "end": 858.0,
+    "text": "generate me a long essay, but give me"
+  },
+  {
+    "start": 859.67,
+    "end": 859.68,
+    "text": "some examples about what the essay could"
+  },
+  {
+    "start": 861.63,
+    "end": 861.64,
+    "text": "be about.\" So, what's really cool is the"
+  },
+  {
+    "start": 864.71,
+    "end": 864.72,
+    "text": "agent had this primitive registered uh"
+  },
+  {
+    "start": 866.95,
+    "end": 866.96,
+    "text": "uh this form, and it was able to build"
+  },
+  {
+    "start": 869.51,
+    "end": 869.52,
+    "text": "out this form for me at runtime and give"
+  },
+  {
+    "start": 871.71,
+    "end": 871.72,
+    "text": "me some options of what I could choose"
+  },
+  {
+    "start": 873.43,
+    "end": 873.44,
+    "text": "from. So, it feels very personal and it"
+  },
+  {
+    "start": 875.75,
+    "end": 875.76,
+    "text": "feels very kind of in the moment that"
+  },
+  {
+    "start": 877.79,
+    "end": 877.8,
+    "text": "it's able to to give me these options"
+  },
+  {
+    "start": 879.71,
+    "end": 879.72,
+    "text": "just at runtime. So,"
+  },
+  {
+    "start": 880.91,
+    "end": 880.92,
+    "text": "um"
+  },
+  {
+    "start": 883.63,
+    "end": 883.64,
+    "text": "this is kind of just a short little"
+  },
+  {
+    "start": 884.67,
+    "end": 884.68,
+    "text": "um"
+  },
+  {
+    "start": 886.43,
+    "end": 886.44,
+    "text": "thing I wanted to include here about"
+  },
+  {
+    "start": 888.67,
+    "end": 888.68,
+    "text": "generative UI and how we"
+  },
+  {
+    "start": 893.829,
+    "end": 893.839,
+    "text": "uh are able to render UIs on the fly."
+  },
+  {
+    "start": 897.27,
+    "end": 897.28,
+    "text": "You can't scale what you can't see. So,"
+  },
+  {
+    "start": 898.39,
+    "end": 898.4,
+    "text": "um"
+  },
+  {
+    "start": 900.27,
+    "end": 900.28,
+    "text": "this uh"
+  },
+  {
+    "start": 903.03,
+    "end": 903.04,
+    "text": "this kind of section is about tracing uh"
+  },
+  {
+    "start": 905.829,
+    "end": 905.839,
+    "text": "and observability. Really, what's cool"
+  },
+  {
+    "start": 908.47,
+    "end": 908.48,
+    "text": "about Effect is you kind of get tracing"
+  },
+  {
+    "start": 911.43,
+    "end": 911.44,
+    "text": "out of the box. Um you know, when you"
+  },
+  {
+    "start": 913.79,
+    "end": 913.8,
+    "text": "use these effect functions, they all get"
+  },
+  {
+    "start": 915.91,
+    "end": 915.92,
+    "text": "kind of tagged automatically with like"
+  },
+  {
+    "start": 918.79,
+    "end": 918.8,
+    "text": "these spans, and kind of the span gets"
+  },
+  {
+    "start": 921.91,
+    "end": 921.92,
+    "text": "picked up and feeds into these traces so"
+  },
+  {
+    "start": 924.51,
+    "end": 924.52,
+    "text": "that you can kind of get these kind of"
+  },
+  {
+    "start": 927.03,
+    "end": 927.04,
+    "text": "drill downs of these function calls. So,"
+  },
+  {
+    "start": 930.11,
+    "end": 930.12,
+    "text": "here's an example of a trace from the"
+  },
+  {
+    "start": 933.75,
+    "end": 933.76,
+    "text": "effect team. I have it linked. You could"
+  },
+  {
+    "start": 935.31,
+    "end": 935.32,
+    "text": "see that like, \"Hey, when you hit this"
+  },
+  {
+    "start": 937.51,
+    "end": 937.52,
+    "text": "API, go to this endpoint, to this"
+  },
+  {
+    "start": 940.51,
+    "end": 940.52,
+    "text": "handler.\" And you know, etc. And it"
+  },
+  {
+    "start": 942.07,
+    "end": 942.08,
+    "text": "takes And what what's really cool is you"
+  },
+  {
+    "start": 944.03,
+    "end": 944.04,
+    "text": "could profile all your traces, right?"
+  },
+  {
+    "start": 946.71,
+    "end": 946.72,
+    "text": "So, this takes a total of this many"
+  },
+  {
+    "start": 948.15,
+    "end": 948.16,
+    "text": "seconds and you can see where the"
+  },
+  {
+    "start": 950.07,
+    "end": 950.08,
+    "text": "bottleneck is here. If there's a"
+  },
+  {
+    "start": 952.11,
+    "end": 952.12,
+    "text": "failure, you can cross-reference data"
+  },
+  {
+    "start": 954.95,
+    "end": 954.96,
+    "text": "across services. So, really, really"
+  },
+  {
+    "start": 957.59,
+    "end": 957.6,
+    "text": "important, especially working in agentic"
+  },
+  {
+    "start": 960.59,
+    "end": 960.6,
+    "text": "systems where we're we're integrating"
+  },
+  {
+    "start": 962.79,
+    "end": 962.8,
+    "text": "with other teams and other APIs and"
+  },
+  {
+    "start": 964.63,
+    "end": 964.64,
+    "text": "other um"
+  },
+  {
+    "start": 966.95,
+    "end": 966.96,
+    "text": "other platform capabilities. So,"
+  },
+  {
+    "start": 969.91,
+    "end": 969.92,
+    "text": "what's cool with effect is you get all"
+  },
+  {
+    "start": 972.11,
+    "end": 972.12,
+    "text": "this tracing out of the box and it"
+  },
+  {
+    "start": 974.47,
+    "end": 974.48,
+    "text": "really makes building this agentic"
+  },
+  {
+    "start": 976.47,
+    "end": 976.48,
+    "text": "experience, debugging it, and"
+  },
+  {
+    "start": 979.71,
+    "end": 979.72,
+    "text": "maintaining it just a breeze."
+  },
+  {
+    "start": 982.07,
+    "end": 982.08,
+    "text": "Tools and skills. So,"
+  },
+  {
+    "start": 984.35,
+    "end": 984.36,
+    "text": "uh not only did we make a big bet on"
+  },
+  {
+    "start": 986.63,
+    "end": 986.64,
+    "text": "effect, but we also made a big bet on"
+  },
+  {
+    "start": 988.63,
+    "end": 988.64,
+    "text": "tools and skills. So, we believe that"
+  },
+  {
+    "start": 990.15,
+    "end": 990.16,
+    "text": "tools and skills are really all you"
+  },
+  {
+    "start": 991.27,
+    "end": 991.28,
+    "text": "need."
+  },
+  {
+    "start": 993.03,
+    "end": 993.04,
+    "text": "And in this case, you could see on the"
+  },
+  {
+    "start": 997.35,
+    "end": 997.36,
+    "text": "left, we have this tool called get dad"
+  },
+  {
+    "start": 999.829,
+    "end": 999.839,
+    "text": "joke. And this is kind of the effect way"
+  },
+  {
+    "start": 1002.11,
+    "end": 1002.12,
+    "text": "and kind of the building blocks of how"
+  },
+  {
+    "start": 1004.99,
+    "end": 1005.0,
+    "text": "we do things here at OpenGov, but"
+  },
+  {
+    "start": 1006.87,
+    "end": 1006.88,
+    "text": "you know, this is pulled from the effect"
+  },
+  {
+    "start": 1009.07,
+    "end": 1009.08,
+    "text": "website, but you could see, \"Hey, this"
+  },
+  {
+    "start": 1010.51,
+    "end": 1010.52,
+    "text": "is how you make a tool.\" And then you"
+  },
+  {
+    "start": 1011.99,
+    "end": 1012.0,
+    "text": "add it to a tool kit, which is a"
+  },
+  {
+    "start": 1013.43,
+    "end": 1013.44,
+    "text": "collection of tools, and then you can"
+  },
+  {
+    "start": 1016.11,
+    "end": 1016.12,
+    "text": "register this this tool kit with the"
+  },
+  {
+    "start": 1019.07,
+    "end": 1019.08,
+    "text": "with the language model. So, for"
+  },
+  {
+    "start": 1021.63,
+    "end": 1021.64,
+    "text": "example, if you had a prompt that said,"
+  },
+  {
+    "start": 1023.71,
+    "end": 1023.72,
+    "text": "\"Hey, generate some dad jokes about"
+  },
+  {
+    "start": 1025.71,
+    "end": 1025.72,
+    "text": "pirates.\" Well, guess what? The agent"
+  },
+  {
+    "start": 1030.51,
+    "end": 1030.52,
+    "text": "has a tool uh that can help get"
+  },
+  {
+    "start": 1032.309,
+    "end": 1032.319,
+    "text": "a dad joke. So,"
+  },
+  {
+    "start": 1033.63,
+    "end": 1033.64,
+    "text": "um"
+  },
+  {
+    "start": 1035.59,
+    "end": 1035.6,
+    "text": "really, this is the the building blocks"
+  },
+  {
+    "start": 1037.67,
+    "end": 1037.68,
+    "text": "of how we did tools"
+  },
+  {
+    "start": 1040.51,
+    "end": 1040.52,
+    "text": "and eventually skills and"
+  },
+  {
+    "start": 1043.67,
+    "end": 1043.68,
+    "text": "really just is has paid off wonderfully"
+  },
+  {
+    "start": 1046.429,
+    "end": 1046.439,
+    "text": "for for our organization. So,"
+  },
+  {
+    "start": 1048.35,
+    "end": 1048.36,
+    "text": "um really recommend trying out this"
+  },
+  {
+    "start": 1050.47,
+    "end": 1050.48,
+    "text": "effect AI package from"
+  },
+  {
+    "start": 1054.35,
+    "end": 1054.36,
+    "text": "uh effect and um just trying out"
+  },
+  {
+    "start": 1058.15,
+    "end": 1058.16,
+    "text": "building out your own tools and skills."
+  },
+  {
+    "start": 1061.07,
+    "end": 1061.08,
+    "text": "Developer velocity. So, not only do we"
+  },
+  {
+    "start": 1063.59,
+    "end": 1063.6,
+    "text": "build agents for our customers, but we"
+  },
+  {
+    "start": 1068.15,
+    "end": 1068.16,
+    "text": "also use agents um here internally uh in"
+  },
+  {
+    "start": 1070.51,
+    "end": 1070.52,
+    "text": "OpenGov. So, we uh use a lot of Claude"
+  },
+  {
+    "start": 1073.03,
+    "end": 1073.04,
+    "text": "and Cursor uh and it's just really been"
+  },
+  {
+    "start": 1075.19,
+    "end": 1075.2,
+    "text": "a game-changer for our team."
+  },
+  {
+    "start": 1076.59,
+    "end": 1076.6,
+    "text": "Um it's funny because we're building"
+  },
+  {
+    "start": 1079.47,
+    "end": 1079.48,
+    "text": "tools and skills for customer-facing uh"
+  },
+  {
+    "start": 1081.59,
+    "end": 1081.6,
+    "text": "agents and and that has been great, but"
+  },
+  {
+    "start": 1083.07,
+    "end": 1083.08,
+    "text": "we're also building them internally as"
+  },
+  {
+    "start": 1084.59,
+    "end": 1084.6,
+    "text": "well to help accelerate our development"
+  },
+  {
+    "start": 1086.71,
+    "end": 1086.72,
+    "text": "workflows. So, things like Claude,"
+  },
+  {
+    "start": 1089.43,
+    "end": 1089.44,
+    "text": "Cursor, Claude agents, they really help"
+  },
+  {
+    "start": 1091.91,
+    "end": 1091.92,
+    "text": "accelerate how we read, write, review"
+  },
+  {
+    "start": 1095.59,
+    "end": 1095.6,
+    "text": "code and and ship. Um so, it's it's just"
+  },
+  {
+    "start": 1097.47,
+    "end": 1097.48,
+    "text": "been such an accelerate. So, definitely"
+  },
+  {
+    "start": 1099.75,
+    "end": 1099.76,
+    "text": "just wanted to mention that uh before we"
+  },
+  {
+    "start": 1104.87,
+    "end": 1104.88,
+    "text": "That's it. Thanks so much for watching."
+  },
+  {
+    "start": 1106.27,
+    "end": 1106.28,
+    "text": "You've made it to the end. Let's build"
+  }
+]

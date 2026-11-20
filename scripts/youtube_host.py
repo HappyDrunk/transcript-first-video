@@ -755,6 +755,7 @@ def render_scaffold(
     caption_kind: str | None,
     transcript_cite: str,
     caption_trust: str | None = None,
+    selection_end: str | None = None,
 ) -> str:
     """Blank Obsidian scaffold. Title is the job id, not the platform title.
 
@@ -771,6 +772,7 @@ def render_scaffold(
         caption_kind=caption_kind,
         caption_trust=caption_trust,
         skill_version=skill_version(),
+        selection_end=selection_end,
     )
 
 
@@ -871,6 +873,8 @@ def finalize_job(
         # ``verify`` remains accepted for existing callers. The scaffold is
         # not a deposit, so the host does not run verify_note on it.
         del verify
+        duration = quality_gate.duration_seconds(segments)
+        selection_end = verify_rules.selection_endpoint(segments, duration)
         scaffold_body = render_scaffold(
             job_id=job_id,
             video_id=video_id,
@@ -880,6 +884,8 @@ def finalize_job(
             caption_kind=caption_kind,
             caption_trust=trust,
             transcript_cite=cite if Path(cite).is_absolute() else "transcript.txt",
+            selection_end=(quality_gate.format_stamp(selection_end)[1:-1]
+                           if selection_end is not None else None),
         )
         staged_scaffold.write_text(scaffold_body, encoding="utf-8")
         mode = verify_rules.screen_mode()
@@ -908,7 +914,7 @@ def finalize_job(
                 "segments": cite_path(segments_path),
                 "chunks": cite_path(chunks_dir),
                 "chunk_count": len(groups),
-                "duration_seconds": quality_gate.duration_seconds(segments),
+                "duration_seconds": duration,
                 "scaffold": cite_path(job_dir / "note.scaffold.md"),
                 "verifier": None,
                 "exit_code": 0,
@@ -929,7 +935,7 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
         archived, installed = [], []
         try:
             if replacing:
-                for path in (*old_notes, job / "selection.md"):
+                for path in (*old_notes, job / "selection.md", job / "review.md"):
                     target = verify_note.archive_file(path)
                     if target is not None:
                         archived.append((target, path))

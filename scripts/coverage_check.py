@@ -107,11 +107,14 @@ def _range_seconds(start: str, end: str) -> tuple[int, int] | None:
     return left, right
 
 
-def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
+def read_selection(job: Path) -> tuple[
+    list[SelectionUnit], list[tuple[int, bool]], dict[int, list[tuple[str, str, bool]]], list[str]
+]:
     path = job / "selection.md"
     if not path.is_file():
-        return [], ["selection.md is missing"]
+        return [], [], {}, ["selection.md is missing"]
     units, issues, slides = [], [], []
+    pictures: dict[int, list[tuple[str, str, bool]]] = {}
     for line_no, line in enumerate(_read(path).splitlines(), 1):
         if not line.strip():
             continue
@@ -122,12 +125,13 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
                 slide = rules.SLIDE_SELECTION.fullmatch(category)
                 moment = rules.clock_seconds(time)
                 if slide and moment is not None:
-                    slides.append((int(slide[1]), moment))
+                    slides.append((int(slide[1]), moment, decision == "留"))
                     continue
                 if (category.startswith(rules.SCREEN_TAG)
                         and category[len(rules.SCREEN_TAG):].strip()
                         and moment is not None):
-                    # Screen selections list extra evidence without consuming a speech interval.
+                    label = category[len(rules.SCREEN_TAG):].strip()
+                    pictures.setdefault(moment, []).append((label, reason, decision == "留"))
                     continue
                 match = re.fullmatch(_RANGE, time)
                 if match and (bounds := _range_seconds(*match.groups())):
@@ -137,22 +141,24 @@ def read_selection(job: Path) -> tuple[list[SelectionUnit], list[str]]:
     if not units:
         issues.append("selection.md has no usable units")
     groups = rules.screen_slide_groups(job / rules.SCREEN_FILE)
+    slide_choices = []
     if groups:
         expected = dict(groups)
         if [number for number, _ in groups] != list(range(1, len(groups) + 1)):
             issues.append("screen.txt 幻灯片 numbers must start at 1 and increase in order")
         selected = {}
-        for number, moment in slides:
+        for number, moment, retained in slides:
             if number in selected:
                 issues.append(f"幻灯片 {number} needs exactly one selection.md row")
-            selected[number] = moment
+            selected[number] = retained
             if number not in expected:
                 issues.append(f"幻灯片 {number} is absent from screen.txt")
             elif moment != expected[number]:
                 issues.append(f"幻灯片 {number} selection time must match [{rules._fmt(expected[number])}]")
         for number in sorted(expected.keys() - selected.keys()):
             issues.append(f"幻灯片 {number} has no selection.md 留/略 row with a reason")
-    return units, issues
+        slide_choices = [(stamp, selected[number]) for number, stamp in groups if number in selected]
+    return units, slide_choices, pictures, issues
 
 
 def omitted_ranges(omission: str | None) -> list[tuple[int, int]] | None:
@@ -187,20 +193,65 @@ def _has_omitted_excerpt(
     return False
 
 
+def selection_boundaries(units: list[SelectionUnit], endpoint: int | None) -> list[str]:
+    if units[0].start != 0 or any(left.end != right.start for left, right in zip(units, units[1:])):
+        return ["selection.md must cover the transcript in order without gaps or overlaps, starting at 00:00"]
+    if endpoint is None:
+        return ["selection.md timing cannot be verified without a transcript clock"]
+    if units[-1].end != endpoint:
+        return [f"selection.md must end at the transcript endpoint {rules._fmt(endpoint)}"]
+    return []
+
+
+def omission_issue(units: list[SelectionUnit], omission: str | None) -> list[str]:
+    expected = [(unit.start, unit.end) for unit in units if not unit.retained]
+    if omitted_ranges(omission) != expected:
+        return ["本文略去 must list the omitted selection.md ranges in order, or 无"]
+    return []
+
+
+def check_structure(job: Path) -> dict:
+    transcript = job / "transcript.txt"
+    raw = _read(transcript) if transcript.is_file() else ""
+    segments = rules.transcript_segments(raw, job / "segments.json")
+    endpoint = rules.selection_endpoint(segments, verify_note.read_job_status(job).get("duration_seconds"))
+    units, _, _, selection_issues = read_selection(job)
+    if not selection_issues:
+        selection_issues = selection_boundaries(units, endpoint)
+    note_path = job / "note.md"
+    note = _read(note_path) if note_path.is_file() else ""
+    if note.strip():
+        omission, issues = rules.caption_structure(note)
+        if not selection_issues:
+            issues.extend(omission_issue(units, omission))
+    else:
+        issues = ["note.md is missing or empty"]
+    issues.extend(selection_issues)
+    return {"allowed": not issues, "scope": "structure-only",
+            "selection_endpoint": rules._fmt(endpoint) if endpoint is not None else None,
+            "reasons": issues}
+
+
+def picture_choice(rows: list[tuple[str, str, bool]], text: str) -> bool | None:
+    # A selection named for the complete source line takes precedence.
+    exact = {retained for label, _, retained in rows if label.casefold() == text.casefold()}
+    if exact:
+        return all(exact)
+    # Older selections use free text. Apply it only when it unambiguously names this line.
+    line = re.escape(" ".join(text.casefold().split()))
+    pattern = rf"(?<![a-z0-9]){line}(?![a-z0-9])"
+    matching = {retained for _, reason, retained in rows
+                if re.search(pattern, " ".join(reason.casefold().split()))}
+    return matching.pop() if len(matching) == 1 else None
+
+
 def check_selection(
     job: Path, ctx: rules.RuleContext, duration: float | None,
 ) -> tuple[list[str], list[str]]:
-    units, issues = read_selection(job)
-    if issues:
+    units, slide_choices, pictures, issues = read_selection(job)
+    endpoint = rules.selection_endpoint(ctx.segments, duration)
+    if issues or (issues := selection_boundaries(units, endpoint)):
         return issues, []
-    if units[0].start != 0 or any(left.end != right.start for left, right in zip(units, units[1:])):
-        return ["selection.md must cover the transcript in order without gaps or overlaps, starting at 00:00"], []
-    if not ctx.has_clock:
-        return ["selection.md timing cannot be verified without a transcript clock"], []
-    latest = max(cue.start for cue in ctx.segments if cue.start is not None)
-    endpoint = max(math.ceil(duration or 0), math.floor(latest) + 1)
-    if units[-1].end != endpoint:
-        return [f"selection.md must end at the transcript endpoint {rules._fmt(endpoint)}"], []
 
     starts = [unit.start for unit in units]
 
@@ -213,18 +264,30 @@ def check_selection(
         return ["selection.md cannot assign every transcript cue to a unit"], []
 
     omitted = [unit for unit in units if not unit.retained]
-    expected = [(unit.start, unit.end) for unit in omitted]
-    if omitted_ranges(ctx.omission) != expected:
-        issues.append("本文略去 must list the omitted selection.md ranges in order, or 无")
+    issues.extend(omission_issue(units, ctx.omission))
 
     valid = ctx.valid_quotes
+    slide_starts = [stamp for stamp, _ in slide_choices]
+    screen_choices = {}
+    for quote in valid:
+        if quote.screen:
+            choice = picture_choice(pictures.get(quote.anchor.start, []), quote.text)
+            index = bisect_right(slide_starts, quote.anchor.start) - 1
+            if choice is not None:
+                screen_choices[quote.raw] = choice
+            elif index >= 0:
+                screen_choices[quote.raw] = slide_choices[index][1]
     hit = set()
     for quote in valid:
         moments = [cue.start for cue in quote.match.cues if cue.start is not None]
         if unit_at(quote.stamp) is None:
             issues.append(f"quote [{rules._fmt(quote.stamp)}] is outside the selection.md ranges")
             continue
-        if _crosses_omission([quote.stamp, *moments], omitted):
+        screen_choice = screen_choices.get(quote.raw)
+        if screen_choice is False:
+            issues.append(f"画面引文 [{rules._fmt(quote.stamp)}] 对应的画面标略: {quote.text[:80]}")
+            continue
+        if screen_choice is None and _crosses_omission([quote.stamp, *moments], omitted):
             issues.append(f"quote [{rules._fmt(quote.stamp)}] uses or crosses an omitted (略) unit")
             continue
         anchor_unit = unit_at(quote.anchor.start)
@@ -240,8 +303,12 @@ def check_selection(
                     issues.append(f"{section.heading}: ⏱ {rules._fmt(stamp)} is outside the selection.md ranges")
                     continue
                 linked, _ = rules.match_link(stamp, valid)
-                if _crosses_omission([stamp], omitted) or any(
-                    _crosses_omission([stamp, quote.stamp, quote.anchor.start], omitted) for quote in linked
+                speech_links = [quote for quote in linked if quote.raw not in screen_choices]
+                if (speech_links or not linked) and (
+                    _crosses_omission([stamp], omitted) or any(
+                        _crosses_omission([stamp, quote.stamp, quote.anchor.start], omitted)
+                        for quote in speech_links
+                    )
                 ):
                     issues.append(f"{section.heading}: ⏱ {rules._fmt(stamp)} uses or crosses an omitted (略) unit")
             if index and _has_omitted_excerpt(rules.prose_without_times(prose), index, omitted_starts):
@@ -328,7 +395,7 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
 def _check_and_record(job: Path, delivery: Path | None) -> dict:
     status = verify_note.read_job_status(job)
     if verify_note.repair_lock(status):
-        return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
+        return {"ok": False, "reasons": [verify_note.lock_message(status)], "warnings": [], "not_checked": []}
     try:
         verify_note.prepare_job_note(job)
     except (OSError, RuntimeError) as exc:
@@ -337,7 +404,7 @@ def _check_and_record(job: Path, delivery: Path | None) -> dict:
     if inputs["note"] is not None:
         status = verify_note.record_note_revision(job, digest=inputs["note"])
         if verify_note.repair_lock(status):
-            return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
+            return {"ok": False, "reasons": [verify_note.lock_message(status)], "warnings": [], "not_checked": []}
     checked_delivery = delivery
     delivery_bytes = None
     if delivery is not None and inputs["note"] is not None:
@@ -366,7 +433,7 @@ def _check_and_record(job: Path, delivery: Path | None) -> dict:
         result["not_checked"].append("完成 NOT CHECKED: run verify and coverage on the current job files")
     if verify_note.repair_lock(status):
         result["ok"] = False
-        result["reasons"].append(verify_note.REPAIR_LIMIT_MESSAGE)
+        result["reasons"].append(verify_note.lock_message(status))
     return result
 
 

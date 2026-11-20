@@ -1,0 +1,1387 @@
+[00:00][幻灯片 1] frame-000001.png
+[00:00][画面] Al Engineer Conference 2026
+[00:00][画面] Agents in Production: How OpenGov
+[00:00][画面] Built and Scaled OG Assist
+[00:00][画面] OG Assist
+[00:08][画面] OpenGov
+[00:16][画面] OpenGovT
+[00:54][幻灯片 2] frame-000008.png
+[00:54][画面] Agenda
+[00:54][画面] Meet OG Assist
+[00:54][画面] The Origin Story
+[00:54][画面] Betting on Effect
+[00:54][画面] The Core Agent Loop
+[00:54][画面] A2A, Evals & Sandboxing
+[00:54][画面] Long Context Handling
+[00:54][画面] Monitoring & Observability
+[00:54][画面] Tools, Skills & Dev Workflows
+[01:50][幻灯片 3] frame-000016.png
+[01:50][画面] Your host
+[01:50][画面] Gabe
+[01:50][画面] De Mesa
+[01:50][画面] Software Engineer IIl @ OpenGov
+[01:50][画面] Software Engineer III @ OpenGov
+[02:07][幻灯片 4] frame-000019.png
+[02:07][画面] About OpenGov
+[02:07][画面] Software for
+[02:07][画面] more effective,
+[02:07][画面] accountable
+[02:07][画面] government.
+[02:07][画面] Founded over 14 years ago, OpenGov builds ERP, budgeting,
+[02:07][画面] asset management, and permitting software for state and local
+[02:07][画面] government and OG Assist now connects across all of it.
+[02:07][画面] OpenGovT
+[02:16][画面] OpenGov7
+[02:40][幻灯片 5] frame-000024.png
+[02:40][画面] About OpenGov
+[02:40][画面] OpenGovUtility Billing Favorites
+[02:40][画面] Home Cash ReceiptsManagement Center Workflows
+[02:40][画面] + OG Assist
+[02:40][画面] Q Search
+[02:40][画面] +Create Customer
+[02:40][画面] Software for
+[02:40][画面] Cloud City, USA
+[02:40][画面] Prepare Bill Run
+[02:40][画面] View Accounts
+[02:40][画面] Apply Penalty Charges
+[02:40][画面] Process Payments
+[02:40][画面] Create a Deposit
+[02:40][画面] more effective,
+[02:40][画面] Workspace
+[02:40][画面] Days Sales Outstanding
+[02:40][画面] Total Amount Owed
+[02:40][画面] Total Payments Taken Today
+[02:40][画面?] ↓ 68 last month
+[02:40][画面] $69
+[02:40][画面] accountable
+[02:40][画面] Target 30 days
+[02:40][画面] As of June 18. 2026 2:22 am
+[02:40][画面?] As of June 18, 2026 2:22 am
+[02:40][画面] Receipts by Payment Method
+[02:40][画面?] June. 2026
+[02:40][画面] government.
+[02:40][画面] Cash $0.00
+[02:40][画面] Check $0.00
+[02:40][画面] 0.0%
+[02:40][画面?] Bank Draft $0.00
+[02:40][画面] Money Order $0.00
+[02:40][画面] Your billing breakdown awaits!
+[02:40][画面] ACH $0.00
+[02:40][画面] ce you start billing services, youl see a beautiful breakdown right here
+[02:40][画面] 0:00/0:22
+[02:40][画面?] $ ACV $O.00
+[02:40][画面] Founded over 14 years ago, OpenGov builds ERP, budgeting,
+[02:40][画面?] Debit/Credit Card $0.00
+[02:40][画面] asset management, and permitting software for state and local
+[02:40][画面] government and OG Assist now connects across all of it.
+[02:40][画面] OpenGov Utility Billing
+[02:40][画面] * OG Assist
+[02:40][画面] Prepare Bil Run
+[02:40][画面] Bauussng ees sng
+[02:40][画面] Target <30 days
+[02:40][画面?] Ann. 2006
+[02:40][画面] @ Cash $0.00
+[02:40][画面] mCheck $0.00
+[02:40][画面?] Blank Draft $0:00
+[02:40][画面] Meney Order $0.00
+[02:40][画面] Your biling breakdown awaits!
+[02:40][画面] MACH $0.00
+[02:40][画面?] $ ACV $0.00
+[02:48][幻灯片 6] frame-000025.png
+[02:48][画面] About OpenGov
+[02:48][画面] OpenGovUtility BillingFavorites
+[02:48][画面] HomeCash ReceiptsManagement CenterWorkflows
+[02:48][画面] + OG Assist
+[02:48][画面] Q Search
+[02:48][画面] + Create Customer
+[02:48][画面] Software for
+[02:48][画面] Cloud City, USA
+[02:48][画面] Prepare Bill Run
+[02:48][画面?] View Accounts
+[02:48][画面] Apply Penalty Charges
+[02:48][画面] Process Payments
+[02:48][画面] Create a Deposit
+[02:48][画面] more effective,
+[02:48][画面] Workspace
+[02:48][画面] Days Sales Outstanding
+[02:48][画面] Total Amount Owed
+[02:48][画面] Total Payments Taken Today
+[02:48][画面?] + 68 last month
+[02:48][画面] $69
+[02:48][画面] accountable
+[02:48][画面] Target: 30 days
+[02:48][画面?] As of June 18, 2026 2:22 am
+[02:48][画面] As of June 18. 2026 2:22 am
+[02:48][画面] Receipts by Payment Method
+[02:48][画面?] June. 2026
+[02:48][画面] government.
+[02:48][画面] @Cash $0.00
+[02:48][画面] 0.0%
+[02:48][画面] Check $0.00
+[02:48][画面?] Bank Draft $0.00
+[02:48][画面] Money Order $0.00
+[02:48][画面] Your billing breakdown awaits!
+[02:48][画面?] 码 ACH $O.00
+[02:48][画面] Once you start billing services, youl see a beautiful breakdown right here
+[02:48][画面?] $ ACV $0.00
+[02:48][画面] Founded over 14 years ago, OpenGov builds ERP, budgeting,
+[02:48][画面?] Debit/Credit Card $0.00
+[02:48][画面] asset management, and permitting software for state and local
+[02:48][画面] government and OG Assist now connects across all of it.
+[02:48][画面] OpenGov Utility Billing
+[02:48][画面] * OG Assist
+[02:48][画面] Prepare Bil Run
+[02:48][画面?] 2View Accounts
+[02:48][画面] Btstsngs ees ng
+[02:48][画面] Target <30 days
+[02:48][画面] @ Cash $0.00
+[02:48][画面?] lank Draft $0:00
+[02:48][画面?] 000S HOV te
+[02:56][幻灯片 7] frame-000026.png
+[02:56][画面] About OpenGov
+[02:56][画面] OpenGovUtility Billing Favorites
+[02:56][画面] Home
+[02:56][画面] Cash ReceiptsManagement CenterWorkflows
+[02:56][画面] + OG Assist
+[02:56][画面] Q Search
+[02:56][画面] + Create Customer
+[02:56][画面] Cloud City, USA
+[02:56][画面] OG Assist
+[02:56][画面] Software for
+[02:56][画面] Tell me about my rate codes
+[02:56][画面] Prepare Bill Run
+[02:56][画面] View Accounts
+[02:56][画面] Apply Penalty
+[02:56][画面] Charges
+[02:56][画面] Process
+[02:56][画面] Payments
+[02:56][画面] Create a Deposit
+[02:56][画面] more effective,
+[02:56][画面] Workspace
+[02:56][画面] Days Sales Outstanding
+[02:56][画面] Total Amount Owed
+[02:56][画面] Total Payments Taken Today
+[02:56][画面?] 68 last month
+[02:56][画面] $69
+[02:56][画面] accountable
+[02:56][画面] Target: 30 days
+[02:56][画面?] As of June 18, 2026 2:22 am
+[02:56][画面] Receipts by Payment Method
+[02:56][画面?] June 2026
+[02:56][画面] government.
+[02:56][画面] @Cash $0.00
+[02:56][画面] 0.0%
+[02:56][画面] Check $0.00
+[02:56][画面] Bank Draft $0.00
+[02:56][画面?] Money Order $0.00
+[02:56][画面?] ACH $O.00
+[02:56][画面] type your message
+[02:56][画面] ervices, youll see a beautiful breakdown right here
+[02:56][画面] 0:06/0:22
+[02:56][画面?] $ ACV $O.0O
+[02:56][画面] Founded over 14 years ago, OpenGov builds ERP, budgeting,
+[02:56][画面] Debit/Credit Card
+[02:56][画面?] $0.00
+[02:56][画面] asset management, and permitting software for state and local
+[02:56][画面] government and OG Assist now connects across all of it.
+[02:56][画面] OpenGov Utility Billing
+[02:56][画面] * OG Assist
+[02:56][画面] Prepare Bil Run
+[02:56][画面] Btssngs ees sng
+[02:56][画面] Target <30 days
+[02:56][画面?] As of June 18. 2026 2:22 am
+[02:56][画面?] Ane 3006
+[02:56][画面] @ Cash $0.00
+[02:56][画面] Ilank Draft $0.00
+[02:56][画面?] Money Order 50.00
+[02:56][画面?] 000S HOW le
+[02:56][画面?] $ ACV $0.00
+[03:04][幻灯片 8] frame-000027.png
+[03:04][画面] About OpenGov
+[03:04][画面] OpenGovUtility Billing Favorites
+[03:04][画面] Home
+[03:04][画面] Cash ReceiptsManagement CenterWorkflows
+[03:04][画面] + OG Assist
+[03:04][画面] Q Search
+[03:04][画面] + Create Customer
+[03:04][画面] Cloud City, USA
+[03:04][画面] OG Assist
+[03:04][画面] Software for
+[03:04][画面] Tell me about my rate codes
+[03:04][画面] Prepare Bill Run
+[03:04][画面] View Accounts
+[03:04][画面] Charges
+[03:04][画面] Apply Penalty
+[03:04][画面] Process
+[03:04][画面] Payments
+[03:04][画面] Create a Deposit
+[03:04][画面] Thinking-
+[03:04][画面] more effective,
+[03:04][画面] Workspace
+[03:04][画面] Days Sales Outstanding
+[03:04][画面] Total Amount Owed
+[03:04][画面] Total Payments Taken Today
+[03:04][画面?] 68 last month
+[03:04][画面] $69
+[03:04][画面] accountable
+[03:04][画面] Target: <30 days
+[03:04][画面] Receipts by Payment Method
+[03:04][画面?] June, 2026
+[03:04][画面] government.
+[03:04][画面] @Cash $0.00
+[03:04][画面] 0.0%
+[03:04][画面] Check $0.00
+[03:04][画面] Bank Draft $0.00
+[03:04][画面] Money Order $0.00
+[03:04][画面] Your billing breakdown awaits!
+[03:04][画面] 因 ACH $0.00
+[03:04][画面] Typessr mu oge
+[03:04][画面] Once you start billing services, youll see a beautiful breakdown right here
+[03:04][画面?] $ ACV $0.00
+[03:04][画面] Founded over 14 years ago, OpenGov builds ERP, budgeting,
+[03:04][画面] Debit/Credit Card $0.00
+[03:04][画面] +; Al can make mistakes. Please carefully check all outputs.
+[03:04][画面] asset management, and permitting software for state and local
+[03:04][画面] government and OG Assist now connects across all of it.
+[03:04][画面] OpenGov Utility Billing
+[03:04][画面] * OG Assist
+[03:04][画面] Prepare Bil Run
+[03:04][画面] ⑨ Create a Deposit
+[03:04][画面] Target <30 days
+[03:04][画面?] As of June 18. 2026 2:22 am
+[03:04][画面?] Are 2006
+[03:04][画面] @ Cash $0.00
+[03:04][画面] 明 ACH $0.00
+[03:04][画面] $0.00
+[03:12][画面] OpenGovUtility BillingFavorites
+[03:12][画面] A Home
+[03:12][画面] Cash Receipts
+[03:12][画面] Management Center
+[03:12][画面] Workflows
+[03:12][画面] +: OG Assist
+[03:12][画面] QSearch
+[03:12][画面] Rate Code
+[03:12][画面] Type
+[03:12][画面] Dependent Usage Group
+[03:12][画面] STDW
+[03:12][画面] Service
+[03:12][画面] STDS
+[03:12][画面] STDR
+[03:12][画面] Misc
+[03:12][画面] One-Time Charge
+[03:12][画面?] × 68 last month
+[03:12][画面] Target: 30 days
+[03:12][画面] Quick takeaways
+[03:12][画面] • 3 are Service rate codes: STDW. STDS . and STDR
+[03:12][画面?] • 1is a One-Time Charge rate code: Misc
+[03:12][画面] • STDW and STDS are tied to a dependent usage
+[03:12][画面?] JAune 2026
+[03:12][画面] group, which usually means their caiculation may depend
+[03:12][画面] on usage grouping or another usage-related setup.
+[03:12][画面] deeper aen gueeoup.
+[03:12][画面] • STDR is a standalone service rate code with no
+[03:12][画面] • Misc appears to be for miscellaneous one-time
+[03:12][画面] charges rather than recurring/service-based billing.
+[03:12][画面] how these rate codes are priced or applied.
+[03:12][画面] I can also pull your rate schedules next if you want to see
+[03:12][画面] Type your message...
+[03:12][画面] + Al can make mistakes. Pleese carefully check all outputs.
+[03:12][画面] * OG Assint
+[03:12][画面] STOW
+[03:12][画面] Prepare Bilt Run
+[03:12][画面] ④ Create a Deposit
+[03:12][画面] STOS
+[03:12][画面] STOR
+[03:12][画面] Mise
+[03:12][画面?] Aa of June 18. 2026 2:22 am
+[03:12][画面?] As of June 18. 2026 12:22 am
+[03:12][画面] 3 are Service rate codes: STN. STOS and STOR
+[03:12][画面?] June 3006
+[03:12][画面] STON and STDS are tied to a dependent usage
+[03:12][画面?] Tis a One-Time Charge rate code: Risc
+[03:12][画面] grouph which utually means their calculation may depend
+[03:12][画面] on usage grouping or another usage-nelated setup.
+[03:12][画面] Risc appears to be for miscelaneous one-time
+[03:12][画面] uge pq-un s
+[03:12][画面] STBR is a standalone service rate code with no
+[03:12][画面] dependent usage group.
+[03:12][画面] Ilank Draft $0.00
+[03:12][画面?] Money Order
+[03:12][画面?] 8 ACH $0.00
+[03:12][画面] Type your message..
+[03:20][画面] As of June 18, 2026 2:22 am
+[03:20][画面] OpenGov Utility Billing Favorites
+[03:20][画面] Cash ReceiptsManagement Center
+[03:20][画面?] + 68 last month
+[03:20][画面] • 3 are Service rate codes: STDW. STOS . and STDR.
+[03:20][画面] • 1is a One-Time Charge rate code: Misc.
+[03:20][画面] group, which usually means their calculation may depend
+[03:20][画面?] ACH $0.00
+[03:20][画面] Once you start billig services, youll see a beautiful breakdown right here
+[03:20][画面] Al can make mistakes. Please carefully check all outputs.
+[03:20][画面] * OG Assiat
+[03:20][画面] sTOS
+[03:20][画面] • 3 are Service rate codes: STON. STOS . and STOR
+[03:20][画面?] Jre 3006
+[03:20][画面] STIN and STOS are tied to a dependent usage
+[03:20][画面] group, which utully means their calculation may depend
+[03:20][画面] • 1is a One-Time Charge nate code: Misc
+[03:20][画面] p-un s
+[03:20][画面] Misc appears to be for miscelaneous one-time
+[03:20][画面] • STpe is a standalone service rate code with no
+[03:20][画面] I can also pull your nate schedules next if you want to see
+[03:20][画面] pagdde ao paoud au sepoo ages asang mo
+[03:20][画面?] 0 ACH $0.00
+[03:20][画面] T'ype your message..
+[03:25][幻灯片 9] frame-000030.png
+[03:25][画面] # OG Assiast
+[03:25][画面] Q Seanch
+[03:25][画面] Search
+[03:25][画面] Home
+[03:25][画面] Create Customer
+[03:25][画面] Cash Recaipts Management Center
+[03:25][画面] Workflows
+[03:25][画面] OG Assist
+[03:25][画面] Clouo
+[03:25][画面] Cloua
+[03:25][画面] Apply Penalty
+[03:25][画面] Process
+[03:25][画面] Welcome Gabe!
+[03:25][画面] Prepare Bit Run
+[03:25][画面] View Accounts
+[03:25][画面] ④ Create a Deposit
+[03:25][画面] Creane a Deposit
+[03:25][画面] Prepare Bill Run
+[03:25][画面] View Áccounts
+[03:25][画面] Charges
+[03:25][画面] Payments
+[03:25][画面] Summarize what happened in this workspace.
+[03:25][画面] Whart should i tackle fiest todiay?
+[03:25][画面] Workspace
+[03:25][画面] What should i tackle first today?
+[03:25][画面] Draft a respomse I can send to my tean
+[03:25][画面] Draft a response I can send to my team
+[03:25][画面] Days Sales Outstanding
+[03:25][画面] Total Payments Taken Today
+[03:25][画面] Total Amount Owed
+[03:25][画面] Create a quick action plan from my cuerent
+[03:25][画面] Creata a quick action plan trom my current
+[03:25][画面] $69
+[03:25][画面] 0
+[03:25][画面] tasks
+[03:25][画面] larget <30 drys
+[03:25][画面?] As of Jurer Is. 2026 2:22 am
+[03:25][画面?] As of Jun 18_2026 2:22 jm
+[03:25][画面?] As of Aurie th.2020 2:22 am
+[03:25][画面] larget 30 dirys
+[03:25][画面?] As of Junir t8. 2026 2:22 am
+[03:25][画面] Receipts by Payment Method
+[03:25][画面?] Lm 2008
+[03:25][画面?] lamm. 2028
+[03:25][画面] @ Cash $0.00
+[03:25][画面?] Check s0:00
+[03:25][画面] Itenk Dref S0.00
+[03:25][画面] llank Dreft S0.00
+[03:25][画面?] Money Order s0.00
+[03:25][画面] 0.0%
+[03:25][画面] Your billing breakdown awaits!
+[03:25][画面?] ACH $0:00
+[03:25][画面] Type your message.
+[03:25][画面] Type your mersage.
+[03:25][画面] Oroar you stiert biing services. youll joer a bemutifut brsakdown oght Iere
+[03:25][画面?] $ ACV 50.00
+[03:25][画面?] 000 e /
+
+[03:25][画面] OpenGovT
+[03:25][画面] Origin Story
+[03:25][画面] One bet on
+[03:25][画面] agents, one
+[03:25][画面] immediate yes.
+[03:25][画面] A principal engineer spun up a team focused on Al agents and
+[03:25][画面] asked me to join. OG Assist grew from there. We started to
+[03:25][画面] integrate deeply with our products through frontend and
+[03:25][画面] backend tools.
+[03:28][画面] Check $0.00
+[03:28][画面] Money Order $0.00
+[03:28][画面] Cash ReceiptsManagement CenterWorkflows
+[03:28][画面] + OG Assist
+[03:28][画面] Q Search
+[03:28][画面] + Create Customer
+[03:28][画面] Apply Penaity
+[03:28][画面] Create a Deposit
+[03:28][画面] What should I tackle first today?
+[03:28][画面] Draft a response I can send to my team.
+[03:28][画面] + Bil iast month
+[03:28][画面] Create a quick action plan from my current
+[03:28][画面] tasks.
+[03:28][画面] As of June 18, 2026 2:22 am
+[03:28][画面?] June. 2026
+[03:28][画面] Cash $0.00
+[03:28][画面] Bank Draft $0.00
+[03:28][画面] TTYyessur oourage.
+[03:28][画面] 1
+[03:28][画面] Once you start biling services. youl see a besutiful breakdown right here
+[03:28][画面?] $ ACV $0.00
+[03:28][画面] Al can make mistakes. Please carefufly check altoutputs
+[03:28][画面] # OG Assist
+[03:28][画面] Prepare Bi Run
+[03:28][画面] marize what happened in this workapa
+[03:28][画面] Create a qulck action plan from my current
+[03:28][画面] Draft a responae I can send to my team
+[03:28][画面?] Target -30 days
+[03:28][画面?] As of June 18. 2026 2:22 am
+[03:28][画面?] Juna 2008
+[03:28][画面] Btank Draft $0.00
+[03:28][画面?] Debit/Credit Card 50.00
+[03:36][画面] ACH $0.00
+[03:36][画面] Debit/Credit Card $0.00
+[03:36][画面?] ↓ 68 last month
+[03:36][画面] Target: 30 days
+[03:36][画面?] June, 2026
+[03:36][画面] Type your message..
+[03:36][画面] Once you start billing services, youll see a beautiful breakdown right here
+[03:36][画面] +Al can make mistakes. Please carefully check all outputs
+[03:36][画面] #; OG Assist
+[03:36][画面] Prepare Bil Run
+[03:36][画面] ⑨ Create a Deposit
+[03:36][画面] What should I tackle fiest today?
+[03:36][画面] Target <30 days
+[03:36][画面?] As of June 18, 2026 2.22 am
+[03:36][画面?] Jura 7008
+[03:36][画面] Blank Draft $0.00
+[03:36][画面] 胡 ACH $0.00
+[03:44][画面?] + 68 last month
+[03:44][画面] +Al can make mistakes. Please carefully check all outputs.
+[03:44][画面] *; OG Assist
+[03:44][画面] e s s
+[03:44][画面] Beuutstngs seesing
+[03:44][画面?] Jurea 200
+[03:44][画面] @Cash $0.00
+[03:44][画面] llank Draft $0.00
+[03:52][画面] +: OG Assist
+[03:52][画面] Type your message...
+[03:52][画面] Al can make mistakes. Please carefully check all outputs.
+[03:52][画面] Q Seach
+[03:52][画面] What should I tackle ferst today?
+[03:52][画面] Buutstngs seeseng
+[03:52][画面?] Jura, 2008
+[03:52][画面] lank Draft $0.00
+[03:52][画面?] 000s
+[03:52][画面?] Debit/Credit Card$0.00
+[04:00][画面] Target: <30 days
+[04:00][画面] Your billing breakdown awaits:
+[04:00][画面?] 0 ACH $O.00
+[04:00][画面] iype your message...
+[04:00][画面] Once you start bi
+[04:00][画面] 0:00 / 0:25
+[04:00][画面] sutiful breakdown right here
+[04:00][画面?] $ ACV $O.00
+[04:00][画面] Q Sewrch
+[04:00][画面] ⑨ Creane a Deposit
+[04:00][画面] Whart should I tackle first today?
+[04:00][画面?] Juma 2008
+[04:00][画面] Your Diiing Dreakdown awaiis!
+[04:00][画面] 0:00/0:25
+[04:08][画面?] 68 last month
+[04:08][画面] What can you see on the screen? Highlight a next s
+[04:08][画面] Al can make mistakes. Please carefully check all outputs
+[04:08][画面?] 2 View Accounts
+[04:08][画面] What should I tackle first todiay?
+[04:08][画面] Beuutsngs seesing
+[04:08][画面] + at lwer mond
+[04:08][画面?] As of June 18. 2026 2.22 am
+[04:08][画面?] June 2008
+[04:08][画面?] 明 ACH $0:00
+[04:16][画面] What can you see on the screen? Highlight
+[04:16][画面] a next step
+[04:16][画面] Thinking-
+[04:16][画面] Aria snapshot
+[04:16][画面] Q Searth
+[04:16][画面] a nest step
+[04:16][画面] What can you see on the screen? Highight
+[04:16][画面] Theking
+[04:16][画面] Baesutsnos ses sing
+[04:16][画面?] Juma, 2008
+[04:16][画面?] 000 e
+[04:16][画面] aessouw anoxe edl
+[04:24][画面] +Create Customer
+[04:24][画面?] Used 4 tools
+[04:24][画面] Current screen
+[04:24][画面] You're on the OpenGov Utility Billing Home page for Cloud
+[04:24][画面] City, USA.
+[04:24][画面?] I can see:
+[04:24][画面] • Main actions: Prepare Bill Run, View Accounts, Apply
+[04:24][画面] Penalty Charges, Process Payments, Create a Deposit
+[04:24][画面] • Workspace metrics like Days Sales Outstanding. Total
+[04:24][画面] Amount Owed. and Total Payments Taken Today
+[04:24][画面] • Sections for Workflows In Progress and Sessions
+[04:24][画面] • Navigation for Cash Receipts, Management Center.
+[04:24][画面] and Workflows
+[04:24][画面] I highlighted View Accounts as a practical next step
+[04:24][画面] because it's often the best starting point for looking up
+[04:24][画面] customers, balances, services, or account activity.
+[04:24][画面] Typessu r e
+[04:24][画面] à neat step
+[04:24][画面] What can you see on the screen? Highäght
+[04:24][画面] You/re on the OpenGov Utility Bling Home page for Cloud
+[04:24][画面] Beuutstngs seeseng
+[04:24][画面] + tt lwe nonth
+[04:24][画面] As of JAune 18, 2026 2:22 am
+[04:24][画面?] 1 can see
+[04:24][画面] City, USA
+[04:24][画面] • Main actions Prepare Bit Run View Accounts. Apply
+[04:24][画面] • Workspace metrics lke Days Sales Outstanding, Tetal
+[04:24][画面] Amount Owed and Tetal Payments Taken Today
+[04:24][画面] Thighighned View Accounts as a practical next step
+[04:24][画面] customers, balances, senvices or account activity
+[04:24][画面] • Sections for Workfliows In Progress and Sessions
+[04:24][画面] Navigation for Cash Receipts, Management Center.
+[04:24][画面] Ilank Draft $0.00
+[04:24][画面?] 0 m e
+[04:25][幻灯片 10] frame-000039.png
+[04:25][画面] Origin Story
+[04:25][画面] One bet on
+[04:25][画面] agents, one
+[04:25][画面] immediate yes.
+[04:25][画面] A principal engineer spun up a team focused on Al agents and
+[04:25][画面] asked me to join. OG Assist grew from there. We started to
+[04:25][画面] integrate deeply with our products through frontend and
+[04:25][画面] backend tools.
+[04:25][画面] OpenGovT
+[04:33][幻灯片 11] frame-000041.png
+[04:33][画面] Effect
+[05:49][幻灯片 12] frame-000051.png
+[05:49][画面] Example
+[05:49][画面] The Harness
+[05:49][画面] Our agent loop,
+[05:49][画面] import { Chat, LanguageModel } from "@effect/ai"
+[05:49][画面] import { Effect, Stream } from "effect"
+[05:49][画面] rebuilt
+[05:49][画面] // Streaming chat with tool support
+[05:49][画面] const streamingChat = Effect.gen(function* () {
+[05:49][画面] const chat = yield* Chat.empty
+[05:49][画面] Effect-native.
+[05:49][画面] yield* chat
+[05:49][画面] .streamText({
+[05:49][画面] prompt: "Generate a creative story"
+[05:49][画面] .pipe(Stream.runForEach((part) => Effect.sync(() => console.log(part))))
+[05:49][画面] The core loop started on LangGraph. It now runs fully
+[05:49][画面] Effect-native typed control flow, structured concurrency, and
+[05:49][画面] resource safety end to end. Also allows more granular control to
+[05:49][画面] the agent loop.
+[05:49][画面] Source: https://effect-ts.github.io/effect/ai/ai/Chat.ts.html
+[05:49][画面] .pipe(Stream.runForEach((part) => Effect.sync(() = console.log(part))))
+[06:24][画面] .pipe(Stream.runForEach((part) = Effect.sync(() => console.log(part))))
+[06:32][画面] const streamingChat= Effect.gen(function* () {
+[06:32][画面] .pipe(Stream,runForEach((part) => Effect.sync(() => console.log(part))))
+[06:56][画面] .pipe(Stream.runForEach((part) => Effect.sync(() => console,log(part))))
+[07:45][幻灯片 13] frame-000067.png
+[07:45][画面] interface AgentCard {
+[07:45][画面] // Human-readable name for the Agent (e.g., "Recipe Agent")
+[07:45][画面] name: string;
+[07:45][画面] // Human-readable description of the Agent's function
+[07:45][画面] description: string;
+[07:45][画面] // URL address where the Agent is hosted
+[07:45][画面] url: string;
+[07:45][画面] // Service provider information for the Agent
+[07:45][画面] provider?: {
+[07:45][画面] Agent-to-Agent Protocol
+[07:45][画面] organization: string;
+[07:45][画面] version: string;
+[07:45][画面] // URL for the Agent's documentation
+[07:45][画面] documentationUrl?: string;
+[07:45][画面] Built Off The
+[07:45][画面] // Optional capabilities supported by the Agent
+[07:45][画面] capabilities: {
+[07:45][画面] streaming?: boolean; // If the Agent supports SSE
+[07:45][画面] pushNotifications?: boolean; // If the Agent can push update notifications to the client
+[07:45][画面] A2A Protocol
+[07:45][画面] stateTransitionHistory?: boolean; // If the Agent exposes task state change history
+[07:45][画面] // Authentication requirements for the Agent (intended to match OpenAPI auth structure)
+[07:45][画面] authentication: {
+[07:45][画面] schemes: string[]; // e.g., Basic, Bearer
+[07:45][画面] credentials?: string; // Credentials for the client to use for private Cards
+[07:45][画面] // Default interaction modes supported by the Agent across all skills
+[07:45][画面] defaultInputModes: string[]; // Supported input MIME types
+[07:45][画面] defaultOutputModes:string[]; // Supported output MIME types
+[07:45][画面] // Collection of capability units the Agent can perform
+[07:45][画面] skills: {
+[07:45][画面] id:string; // Unique identifier for the skill
+[07:45][画面] The A2A protocol allows OG Assist to build off a supported
+[07:45][画面] name: string; // Human-readable name for the skill
+[07:45][画面] description:string; // Skill description
+[07:45][画面] spec, rather than from the ground up.
+[07:45][画面] ag ' ' , s :cu
+[07:45][画面] examples?: string[]; // Example scenarios or prompts the skill can execute (e.g., "I nee
+[07:45][画面] inputModes?: string[]; // Input MIME types supported by the skill (if different from def
+[07:45][画面] outputModes?: string[]; // Output MIME types supported by the skill (if different from d
+[07:45][画面] Source: https://agent2agent.info/docs/concepts/agentcard/
+[07:45][画面?] // Version of the Agent (format defined by provider, e.g., "1.0.8")
+[07:45][画面] credentials?: string: // Credentials for the client to use for private Cards
+[07:45][画面] defaultInputModes: strimg[l; // Supported input MIME types
+[07:45][画面] defaultOutputModes: string[]: // Supported output MIME types
+[07:45][画面] id: string; // Unique identifier for the skill
+[07:45][画面] description: string; // Skill description
+[07:45][画面] tags: string[]; // Tags describing the skill's capability category (e.g., "cooking", "cu:
+[07:45][画面] examples?: stringI]; // Example scenarios or prompts the skill can execute (e.g., "I nee
+[07:45][画面] nrp rt r s rns s rt nt / [ dey
+[07:45][画面] outputModes?: stringIl: // Output MIME types supported by the skill (if different from d
+[07:52][画面] defaultOutputModes: string[]; // Supported output MIME types
+[07:52][画面] ag , s :cu
+[07:52][画面] outputModes?: string[l; // Output MIME types supported by the skill (if different from d
+[07:52][画面] defaultInputModes: string[l; // Supported input MIME types
+[07:52][画面] examples?: strimgI]; // Example scenarios or prompts the skill can execute (e.g., "I nee
+[07:52][画面] inputModes?: string[]; // Input MIME types supported by the skill (if different from def.
+[07:52][画面] outputModes?: string[]; // Output MIME types supported by the skill (if different from di
+[08:00][画面] // Version of the Agent (format defined by provider, e.g., "1.0.0")
+[08:00][画面] // Version of the Agent (format defined by provider, e,g., "1.0.0")
+[08:00][画面] ag, , s :u
+[08:00][画面] }[];
+[08:00][画面] tags: string[]: // Tags describing the skill's capability category (e.g., "cooking", "cu:
+[08:00][画面] examples?: strimgIl; // Example scenarios or prompts the skill can execute (e.g., "I nee
+[08:00][画面] nrp rt r rs t rns s t t / [ dey
+[08:00][画面] outputModes?: string[]: // Output MIME types supported by the skill (if different from di
+[08:08][画面] interfaceAgentCard {
+[08:08][画面] ag , s / :u
+[08:08][画面] inputModes?: string[]; // Input MIME types supported by the skill (if different from defi
+[08:08][画面] outputModes?: string[]: // Output MIME types supported by the skill (if different from d
+[08:16][画面] name:string; // Human-readable name for the skill
+[08:16][画面] ag , :cu
+[08:24][画面] ag , s :u
+[08:32][画面] ag ' , s :cu
+[08:32][画面] inputModes?: string[]; // Input MIME types supported by the skill (if different from def;
+[08:32][画面] schemes: string[]; // e.g-, Basic, Bearer
+[08:40][画面] schemes: string[]; // e,g., Basic, Bearer
+[08:48][画面] ag, , s :eu
+[08:48][画面] nrp t s rns s t nt / dey
+[08:56][画面] ag ' e , :eu
+[09:04][画面] ag , , :cu
+[09:12][画面?] // Version of the Agent (format defined by provider, e.g., "1.e.0")
+[09:15][幻灯片 14] frame-000079.png
+[09:15][画面] OpenGovUtility BillingFaverites
+[09:15][画面] Homel
+[09:15][画面] Cash RecoiptaManagement Center
+[09:15][画面] Workflows
+[09:15][画面] + OG Assist
+[09:15][画面] Q Search
+[09:15][画面] + Create Customar
+[09:15][画面] Feedback & Evals
+[09:15][画面] Cloud City, USA
+[09:15][画面] OG Assist
+[09:15][画面] Shipping is the
+[09:15][画面] Current screen
+[09:15][画面] You're on the OpenGov Utility Billing Home page for Cloud
+[09:15][画面] City, USA.
+[09:15][画面] Prepare Bill Run
+[09:15][画面] View Accounts
+[09:15][画面] Apply Penalty
+[09:15][画面] Charges
+[09:15][画面] Payments
+[09:15][画面] Process
+[09:15][画面] Create a Deposit
+[09:15][画面] I can see.
+[09:15][画面] • Main actions: Prepare Bill Run, View Accounts, Apply
+[09:15][画面] start, not the
+[09:15][画面] Penalty Charges, Process Payments. Create a Deposit
+[09:15][画面] Workspace
+[09:15][画面] • Workspace metrics like Days Sales Outstanding. Total
+[09:15][画面] Amount Owed; and Total Payments Taken Today
+[09:15][画面] • Sections for Workflows In Progress and Sessions
+[09:15][画面] Days Sales Outstanding
+[09:15][画面] Total Amount Owed
+[09:15][画面] Total Payments Taken Today
+[09:15][画面] • Navigation for Cash Receipts, Management Center.
+[09:15][画面?] + 88 last month
+[09:15][画面] $69
+[09:15][画面] and Workflows
+[09:15][画面] finish.
+[09:15][画面] Targot: <30 daya
+[09:15][画面?] As of Jjuna 18, 2026 2.22 mm
+[09:15][画面?] As of Jume 18. 2026 2:22 am
+[09:15][画面] because it's often the best starting point for looking up
+[09:15][画面] customers, balances, services, or account activity
+[09:15][画面] Receipts by Payment Method
+[09:15][画面?] June 2026
+[09:15][画面] Thanks for the positive feedback!
+[09:15][画面] What did you like about this response?
+[09:15][画面] Cash $0.00
+[09:15][画面] 0.0%
+[09:15][画面] Aceurats
+[09:15][画面] Hatpful
+[09:15][画面] Clear
+[09:15][画面] Faat
+[09:15][画面] Relevarit
+[09:15][画面] Check $0.00
+[09:15][画面] This was great
+[09:15][画面] Skip
+[09:15][画面] Submit Feedback
+[09:15][画面] Money Order $0.00
+[09:15][画面] Structured feedback and automated evals tell us whether a
+[09:15][画面] Your billing breakdown awaits!
+[09:15][画面] ACH $0.00
+[09:15][画面] Type your message..
+[09:15][画面] Once you start biling services, youl see a beautiful breakdown right here
+[09:15][画面] change actually improves quality before and after it reaches
+[09:15][画面?] $ ACV $0.00
+[09:15][画面] Debit/Credit Card $0.00
+[09:15][画面] Ai can make mrstakes Plesse caretuy chock all outoute
+[09:15][画面] customers.
+[09:15][画面] *: OG Assist
+[09:15][画面] Q Searth
+[09:15][画面] Youre an the OpenGov Uitllty llin Home page for Cloud
+[09:15][画面] ④ Create a Deposit
+[09:15][画面] City, USA
+[09:15][画面] I can see
+[09:15][画面] Main actions Prepare Bi Run View Accounts, Apply
+[09:15][画面] Penalty Charges. Procoss Payments. Create a Deposit
+[09:15][画面] Worispaco metrics like Days Sales Outstanding Total
+[09:15][画面] Amount Owed and Total Paymerts Taken Today
+[09:15][画面] Targot. <30 diys
+[09:15][画面?] Aa of June 18, 2026 2.:22 wm
+[09:15][画面?] As of Jkme 18. 2028 2:22 am
+[09:15][画面] cuntoment, balances, servioen, or account actvity
+[09:15][画面?] 1Nighlighted View Accounts as a practical next step
+[09:15][画面] becauste it's often the best starting point for ooking up
+[09:15][画面] Sections for Workfows In Progress and Sessions
+[09:15][画面] Navigation lor Cashlleceips, Management Center.
+[09:15][画面?] kre 2006
+[09:15][画面] What did you lke about ths response?
+[09:15][画面] @ Cath $0.00
+[09:15][画面?] Bank Dran s0.00
+[09:15][画面] # ACH $0.00
+[09:15][画面] Type your messags.
+[09:15][画面] ACV $0.00
+[09:15][画面] cha a a a a a aahes
+[09:15][画面] $0.00
+[09:20][画面] Bank Draft $0.00
+[09:20][画面] Utility BillingFavorites
+[09:20][画面] Home
+[09:20][画面] Cash ReceiptsManagement Center
+[09:20][画面] +: OG Assist
+[09:20][画面] + Create Customer
+[09:20][画面] I can see:
+[09:20][画面] Penalty Charges, Process Payments, Create a Deposit
+[09:20][画面] Amount Owed, and Total Payments Taken Today
+[09:20][画面] • Navigation for Cash Receipts, Management Center,
+[09:20][画面?] ↓ 68 last month
+[09:20][画面] Target: <30 days
+[09:20][画面] As of June 18, 2026 2:22 am
+[09:20][画面] customers, balances, services, or account activity.
+[09:20][画面?] June, 2026
+[09:20][画面] Accurate
+[09:20][画面] Helpful
+[09:20][画面] Fast
+[09:20][画面] Relevant
+[09:20][画面] Type your message...
+[09:20][画面] Once you start billing services, youll see a beautiful breakdown right here
+[09:20][画面] Al can make mistakes. Please carefully check all outputs.
+[09:20][画面] OpenGov Utility Billing
+[09:20][画面] You're on the OpenGov Utilily Billin Home page for Cleudud
+[09:20][画面] Main actions Prepare BiRun View Accounts. Apply
+[09:20][画面] Penalty Charges. Process Payments. Create a Deposit
+[09:20][画面] •Workspace metrics like Days Sales Outstanding Total
+[09:20][画面] Bausttstn stes sing
+[09:20][画面] Target <30 days
+[09:20][画面?] As of June 18, 2028 2.22 am
+[09:20][画面?] 1hignlightedl View Accounts as a practical next step
+[09:20][画面] cuntomers, balances, services, or account activity.
+[09:20][画面] Navigation for Cash Rteceipts, Management Center,
+[09:20][画面] d pes
+[09:20][画面?] Ane 2006
+[09:20][画面] What did you like about ths response?
+[09:20][画面?] @ Cash $0:00
+[09:20][画面] This was great]
+[09:20][画面] Blank Draft $0.00
+[09:20][画面?] 8 ACH $0.00
+[09:20][画面] Type your message.
+[09:20][画面] cha a a a ae a aahes
+[09:28][画面] I highlighted View Accounts as a practical next step
+[09:28][画面] OpenGov Utility BillingFavorites
+[09:28][画面?] Debit/Credit Card $O.00
+[09:28][画面] Q Starth
+[09:28][画面] Youre on the OpenGov Uillty Billin Home page for Cloeud
+[09:28][画面] Prepare BitRun
+[09:28][画面] • Main actions: Prepare Bi Run, View Accounts, Apply
+[09:28][画面] •Workspace metrics like Days Sales Outstanding. Total
+[09:28][画面] Barststn stes sing
+[09:28][画面] Ihighightedl View Accounts as a practical next step
+[09:28][画面] becaust it's often the best starting point for ooking up
+[09:28][画面] cuntomers, belances, servioens, or account activity.
+[09:28][画面] Sections for Workfws In Progress and Sessions
+[09:28][画面] Navigation for Cash Rteceipts, Management Center
+[09:28][画面] smd pues
+[09:28][画面] What did you like about this responsa?
+[09:28][画面?] @ Casth $0:00
+[09:28][画面] BBank Draft $0.00
+[09:28][画面] cha a a a a aahes
+[09:36][画面] OpenGov Utility Billing Favorites
+[09:36][画面] Cash Receipts
+[09:36][画面] Management Center
+[09:36][画面] • Main actions: Prepare Bill Run, View Accounts. Apply
+[09:36][画面] custorners, balances, services, or account activity.
+[09:36][画面] Once you start billing services, you'll see a beautiful breakdown right here
+[09:36][画面] Youre on the OpenGov Uilty Billin Home page for Cleud
+[09:36][画面] Prepare Bi Run
+[09:36][画面] •Main actions: Prepare Bi Run. View Accounts, Apply
+[09:36][画面] •Worispoce metrics like Days Sales Outstanding. Total
+[09:36][画面] Bauststno stes sings
+[09:36][画面?] As of June 18, 2026 2.22 am
+[09:36][画面] Ihighlightedl View Accounts as a practical next step
+[09:36][画面] becaut it's often the best starting point for ooking up
+[09:36][画面] cuntomers, belances, servicens, or account activity.
+[09:36][画面] Navigation for Cash teceipes, Management Center,
+[09:36][画面] his was great]
+[09:36][画面] aessu anol a
+[09:44][画面] OpenGovUtility Billing Favorites
+[09:44][画面?] June. 2026
+[09:44][画面] OpenGovUtility Billing
+[09:44][画面] Youre on the OpenGov Uitlty Billin Home page for Cloeud
+[09:44][画面] • Main actions: Prepare Bi Ran, View Accounts, Apply
+[09:44][画面] Barststno stes sing
+[09:44][画面?] As of June 18, 2028 2:22 am
+[09:44][画面] becauste it's often the best starting point for oking up
+[09:44][画面] cuntomerns, belances, services, or account activity.
+[09:44][画面] Sections for Workffws In Progress and Sessions
+[09:44][画面] Navigation for Cash teceipts, Management Center,
+[09:44][画面] sm pues
+[09:44][画面?] Jne 2006
+[09:44][画面] @ Cash $0.00
+[09:44][画面] Btank Draft $0.00
+[09:52][画面] OpenGovUtility BillingFavorites
+[09:52][画面] Navigation for Cash Receipts, Management Center,
+[09:52][画面?] 68 last month
+[09:52][画面] Once you start billing services, youl see a beautiful breakdown right here
+[09:52][画面] + Al can make mistakes. Please carefully check all outputs.
+[09:52][画面] * OG Assist
+[09:52][画面] You're on the OpenGov Utilly Billin Home page for Cleudud
+[09:52][画面] • Main actions: Prepare Bil Run, View Accounts, Apply
+[09:52][画面] •Workspace metrics lik Days Sales Outstanding Total
+[09:52][画面] Busttsno stes sing
+[09:52][画面?] 1 highlightedl View Accounts as a practical next step
+[09:52][画面] becaust its often the best starting point for ooking up
+[09:52][画面] Sections for Worklfws In Progress and Sessions
+[09:52][画面] Navigation for Cash leceipts, Management Center,
+[09:52][画面] pues
+[09:52][画面?] Ane. 3006
+[09:52][画面] Thanka for the positive feedback!
+[09:52][画面] What did you like about ths respons?
+[10:00][画面] Utility Billing Favorites
+[10:00][画面] customners, balances, services, or account activity.
+[10:00][画面] Youre on the OpenGov Uitilty Billin Home poge for Cleud
+[10:00][画面] Prepare Bit Run
+[10:00][画面] •Workspace metrics like Days Sales Outstanding, Total
+[10:00][画面] Bauststns stes sings
+[10:00][画面] INighightedl View Accounts as a practical next step
+[10:00][画面] becaut i's often the best starting point for ooking up
+[10:00][画面] customers, balances, servioes, or account activity.
+[10:00][画面] Sections for Worklws In Progress and Sessions
+[10:00][画面] •Navigation for Cash Rleceipts, Management Center,
+[10:00][画面] d pues
+[10:00][画面?] Ane. 2006
+[10:00][画面] aessu anol adi
+[10:08][画面] • Workspace metrics like Days Sales Outstanding, Total
+[10:08][画面] You're on the OpenGov Utilty Billin Home page for Cleudud
+[10:08][画面] Prepare Bil Riun
+[10:08][画面] ④ Creute a Deposit
+[10:08][画面] Main actions Prepare Bit Run, View Accounts, Apply
+[10:08][画面] Bausstnos stes sing
+[10:08][画面] becaute it's often the best starting point for oking up
+[10:08][画面] Navigation for Cash leceipts, Management Center.
+[10:08][画面?] Ane, 3006
+[10:16][画面] You're on the OpenGov Utlly Billin Home page for Cleudeud
+[10:16][画面] Bauststno stes sing
+[10:16][画面?] As off June 18. 2026 2:22 am
+[10:16][画面?] 1highightedl View Accounts as a practical next step
+[10:24][画面?] Debit/Credit Card S0.00
+[10:24][画面] *; OG Assist
+[10:24][画面] Youre on the OpenGov Uitiity Billin Home page for Cleud
+[10:24][画面] •Main actions: Prepare Bit Raun, View Accounts, Apply
+[10:24][画面] As off June 18, 2026 2:22 am
+[10:24][画面] customers, balances, servioes, or account activity
+[10:24][画面] becaust i's often the best starting point for ooking up
+[10:24][画面] •Navigation for Cash Rteceipts, Management Center,
+[10:24][画面?] 0 ACH $0.00
+[10:30][幻灯片 15] frame-000089.png
+[10:30][画面] Tool approval required
+[10:30][画面] getEntityDetails
+[10:30][画面] getEntityOetails
+[10:30][画面] OG Assist is trying to make a tool call and needs your approval.
+[10:30][画面] Show arguments
+[10:30][画面] Reject
+[10:30][画面] Accept
+
+[10:30][画面] OpenGovT
+[10:30][画面] Humans in the Loop
+[10:30][画面] Please get my current entity and my current context
+[10:30][画面] Humans Remain
+[10:30][画面] In Control
+[10:30][画面] Tool Calls can be gated behind tool call approval UI requiring
+[10:30][画面] Tool Calls can be gated behind tool call approval Ul requiring
+[10:30][画面] manual intervention and explicit permission from a user prior to
+[10:30][画面] the agent taking action.
+[11:20][幻灯片 16] frame-000096.png
+[11:20][画面] OG Assist
+[11:20][画面] Please create a PDF with beautiful art to
+[11:20][画面] greet the folks of the Al Engineer
+[11:20][画面] Conference 2026. Please allow me to
+[11:20][画面] download it to share with them.
+[11:20][画面] Used 4 tools
+[11:20][画面] Sandboxing
+[11:20][画面] Done
+[11:20][画面] Room to act,
+[11:20][画面] I created the Al Engineer Conference 2026 Greeting PDF
+[11:20][画面] and made it available for download. It includes original Al-
+[11:20][画面] inspired generative artwork and a warm greeting message
+[11:20][画面] safely.
+[11:20][画面] for conference attendees.
+[11:20][画面] Al Engineer Conference 2026 Greeting PDF
+[11:20][画面] 68 KB
+[11:20][画面] Download
+[11:20][画面] Code runs in isolated sandboxes, so agents can take real action
+[11:20][画面] without putting production systems or customer data at risk.
+[11:20][画面] Type your message...
+[11:20][画面] Al can make mistakes. Please carefully check all outputs.
+[11:20][画面] OpenGovT
+[11:20][画面] ± Download
+[11:20][画面] +Al can make mistakes. Please carefully check all outputs.
+[11:36][画面] ↓ Download
+[12:12][幻灯片 17] frame-000103.png
+[12:12][画面] Sandboxing
+[12:12][画面] Room to act,
+[12:12][画面] A WARM HELLO TO THE BUILDERS, RESEARCHERS & MAKERS AT
+[12:12][画面] safely.
+[12:12][画面] AI ENGINEER
+[12:12][画面] CONFÉRENCE 2026
+[12:12][画面] May your ideas compile cleanly, your models generalize beautifully, and
+[12:12][画面] your conversations spark the next génerafion of useful, trustworthy Al.
+[12:12][画面] Code runs in isolated sandboxes, so agents can take real action
+[12:12][画面] without putting production systems or customer data at risk.
+[12:12][画面] Here's to shipping boldly, learning openly, and building Al that helps people thrive.
+[12:12][画面] OpenGovT
+[12:12][画面] May your ideas compile cleanly, ybur models generalize beautifully, and
+[12:12][画面] your corversations spark the next gineraflion of useful, trustworthy Al.
+[12:12][画面] Here's to shipping boldly, leaming openly, and building Al that heips people thrive.
+[12:16][画面] Heri e syg ei g uig g dg buin s, iv.
+[12:16][画面] your corversations spark the next gineraffion of useful, trustworthy Al.
+[12:24][画面] CONFEÉRENCE 2026
+[12:24][画面] your conversations spark the next gineraffion of useful, trustworthy Al.
+[12:24][画面] Here's to shipping boldly, leaming openly, and building Al that helps people thrive.
+[12:25][幻灯片 18] frame-000106.png
+[12:25][画面] OG Assist
+[12:25][画面] The future will not be shaped by technology alone. It will be
+[12:25][画面] shaped by human decisions about technology. Societies
+[12:25][画面] that invest in fairness, education, transparency, and ethical
+[12:25][画面] design will be better prepared to benefit from innovation
+[12:25][画面] while reducing harm.
+[12:25][画面] Conclusion
+[12:25][画面] Technology is one of the defining forces of modern society.
+[12:25][画面] It has improved communication, healthcare, education,
+[12:25][画面] productivity, and access to information. It has connected
+[12:25][画面] people across the world and created opportunities that
+[12:25][画面] previous generations could hardly imagine. Yet it has also
+[12:25][画面] introduced challenges involving privacy, inequality,
+[12:25][画面] misinformation, job disruption, and ethical responsibility.
+[12:25][画面] The central question is not whether society should accept
+[12:25][画面] or reject technology. Technology is already deeply woven
+[12:25][画面] into modern life. The real question is how society can guide
+[12:25][画面] technology toward human well-being. Innovation should not
+[12:25][画面] only make systems faster or more profitable; it should make
+[12:25][画面] life more fair, informed, healthy, and meaningful.
+[12:25][画面] A better technological future is possible, but it requires
+[12:25][画面] intention. People must remain at the center of progress.
+[12:25][画面] intention, People must remain at the center of progress.
+[12:25][画面] When technology is developed with responsibility, inclusion,
+[12:25][画面] and accountability, it can help build a society that is not
+[12:25][画面] only more advanced, but also more humane.
+[12:25][画面] Type your message...
+[12:25][画面] +;Al can make mistakes, Please carefully check all outputs.
+[12:25][画面] Al can make mistakes, Please carefully check all outputs.
+
+[12:25][画面] Long Context
+[12:25][画面] Holding more
+[12:25][画面] than the window
+[12:25][画面] allows.
+[12:25][画面] Summarization compresses history as conversations grow;
+[12:25][画面] memory persists the facts that matter, so the agent stays
+[12:25][画面] coherent across long sessions. Also helps with memory and
+[12:25][画面] recall of previous messages and responses.
+[12:32][画面] Al can make mistakes. Please carefully check all outputs.
+[12:32][画面] introduced challenges involving privacy, inequality.
+[12:32][画面] Type your message..
+[12:32][画面] +;Al can make mistakes. Please carefully check all outputs.
+[13:04][画面] OpenGovT
+[13:52][画面] +Al can make mistakes. Please carefully check all outputs.
+[14:10][幻灯片 19] frame-000120.png
+[14:10][画面] OG Assist
+[14:10][画面] Generate me a long essay, give me some
+[14:10][画面] options for what the essay can be about.
+[14:10][画面] Choose an essay topic
+[14:10][画面] Al in Local Government
+[14:10][画面] Tools & Skills
+[14:10][画面] How Al can help public agencies operate efficiently while
+[14:10][画面] protecting trust, privacy, and accountability.
+[14:10][画面] UI, on
+[14:10][画面] Climate Resilience in Cities
+[14:10][画面] How communities can prepare infrastructure, budgets, and
+[14:10][画面] residents for extreme weather.
+[14:10][画面] the Fly
+[14:10][画面] The Future of Public Education
+[14:10][画面] Technology, equity, teacher support, and the changing purpose
+[14:10][画面] of schools
+[14:10][画面] Social Media and Democracy
+[14:10][画面] How online pletforms shape public opinion, civic participation.
+[14:10][画面] polarization, and trust.
+[14:10][画面] Uls can be created on demand by the agent if deemed
+[14:10][画面] Or type your own essay topic.
+[14:10][画面] necessary or beneficial to enhancing the experience of the
+[14:10][画面] None of these
+[14:10][画面] conversation.
+[14:10][画面] Type your message...
+[14:10][画面] Al can make mistakes. Please caretully check all outputs.
+[14:10][画面] protecting trust, privacy, and accountability:
+[14:10][画面] How communities can prepare intrastructure, budgets, and
+[14:10][画面] How online pletforms shape public opinion civic participation.
+[14:10][画面] Type your message..
+[14:10][画面] +;Al can make mistakes. Please caretuily check all outputs.
+[14:16][画面] of schools.
+[14:16][画面] How online platforms shape public opinion, civic participation,
+[14:16][画面] Or type your own essay topic...
+[14:16][画面] Al can make mistakes. Please carefully check all outputs.
+[14:16][画面] +;Al can make mistakes. Please carefully check all outputs.
+[14:24][画面] Technology equity, teacher support, and the changing purpose
+[14:32][画面] Tyesser or g-
+[14:40][画面] Teh ts pose
+[14:48][画面] polarization, andl trust.
+[14:52][幻灯片 20] frame-000126.png
+[14:52][画面] Observability
+[14:52][画面] You can't scale
+[14:52][画面] Trace
+[14:52][画面?] example: client 16193m
+[14:52][画面] Glye feudbackTrace IDExport
+[14:52][画面?] 2025-03-28 16:13:42.082
+[14:52][画面] Span Filters
+[14:52][画面] 13 spans
+[14:52][画面] what you can't
+[14:52][画面] Service & Operation
+[14:52][画面] 40.48ms
+[14:52][画面] 121.45ms
+[14:52][画面] 161.93ms
+[14:52][画面?] example clent (61.93ms)
+[14:52][画面?] /apl (151.8msi
+[14:52][画面?] 157.8m
+[14:52][画面?] 22.76ma
+[14:52][画面] see.
+[14:52][画面?] (mthZ (12.51m)
+[14:52][画面?] 12.51mm
+[14:52][画面?] /paymnt Gateway (48 57ma)
+[14:52][画面?] A8.7m
+[14:52][画面?] DB (16.82ma)
+[14:52][画面?] 10.02ms
+[14:52][画面?] Ext Merchant (17.3ms)
+[14:52][画面?] 17.3m9
+[14:52][画面?] /dispatch (72 1ms)
+[14:52][画面?] 72.11ms
+[14:52][画面?] /diapatch/bearch (23.a2ma)
+[14:52][画面?] 23.42ms
+[14:52][画面?] (poll (3.14ma)
+[14:52][画面?] 3.14ms
+[14:52][画面?] 7pail (2.82mm)
+[14:52][画面?] 2.82ms
+[14:52][画面?] ipoll (2 Z2ms)
+[14:52][画面?] (polDrtverf(id) (23.58ma)
+[14:52][画面?] 23.58ms
+[14:52][画面] Source: https://effect.website/docs/observability/tracing/
+[14:52][画面] Every agent run is traced end to end, giving us the visibility to
+[14:52][画面] debug, measure, and tune behavior at production scale.
+[14:52][画面?] example: client wisom,
+[14:52][画面?] D Thraw 0 Erpon
+[14:52][画面?] 80.06ms
+[14:52][画面?] inlthZ (12.51ma)
+[14:52][画面?] Datemay (48 (ha)
+[14:52][画面?] DB (N6.A2mA)
+[14:52][画面?] Ent Marthant (12.3me
+[14:52][画面?] 1.72m
+[14:52][画面?] 23.58m
+[14:56][画面] 80.96ms
+[14:56][画面?] example: client 161.93ms
+[14:56][画面] Give feedback Trace ID Export
+[14:56][画面] Prev Next
+[14:56][画面?] example client (161.93ms)
+[14:56][画面?] /api (151.8ms)
+[14:56][画面?] 151.8ms
+[14:56][画面?] 22.76ms
+[14:56][画面?] /authZ (12.51ms)
+[14:56][画面?] 12.51ms
+[14:56][画面?] /payment Gateway (48.67ms)
+[14:56][画面?] DB (16.82ms)
+[14:56][画面?] 10.82ms
+[14:56][画面?] Ext_ Merchant (17.3ms)
+[14:56][画面?] 17.3ms
+[14:56][画面?] /dispatch (72.11ms)
+[14:56][画面?] /dispatch/search (23.42ms)
+[14:56][画面?] /poll (3.14ms)
+[14:56][画面?] /poll (2.72ms)
+[14:56][画面?] /pollDriver/{id} (23.58ms)
+[14:56][画面?] example: client wisoms
+[14:56][画面?] 2025205-0-202
+[14:56][画面?] © Trase 10
+[14:56][画面] Expon
+[14:56][画面?] example clant (10.03ma)
+[14:56][画面?] Japl (151.8ma)
+[14:56][画面?] (auN (22.7ma)
+[14:56][画面?] /authZ (12.5lma)
+[14:56][画面?] /payment Oateway (48.6hma)
+[14:56][画面?] 48.8700
+[14:56][画面?] Ext. Merchant (17.3ma)
+[14:56][画面?] Sspatch (72.1fima)
+[14:56][画面?] (23.42m6)
+[14:56][画面?] 2.72m
+[14:56][画面?] 23.5km
+[15:04][画面] /authN (22.76ms)
+[15:04][画面] 2.72ms
+[15:04][画面] 48.67ms
+[15:04][画面] /poll (2.82ms)
+[15:04][画面?] example: client 1e1.93ms
+[15:04][画面] Give feedback
+[15:04][画面] Prev
+[15:04][画面] Next
+[15:04][画面?] /poilDriver/{id} (23.58ms)
+[15:04][画面?] example: client wer.sams
+[15:04][画面?] 25243-0-4202
+[15:04][画面] Give fee
+[15:04][画面?] Trace 10
+[15:04][画面] Expor
+[15:04][画面?] example cliont (101.03ma)
+[15:04][画面?] Fupl (151.8ma)
+[15:04][画面] - (authN (22.76ms)
+[15:04][画面?] /authZ (12.51ma)
+[15:04][画面?] /payment Oateway (48.0hms)
+[15:04][画面?] Ext. Merchant (7.3ma)
+[15:04][画面?] /dispatch (72.Mima)
+[15:04][画面?] N/search (23.42ma)
+[15:04][画面?] (poll (3.56ma)
+[15:04][画面] (polt (2.82ms)
+[15:04][画面?] (poll (2.72ma)
+[15:12][画面] Export
+[15:12][画面] Span Filters ①
+[15:12][画面?] example: client wisams
+[15:12][画面?] 2503-0-4202
+[15:12][画面] Span Fiters
+[15:12][画面?] example clont (10.03ma)
+[15:12][画面?] Jepl (151.8ma)
+[15:12][画面] /autN (22.76ms)
+[15:12][画面?] /authZ (12.5tma)
+[15:12][画面?] /paymert Oateway (48.0hma)
+[15:12][画面?] DB (%6.82ma)
+[15:12][画面?] toh/search (23.42ma)
+[15:12][画面?] /poll (3.56ma)
+[15:20][画面] /apl (151.8ms)
+[15:20][画面?] Trace IDExport
+[15:20][画面?] /pollDriver/(id} (23.58ms)
+[15:20][画面?] example: client wrsams
+[15:20][画面] Give fe
+[15:20][画面?] Trace I0
+[15:20][画面?] example client (1or.03m)
+[15:20][画面] Iepi (151.8ms)
+[15:20][画面?] /paymert Oateway (48.6hma)
+[15:20][画面?] 48.67mm
+[15:20][画面?] /dispatch (72.Mfma)
+[15:20][画面?] /polt (2.82m)
+[15:28][画面] Trace ID
+[15:28][画面?] (payment Gateway (48.67ms)
+[15:28][画面?] example: clilent wusoms
+[15:28][画面?] © Trase I0
+[15:28][画面] Span Fiaters
+[15:28][画面?] example client (167.03m)
+[15:28][画面?] Ftpi (151.8ma)
+[15:28][画面?] (nuthZ (12.51ma)
+[15:28][画面?] /paymen Oateway 148.6hos)
+[15:28][画面?] Ext. Merchant (2.3ma)
+[15:28][画面?] Msearch (23.42ma)
+[15:28][画面?] (poll (3.36ma)
+[15:28][画面?] /pl (2.82ma)
+[15:28][画面?] 23.50
+[15:36][画面] Trace ID Export
+[15:36][画面] Ext. Merchant (17.3ms)
+[15:36][画面?] 2025-03-2816:13:42.082
+[15:36][画面?] 16.82m$
+[15:36][画面?] /pollDriver/{id) (23.58ms)
+[15:36][画面?] example: client wessoms
+[15:36][画面?] 2524443-0-42022
+[15:36][画面?] example clent (101.03ma)
+[15:36][画面?] Jxpil (751.8ma)
+[15:36][画面?] (authN (22.70ma)
+[15:36][画面?] /peyment Oateway (48.6hes)
+[15:36][画面?] D8 (196.82ma)
+[15:36][画面?] 48.67m6
+[15:36][画面?] Nsearch (23.42ma)
+[15:44][画面?] example: client wer.soms
+[15:44][画面?] 252445-0-4202
+[15:44][画面?] (autN (2.76ma)
+[15:44][画面?] /authZ (12.5'1ma)
+[15:44][画面?] payment Oateway (48.0ma)
+[15:44][画面?] DB (6.82ms)
+[15:44][画面?] Ext. Merchant (7.3ms)
+[15:44][画面?] 6.82ms
+[15:52][画面?] © Trase 0
+[15:52][画面?] FauthZ (12.51ma)
+[15:52][画面?] /paymert Oateway (48.0hms)
+[15:52][画面?] DB (196.82ma)
+[15:52][画面?] 1.82ms
+[15:52][画面?] oh/search (23.42ma)
+[15:52][画面] /polt (2.82ms)
+[16:00][画面] 16.82ms
+[16:00][画面?] 252503-0-4202
+[16:00][画面?] example clint (1o.03ma)
+[16:00][画面?] /payment Oateway (48.6hms)
+[16:00][画面?] 48.67ma
+[16:00][画面?] /dispatch (72.3fima)
+[16:00][画面?] 23.58
+[16:08][画面?] Trase I0
+[16:08][画面?] example clent (10.03ma)
+[16:08][画面?] /upl (151.8ma)
+[16:08][画面?] (authZ (12.51ma)
+[16:08][画面?] /payment Oateway (48.0hes)
+[16:08][画面?] 48.6700
+[16:08][画面?] oN/search (23.42ma)
+[16:08][画面?] /polt(2.82ma)
+[16:16][画面?] example: client wersoms
+[16:16][画面?] 25203-0-2002
+[16:16][画面?] Trase 10
+[16:16][画面?] Ioi (151.8ma)
+[16:16][画面?] /payment Oateway (48.67ma)
+[16:16][画面?] D8 (16.82ms)
+[16:16][画面?] /dispatch (72.M1ma)
+[16:24][幻灯片 21] frame-000138.png
+[16:24][画面] import { LanguageModel, Tool, Toolkit } from "@effect/ai"
+[16:24][画面] import { Effect, Schema } from "effect"
+[16:24][画面] const GetDadJoke = Tool.make("GetDadJoke", {
+[16:24][画面] description: "Get a hilarious dad joke from the ICanHazDadJoke API",
+[16:24][画面] success: Schema.String,
+[16:24][画面] failure: Schema.Never,
+[16:24][画面] parameters: {
+[16:24][画面] 8
+[16:24][画面] searchTerm: Schema.String.annotations({
+[16:24][画面] 9
+[16:24][画面] 10
+[16:24][画面] description: "The search term to use to find dad jokes"
+[16:24][画面] 11
+[16:24][画面] 12
+[16:24][画面] 13
+[16:24][画面] 14
+[16:24][画面] 15
+[16:24][画面] const DadJokeTools = Toolkit.make(GetDadJoke)
+[16:24][画面] 16
+[16:24][画面] 17
+[16:24][画面] const generateDadJoke = LanguageModel.generateText({
+[16:24][画面] 18
+[16:24][画面] prompt: "Generate a dad joke about pirates",
+[16:24][画面] 19
+[16:24][画面] toolkit: DadJokeTools
+[16:24][画面] 20
+[16:24][画面] https://effect.website/docs/ai/tool-use/#4-give-the-tools-to-the-model
+
+[16:24][画面] Tools & Skills
+[16:24][画面] One repo, every
+[16:24][画面] tool.
+[16:24][画面] An enterprise contribution model keeps all tools and skills in a
+[16:24][画面] single repo so any engineer can extend what OG Assist can do.
+[16:32][画面] 3
+[16:32][画面] 6
+[16:32][画面] sin a s o s do
+[16:40][画面] sSin s o e ns c do.
+[16:48][画面] description: "The searcterm to use to find dad jokes"
+[16:56][画面] 2
+[16:56][画面] 4
+[16:56][画面] 5
+[17:37][幻灯片 22] frame-000148.png
+[17:37][画面?] caffeinate·claude-157x52
+[17:37][画面?] gdemesa@MAC-Gabriel-De-Mesa ai % claude
+[17:37][画面?] Claude Code v2.1.183
+[17:37][画面] Clauds Enterprise
+[17:37][画面?] Sonnet 4.6 with ligh effurt
+[17:37][画面] -/Desktop/ai
+[17:37][画面?] I setup issue: NCP
+[17:37][画面] /doutor
+[17:37][画面?] 1 setup issue: MCP /doctor
+[17:37][画面] au ea e aa s s es az
+[17:37][画面?] claude please say hi to the ai engineer conference 20261
+[17:37][画面?] Hey AI Engineer Conference 28261
+[17:37][画面?] Hey AI Engineer Conference 20261
+[17:37][画面] Sautéad For Zs
+[17:37][画面] Sauténid for Zs
+[17:37][画面?] PR 0809
+[17:37][画面?] 1009
+[17:37][画面] * for agents
+
+[17:37][画面] OpenGovT
+[17:37][画面?] 26-caffeinate-claude
+[17:37][画面] Developer Velocity
+[17:37][画面] Building agents
+[17:37][画面] with agents.
+[17:37][画面] Claude Code, Cursor, and cloud agents accelerate how the
+[17:37][画面] team writes, reviews, and ships building OG Assist with the
+[17:37][画面] same kind of tools we ship.
+[17:44][画面?] ai — * Say hi to Al engineer conference 2026 - caffeinate claude — 157×52
+[17:44][画面] .n Molly's PR -node - claude
+[17:44][画面] atalog parity -node - claude
+[17:44][画面] _.codebase -node - claude
+[17:44][画面] ...d test IDs - node - claude
+[17:44][画面?] .26-caffeinate- claude
+[17:44][画面?] Claude Code v2.1.181
+[17:44][画面?] Sonnet 4.6 with high effort - Claude Enterprise
+[17:44][画面] 1 setup issue: MCP . /doctor
+[17:44][画面] claude please say hi to the ai engineer conference 2026!
+[17:44][画面?] Hey AI Engineer Conference 2026!
+[17:44][画面] * Sautéed for 2s
+[17:44][画面?] PR #809
+[17:44][画面] . for agents
+[17:44][画面?] Enterprise
+[17:44][画面] 1 setup issue: MCP
+[17:44][画面?] /doctor
+[17:44][画面?] ●Hey AI Engineer Conference 20261
+[17:44][画面] • Sautéed for 2s
+[17:44][画面] agents
+[17:52][画面?] ai — Say hi to Al engineer conference 2026 — caffeinate claude —157×52
+[17:52][画面] _n Molly's PR - node - claude
+[17:52][画面] _atalog panty - node - claude
+[17:52][画面] _codebase-node - ctaude
+[17:52][画面] .d test IDs - node - claude
+[17:52][画面?] ..26 -caffeinate - claude
+[17:52][画面?] Sonnet 4.6 with high effort · Claude Enterprise
+[17:52][画面] 1 setup issue: MCP. /doctor
+[17:52][画面?] ●Hey AI Engineer Conference 2026!
+[17:52][画面?] PR #809 for agents
+[17:52][画面] /dostor
+[17:52][画面] Sautéed for 2s
+[18:00][画面?] ai — * Say hi to Al engineer conference 2026 - caffeinate claude -157×52
+[18:00][画面] .n Molly's PR - node - claude
+[18:00][画面] atalog parity - node - claude
+[18:00][画面] ..codebase-node- claude
+[18:00][画面?] ..26 -caffeinate-claude
+[18:00][画面?] PR #809 . for agents
+[18:00][画面] e Sautéed for 2s
+[18:00][画面?] PR 8809
+[18:08][画面?] ai — Say hi to Al engineer conference 2026 - caffeinate claude — 157×52
+[18:08][画面] ..n Molly's PR - node - claude
+[18:08][画面] codebase-node -claude
+[18:08][画面] ...d·test IDs - node - claude
+[18:08][画面?] .26 -caffeinate - claude
+[18:08][画面?] Sonnet 4.6 with high effort . Claude Enterprise
+[18:08][画面] for agents
+[18:08][画面] 1 setup issue: HCP
+[18:08][画面] Sautdod for 2s
+[18:16][画面] ...n Molly's PR - node - claude
+[18:16][画面] _.atalog parity -node - claude
+[18:16][画面] _codebase -node - claude
+[18:16][画面] _d test IDs - node - claude
+[18:16][画面?] ..26 - caffeinate - claude
+[18:16][画面] 1 setup issue: MCP · /doctor
+[18:16][画面?] ● Hey AI Engineer Conference 2026!
+[18:16][画面] 1 setup issue: MCP - /doctor
+[18:16][画面?] ● Hey AI Engineer Conference 20261
+[18:16][画面?] 1809
+[18:21][幻灯片 23] frame-000154.png
+[18:21][画面] Thank You
+[18:21][画面] Let's build agents that ship to
+[18:21][画面] production.
