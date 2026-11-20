@@ -3,9 +3,9 @@
 
 A passing transcript writes transcript.txt (caption lines keep [mm:ss]), segments.json,
 chunks/, status.json, and note.scaffold.md. The scaffold is frontmatter, empty
-empty section headings, and fill instructions. It is not a finished knowledge
-note. The host does not analyze the transcript.
-The platform title and description are not stored. On failure the job directory
+section headings, and fill instructions. It is not a finished knowledge note.
+YouTube title, channel and publication date are separate from the transcript.
+The host does not analyze the transcript or store the description. On failure the job directory
 keeps status.json and no scaffold.
 
 Exit 0 when the transcript passes and a scaffold is written. That exit does not
@@ -27,6 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -303,12 +304,31 @@ def select_caption_language(info: dict, expected: str | None) -> tuple[str, str]
     return None
 
 
+def _youtube_metadata(info: dict) -> dict[str, str]:
+    metadata = {}
+    for field, candidates in (("title", ("title",)), ("channel", ("channel", "uploader"))):
+        for candidate in candidates:
+            value = info.get(candidate)
+            if isinstance(value, str) and (value := " ".join(value.split())):
+                metadata[field] = value
+                break
+    published = info.get("upload_date")
+    if isinstance(published, str) and re.fullmatch(r"[0-9]{8}", published):
+        try:
+            metadata["published"] = date.fromisoformat(published).isoformat()
+        except ValueError:
+            pass
+    return metadata
+
+
 def fetch_ytdlp_captions(
     url: str,
     video_id: str,
     expected_lang: str | None,
     base_cmd: list[str],
     accept_info=None,
+    *,
+    include_metadata: bool = False,
 ) -> dict:
     """Return caption text, or a dict with text None and an error string.
 
@@ -341,14 +361,16 @@ def fetch_ytdlp_captions(
     got_id = str(info.get("id") or "")
     if got_id and got_id != video_id and not (accept_info is not None and accept_info(info)):
         return {"text": None, "error": "yt-dlp returned a different video id than requested"}
+    details = {"metadata": _youtube_metadata(info)} if include_metadata and got_id == video_id else {}
     picked = select_caption_language(info, expected_lang)
     if not picked:
         if expected_lang:
             return {
+                **details,
                 "text": None,
                 "error": f"no captions in expected language {quality_gate.normalize_lang(expected_lang)}",
             }
-        return {"text": None, "error": "no captions in yt-dlp metadata"}
+        return {**details, "text": None, "error": "no captions in yt-dlp metadata"}
     lang_key, kind = picked
     with tempfile.TemporaryDirectory(prefix="tfv-ytdlp-") as tmp:
         out = Path(tmp)
@@ -372,9 +394,9 @@ def fetch_ytdlp_captions(
         try:
             downloaded = _run(sub_cmd, timeout=90)
         except subprocess.TimeoutExpired:
-            return {"text": None, "error": "yt-dlp subtitle download timed out"}
+            return {**details, "text": None, "error": "yt-dlp subtitle download timed out"}
         if downloaded.returncode != 0:
-            return {"text": None, "error": _interesting_error(downloaded.stderr, downloaded.stdout)}
+            return {**details, "text": None, "error": _interesting_error(downloaded.stderr, downloaded.stdout)}
         files = sorted(out.glob("*.*"))
         caption_files = [
             path
@@ -383,9 +405,10 @@ def fetch_ytdlp_captions(
         ]
         caption_files.sort(key=lambda path: (path.suffix.lower() != ".vtt", path.name))
         if not caption_files:
-            return {"text": None, "error": "yt-dlp reported captions but wrote no subtitle file"}
+            return {**details, "text": None, "error": "yt-dlp reported captions but wrote no subtitle file"}
         raw = caption_files[0].read_text(encoding="utf-8", errors="replace")
     return {
+        **details,
         "text": raw,
         "language": quality_gate.normalize_lang(lang_key),
         "kind": kind,
@@ -756,8 +779,9 @@ def render_scaffold(
     transcript_cite: str,
     caption_trust: str | None = None,
     selection_end: str | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
-    """Blank Obsidian scaffold. Title is the job id, not the platform title.
+    """Blank Obsidian scaffold with known YouTube metadata.
 
     The body has empty headings and fill instructions. It does not analyze
     the transcript. A finished note.md is not this file.
@@ -773,6 +797,7 @@ def render_scaffold(
         caption_trust=caption_trust,
         skill_version=skill_version(),
         selection_end=selection_end,
+        metadata=metadata,
     )
 
 
@@ -793,6 +818,7 @@ def finalize_job(
     platform: str = "youtube",
     screen_download: list[str] | None = None,
     media_duration: float | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> dict:
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
@@ -834,6 +860,13 @@ def finalize_job(
     }
     if extra:
         base.update(extra)
+    if platform == "youtube":
+        previous = verify_note.read_job_status(job_dir)
+        metadata = {
+            key: previous[key] for key in ("title", "channel", "published")
+            if isinstance(previous.get(key), str) and previous[key]
+        } | (metadata or {})
+        base.update(metadata)
     if not result.passed:
         status_name = _failure_status_name(result.reasons)
         base.update(
@@ -884,6 +917,7 @@ def finalize_job(
             caption_kind=caption_kind,
             caption_trust=trust,
             transcript_cite=cite if Path(cite).is_absolute() else "transcript.txt",
+            metadata=metadata,
             selection_end=(quality_gate.format_stamp(selection_end)[1:-1]
                            if selection_end is not None else None),
         )
@@ -1076,6 +1110,7 @@ def run_host(
 
     attempts: list[dict] = []
     caption = None
+    metadata: dict[str, str] = {}
     base_cmd = ytdlp_base()
     screen_download = None
     if verify_rules.screen_mode() != "off":
@@ -1084,7 +1119,8 @@ def run_host(
         attempts.append({"source": "yt-dlp", "ok": False, "detail": "yt-dlp is not installed"})
     else:
         log(f"fetching captions with yt-dlp for youtube_{video_id}")
-        fetched = fetch_ytdlp_captions(source, video_id, expected_lang, base_cmd)
+        fetched = fetch_ytdlp_captions(source, video_id, expected_lang, base_cmd, include_metadata=True)
+        metadata = fetched.get("metadata", {})
         if fetched.get("text"):
             attempts.append(
                 {
@@ -1129,6 +1165,7 @@ def run_host(
             extra={"attempts": attempts, "mirror_host": caption.get("mirror_host")},
             screen_download=screen_download,
             media_duration=caption.get("media_duration"),
+            metadata=metadata,
         )
 
     backend, block = asr_plan(asr_choice)
@@ -1144,7 +1181,7 @@ def run_host(
             out_dir=out_dir,
             reason=reason,
             next_step="configure-asr-or-retry-captions",
-            extra={"attempts": attempts, "asr_backend": backend},
+            extra={**metadata, "attempts": attempts, "asr_backend": backend},
         )
     if base_cmd is None:
         return write_refusal(
@@ -1153,7 +1190,7 @@ def run_host(
             out_dir=out_dir,
             reason="not finished: ASR needs yt-dlp to download audio, and yt-dlp is not installed.",
             next_step="configure-asr-or-retry-captions",
-            extra={"attempts": attempts, "asr_backend": backend},
+            extra={**metadata, "attempts": attempts, "asr_backend": backend},
         )
     log(f"no captions; running ASR backend {backend}")
     try:
@@ -1167,7 +1204,7 @@ def run_host(
             out_dir=out_dir,
             reason=reason,
             next_step="retry-stronger-asr",
-            extra={"attempts": attempts, "asr_backend": backend},
+            extra={**metadata, "attempts": attempts, "asr_backend": backend},
         )
     return finalize_job(
         text=text,
@@ -1181,6 +1218,7 @@ def run_host(
         verify=verify,
         upgrade_attempted=upgraded,
         extra={"attempts": attempts, "asr_backend": backend, "asr_model": model},
+        metadata=metadata,
         screen_download=screen_download,
     )
 

@@ -201,6 +201,25 @@ class ReadingNoteTests(unittest.TestCase):
         self.assertTrue(any(reason.startswith(f"{rule} FAIL:") for reason in status[gate]["reasons"]), status)
         return status
 
+    def test_missing_metadata_rejects_placeholder_names_but_allows_plain_title(self) -> None:
+        note = (NOTE.replace("channel: 合成园艺课堂", 'channel: ""')
+                .replace("published: 2026-04-08", 'published: ""')
+                .replace("合成园艺课堂在 2026-04-08 聊", "讲者聊"))
+        (self.job / "note.md").write_bytes(note.encode("utf-8"))
+        status = (self.job / "status.json").read_bytes()
+        for name in ("— — - 整理种子盒.md", "2026-04-08 — - 整理种子盒.md", "— 合成园艺课堂 - 整理种子盒.md"):
+            with self.subTest(name=name):
+                output = self.output.with_name(name)
+                result = self._run(output)
+                self.assertNotEqual(result.returncode, 0, result)
+                self.assertIn("placeholder", result.stderr)
+                self.assertFalse(output.exists())
+                self.assertEqual((self.job / "status.json").read_bytes(), status)
+        fallback = self.output.with_name("整理种子盒.md")
+        result = self._run(fallback)
+        self.assertEqual(result.returncode, 0, result)
+        self.assertTrue(fallback.is_file())
+
     def test_default_render_preserves_prose_and_converts_delivery_format(self) -> None:
         reading = self._render_passes().decode("utf-8")
         for marker in ("⏱", "[!", "原文依据"):

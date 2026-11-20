@@ -12,6 +12,7 @@ import unicodedata
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import knowledge_note
@@ -120,7 +121,13 @@ _EN_NUMBER_WORDS = {
 
 def _english_integer(text: str) -> float:
     total = section = 0
-    for word in re.findall(r"[a-z]+", text.casefold()):
+    words = re.findall(r"[a-z]+", text.casefold())
+    middle = len(words) // 2
+    if words[:middle] == words[middle:]:
+        words = words[:middle]
+    for index, word in enumerate(words):
+        if index and word == words[index - 1]:
+            continue
         if word == "and":
             continue
         if word in _EN_NUMBER_WORDS:
@@ -133,8 +140,8 @@ def _english_integer(text: str) -> float:
             section = max(section, 1) * 12
         elif word in {"decade", "decades"}:
             section = max(section, 1) * 10
-        elif word in {"thousand", "million", "billion"}:
-            scale = {"thousand": 1_000, "million": 1_000_000, "billion": 1_000_000_000}[word]
+        elif word in _EN_MAGNITUDE:
+            scale = _EN_MAGNITUDE[word]
             total += max(section, 1) * scale
             section = 0
     return float(total + section)
@@ -175,14 +182,38 @@ def body_number_mentions(text: str) -> list[tuple[float, float, str]]:
     return mentions
 
 
+_EN_MAGNITUDE = {"thousand": 10**3, "million": 10**6, "billion": 10**9, "trillion": 10**12}
+_EN_ABBREVIATED_MAGNITUDE = {"k": 10**3, "M": 10**6, "B": 10**9}
+_ZH_MAGNITUDE = {"万": 10**4, "亿": 10**8, "万亿": 10**12}
+_ARABIC_MAGNITUDE = re.compile(
+    r"(?<![A-Za-z0-9_.,])(?P<count>[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)"
+    r"(?:[ \t]*(?P<zh>万亿|万|亿)(?![万亿])|(?P<en>[kKMB])"
+    r"(?:(?![A-Za-z0-9_])|(?=(?:GPUh|vCPUh)\b)))"
+)
+_ZH_APPROXIMATE_COUNT = re.compile(r"(?P<prefix>上|成|数|约|大约)(?P<scale>十万|万亿|百万|千万|百|千|万|亿)")
+_EN_APPROXIMATE_COUNT = re.compile(
+    r"\b(?P<scale>hundreds|thousands|millions|billions)"
+    r"(?:[ \t]+of[ \t]+(?P<of>thousands|millions|billions))?\b", re.IGNORECASE,
+)
+_APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "百万": 1_000_000,
+                      "千万": 10_000_000, "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
+_INDEFINITE_PERCENT = re.compile(r"百分之几(?![十百千万亿])")
+_MULTIPLIER_SUFFIX = re.compile(r"(?<=\d)[xX×](?![A-Za-z0-9_])")
+_ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re.IGNORECASE)
+_COMPOUND_NAME_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])")
+_INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)[^\n]+?(?<!`)\1(?!`)")
+_FENCED_CODE = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.MULTILINE | re.DOTALL)
+_URL = re.compile(r"https?://[^\s`<>。！？、，；）]+", re.IGNORECASE)
+
+
 _EN_SOURCE_NUMBER = re.compile(
     r"(?<![A-Za-z0-9])(?:\d+(?:,\d{3})*(?:\.\d+)?%?"
-    r"(?:[ -]+(?:hundred|thousand|million|billion|dozen|dozens|decade|decades))?%?)(?![A-Za-z])",
+    r"(?:[ -]+(?:hundred|thousand|million|billion|trillion|dozen|dozens|decade|decades))?%?)(?![A-Za-z0-9]|[.,][0-9])",
     re.IGNORECASE,
 )
 _EN_PLUS_SCALE = re.compile(
     r"(?<![A-Za-z0-9])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)[ \t]+plus[ \t]+"
-    r"(?P<scale>hundred|thousand|million|billion)\b",
+    r"(?P<scale>hundred|thousand|million|billion|trillion)\b",
     re.IGNORECASE,
 )
 
@@ -193,8 +224,7 @@ def _arabic_number_value(raw: str) -> float:
     value = float(parsed.group(1))
     scale = (parsed.group(2) or "").casefold()
     return value * {
-        "hundred": 100, "thousand": 1_000, "million": 1_000_000,
-        "billion": 1_000_000_000, "dozen": 12, "dozens": 12,
+        "hundred": 100, **_EN_MAGNITUDE, "dozen": 12, "dozens": 12,
         "decade": 10, "decades": 10,
     }.get(scale, 1)
 
@@ -203,11 +233,11 @@ _EN_NUMBER_WORD_PATTERN = (
     r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
     r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|"
     r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
-    r"couple|hundred|thousand|million|billion|dozens?|decades?"
+    r"couple|hundred|thousand|million|billion|trillion|dozens?|decades?"
 )
 # A scale may introduce the rest of one number. A plain "one and two"
 # enumerates two values, so neither endpoint can be replaced with their sum.
-_EN_SCALE_AND = r"(?:(?<=hundred)|(?<=thousand)|(?<=million)|(?<=billion))[ -]+and[ -]+"
+_EN_SCALE_AND = r"(?:(?<=hundred)|(?<=thousand)|(?<=million)|(?<=billion)|(?<=trillion))[ -]+and[ -]+"
 _EN_NUMBER = re.compile(
     rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:(?:[ -]+|{_EN_SCALE_AND})(?:{_EN_NUMBER_WORD_PATTERN}))*\b",
     re.IGNORECASE,
@@ -251,6 +281,11 @@ _EN_COUNT_RANGE = re.compile(
 
 _SPOKEN_DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
 _SPOKEN_DIGIT = "|".join(_SPOKEN_DIGITS)
+_EN_OPEN_COUNT = re.compile(
+    r"\b(one|two|three|four|five|six|seven|eight)[ \t]+or[ \t]+(?:more|multiple)\b", re.IGNORECASE,
+)
+_SPOKEN_HALF = re.compile(rf"({_EN_NUMBER.pattern})[ \t]+and[ \t]+a[ \t]+half\b", re.IGNORECASE)
+_MIXED_DECIMAL = re.compile(rf"(?<![A-Za-z0-9])({_SPOKEN_DIGIT})\.([0-9]+)(?![A-Za-z0-9])", re.IGNORECASE)
 _SPOKEN_DECIMAL = re.compile(
     rf"({_EN_NUMBER.pattern})[ \t]+point[ \t]+"
     rf"((?:{_SPOKEN_DIGIT})(?:[ \t]+(?:{_SPOKEN_DIGIT}))*)\b",
@@ -265,7 +300,7 @@ _CALLOUT = re.compile(r"^>\s*\[!(note|tip|warning)\]\s*(.*)$")
 _TERM_TITLE = re.compile(r"^术语\s*[:：]\s*(.*)$")
 _TERM_ALIAS_SEPARATOR = re.compile(r"[/／()（）]")
 _HYPHEN = re.compile(r"[-\u2010\u2011]")
-_CAPTION_CORRECTION = re.compile(r"^字幕写作\s*[:：]?\s*(.+?)[，,]\s*实为\s*[:：]?\s*(.+)$")
+_CAPTION_CORRECTION = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*(.+?)[，,]\s*实为\s*[:：]?\s*(.+)$")
 _CORRECTION_TARGET = re.compile(
     r'^(?:`[^`]+`|“[^”]+”|「[^」]+」|"[^"]+")|^.+?(?=[，,。；;！？（(]|\.(?:\s|$)|$)'
 )
@@ -419,8 +454,10 @@ def caption_correction_pair(line: str) -> tuple[str, str] | None:
     return (original, corrected) if original and corrected else None
 
 
-def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[str, str]]:
-    """Return original and corrected spellings backed by the transcript."""
+def caption_corrections(
+    blocks: list[list[str]], transcript: str, screen: tuple[str, ...] = (),
+) -> list[tuple[str, str]]:
+    """Return corrections backed by the transcript or cited trusted screen text."""
     corrections: list[tuple[str, str]] = []
     for header, *lines in blocks:
         match = _CALLOUT.fullmatch(header)
@@ -428,13 +465,14 @@ def caption_corrections(blocks: list[list[str]], transcript: str) -> list[tuple[
             continue
         for line in lines:
             pair = caption_correction_pair(line)
-            if pair and term_occurs(pair[0], transcript):
+            sources = screen if line.startswith("画面") else (transcript,)
+            if pair and any(term_occurs(pair[0], source) for source in sources):
                 corrections.append(pair)
     return corrections
 
 
 def explanation_issues(
-    blocks: list[list[str]], transcript: str, corrections: list[str],
+    blocks: list[list[str]], transcript: str, corrections: list[str], screen: tuple[str, ...] = (),
 ) -> list[str]:
     issues: list[str] = []
     sources = [_HYPHEN.sub(" ", text) for text in (transcript, *corrections)]
@@ -454,7 +492,7 @@ def explanation_issues(
             if not any(_ANALOGY_LIMIT.match(line) for line in lines):
                 issues.append("analogy block needs 不成立的地方 and a description")
         elif kind == "warning" and title == "字幕更正":
-            if not caption_corrections([[header, *lines]], transcript):
+            if not caption_corrections([[header, *lines]], transcript, screen):
                 issues.append("字幕更正 needs the original spelling from the transcript and its correction")
         else:
             issues.append(f"unknown explanation block: {header}")
@@ -491,9 +529,24 @@ def number_mentions(text: str) -> list[tuple[float, float, str]]:
         mentions.append((value, value, match[0]))
         return " "
 
-    # Phase 1B recognizes the integer words on each side of a spoken decimal.
-    # Read them together so "three point eight" supports 3.8.
-    text = _SPOKEN_DECIMAL.sub(decimal, _EN_PLUS_SCALE.sub(plus_scale, text))
+    def mixed_decimal(match: re.Match[str]) -> str:
+        value = float(f"{_EN_NUMBER_WORDS[match[1].casefold()]}.{match[2]}")
+        mentions.append((value, value, match[0]))
+        return " "
+
+    def half(match: re.Match[str]) -> str:
+        whole = _english_integer(match[1])
+        words = match[1].casefold().split()
+        # ASR can preserve the two alternatives as "seven seven and a half".
+        if len(words) > 1 and words[-2] == words[-1]:
+            mentions.append((whole, whole, words[-1]))
+        mentions.append((whole + 0.5, whole + 0.5, match[0]))
+        return " "
+
+    text = _EN_PLUS_SCALE.sub(plus_scale, text)
+    text = _MIXED_DECIMAL.sub(mixed_decimal, text)
+    text = _SPOKEN_HALF.sub(half, text)
+    text = _SPOKEN_DECIMAL.sub(decimal, text)
     return mentions + body_number_mentions(text) + source_number_mentions(text)
 
 
@@ -1274,7 +1327,12 @@ class NumericValue:
 
     def supports(self, claim: NumericValue) -> bool:
         if claim.kind == "count_range":
-            return self.kind == claim.kind and self.value == claim.value
+            return ((self.kind == claim.kind and self.value == claim.value)
+                    or (self.kind == "open_count" and self.value == claim.value.low))
+        if self.kind == "approximate_count" and (
+            not isinstance(claim.value, NumberRange) or claim.value.low == claim.value.high
+        ):
+            return False
         if {self.kind, claim.kind} == {"year", "bare_year"}:
             return self.value == claim.value
         source_value = NumberRange(self.value, self.value) if self.kind == "bare_year" else self.value
@@ -1299,8 +1357,35 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
     if screen:
         text = _OCR_DATE_SEPARATOR.sub(r"\1,", text)
     # Keep the whole decimal before the number lexer meets a Latin suffix.
-    text = _MILLISECONDS_SUFFIX.sub(" 毫秒", text)
+    text = _MULTIPLIER_SUFFIX.sub(" ", _MILLISECONDS_SUFFIX.sub(" 毫秒", text))
+    text = _INDEFINITE_PERCENT.sub(" ", text)
     values: list[NumericValue] = []
+
+    def magnitude(match: re.Match[str]) -> str:
+        if match["zh"]:
+            scale = _ZH_MAGNITUDE[match["zh"]]
+        else:
+            abbreviation = "k" if match["en"] == "K" else match["en"]
+            scale = _EN_ABBREVIATED_MAGNITUDE[abbreviation]
+        value = float(Decimal(match["count"].replace(",", "")) * scale)
+        values.append(NumericValue("number", NumberRange(value, value), match[0]))
+        return " " * len(match[0])
+
+    def approximate(match: re.Match[str]) -> str:
+        if match.re is _ZH_APPROXIMATE_COUNT:
+            low = _APPROXIMATE_SCALE[match["scale"]]
+            label = match["scale"] if match["prefix"] == "上" else match[0]
+        else:
+            low = _APPROXIMATE_SCALE[match["scale"].casefold()[:-1]]
+            if match["of"]:
+                low *= _APPROXIMATE_SCALE[match["of"].casefold()[:-1]]
+            label = match[0]
+        values.append(NumericValue("approximate_count", NumberRange(low, 10 * low - 1), label))
+        return " " * len(match[0])
+
+    text = _ARABIC_MAGNITUDE.sub(magnitude, text)
+    text = _ZH_APPROXIMATE_COUNT.sub(approximate, text)
+    text = _EN_APPROXIMATE_COUNT.sub(approximate, text)
 
     def calendar_date(match: re.Match[str]) -> str:
         month_label, day_label = match["month"], match["day"]
@@ -1370,8 +1455,15 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
             return match[0]
         return count_range(_english_integer(match[1]), _english_integer(match[2]), match[0])
 
+    def english_open_count(match: re.Match[str]) -> str:
+        low = _EN_NUMBER_WORDS[match[1].casefold()]
+        values.append(NumericValue("open_count", low, match[0]))
+        values.append(NumericValue("number", NumberRange(low, low), match[1]))
+        return " " * len(match[0])
+
     text = _ZH_NUMBER.sub(chinese_count_range, text)
     text = _EN_COUNT_RANGE.sub(english_count_range, text)
+    text = _EN_OPEN_COUNT.sub(english_open_count, text)
     values.extend(NumericValue("number", NumberRange(low, high), label) for low, high, label in number_mentions(text))
     return text, values
 
@@ -1414,9 +1506,13 @@ def _grounding_word(match: re.Match[str]) -> str:
 
 def _grounded_term_occurs(term: str, source: str) -> bool:
     """Accept regular English plurals and possessives in the same evidence."""
-    return term_occurs(term, source) or term_occurs(
+    source = _ACCELERATOR_HOUR.sub(r"\1 hours", source) if term.casefold() in {"gpu", "vcpu"} else source
+    if term_occurs(term, source) or term_occurs(
         _LATIN_WORD.sub(_grounding_word, term), _LATIN_WORD.sub(_grounding_word, source)
-    )
+    ):
+        return True
+    split_term = _COMPOUND_NAME_BOUNDARY.sub(" ", term)
+    return " " in split_term and term_occurs(split_term, _COMPOUND_NAME_BOUNDARY.sub(" ", source))
 
 
 def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
@@ -1424,11 +1520,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
-
-    def canonical(text: str, *, screen: bool = False) -> tuple[str, list[NumericValue]]:
-        if ctx.has_screen_file:
-            text = re.sub(r"(?<=\d)[xX](?![A-Za-z0-9])", "×", text)
-        return canonical_numbers(text, screen=screen)
+    screen_corrections = caption_corrections(blocks, "", tuple(quote.text for quote in valid if quote.screen))
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
@@ -1441,19 +1533,22 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 continue
             evidence = linked if times else valid
             excerpts = [quote.text for quote in evidence]
-            source = excerpts + corrections
+            screen_excerpts = [quote.text for quote in evidence if quote.screen]
+            local_corrections = [corrected for original, corrected in screen_corrections
+                                 if any(term_occurs(original, line) for line in screen_excerpts)]
+            source = excerpts + corrections + local_corrections
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
-            support = [value for quote in evidence for value in canonical(quote.text, screen=quote.screen)[1]]
+            support = [value for quote in evidence for value in canonical_numbers(quote.text, screen=quote.screen)[1]]
             if not ctx.has_screen_file:
-                support.extend(value for excerpt in corrections for value in canonical(excerpt)[1])
+                support.extend(value for excerpt in corrections for value in canonical_numbers(excerpt)[1])
             numeric_text = prose
             for quote in evidence:
                 if quote.screen and quote.text in numeric_text:
                     # An exact reproduction of the cited OCR text is the same date.
                     numeric_text = numeric_text.replace(quote.text, _OCR_DATE_SEPARATOR.sub(r"\1,", quote.text))
-            numeric_prose, numeric_claims = canonical(numeric_text)
+            numeric_prose, numeric_claims = canonical_numbers(numeric_text)
             missing_numbers = {
                 claim.label for claim in numeric_claims
                 if not any(value.supports(claim) for value in support)
@@ -1462,8 +1557,16 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 name for name in proper_names(numeric_prose)
                 if not any(_grounded_term_occurs(name, excerpt) for excerpt in source)
             }
+            if missing_names:
+                # A complete, contiguous split spelling can back its name
+                # tokens. A token alone still cannot match inside a compound.
+                for excerpt in source:
+                    for compound in _LATIN_WORD.findall(excerpt):
+                        expanded = _COMPOUND_NAME_BOUNDARY.sub(" ", compound)
+                        if expanded != compound and term_occurs(expanded, numeric_prose):
+                            missing_names.difference_update(expanded.split())
             supported_originals = set()
-            original_excerpts = [*excerpts, *_adjacent_screen_excerpts(evidence)]
+            original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]
             for match in _PARENTHESIZED_ORIGINAL.finditer(prose):
                 original = (match[1] or match[2]).strip()
                 if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
@@ -1498,10 +1601,14 @@ _NOTE_CHECKING_PROCESS = re.compile(
 
 def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
-    corrections = caption_corrections(blocks, ctx.speech)
-    cited_screen = [quote.text for quote in ctx.valid_quotes if quote.screen]
+    cited_screen = tuple(quote.text for quote in ctx.valid_quotes if quote.screen)
+    corrections = caption_corrections(blocks, ctx.speech, cited_screen)
     corrected_spellings = [corrected for _, corrected in corrections]
-    issues = explanation_issues(blocks, ctx.speech, [*corrected_spellings, *cited_screen])
+    issues = explanation_issues(blocks, ctx.speech, [*corrected_spellings, *cited_screen], cited_screen)
+    searchable = [
+        (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
+        for section in ctx.sections
+    ]
     for section in ctx.sections:
         for prose in [section.heading, *section.prose]:
             checking = _NOTE_CHECKING_PROCESS.search(prose)
@@ -1510,11 +1617,16 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     for original, corrected in dict.fromkeys(corrections):
         if original == corrected:
             continue
+        # For a capitalization correction, check the recorded spelling itself.
+        # Lowercase identifiers such as a repository slug can be valid.
+        case_only = original.casefold() == corrected.casefold()
+        original_pattern = re.compile(_term_pattern(original)) if case_only else None
         corrected_pattern = re.compile(_term_pattern(corrected))
-        for section in ctx.sections:
-            if any(term_occurs(original, corrected_pattern.sub(" ", prose))
-                   for prose in [section.heading, *section.prose]):
-                issues.append(f"{section.heading or '正文'}: incorrect caption spelling {original!r} must stay in 字幕更正")
+        for heading, prose in searchable:
+            wrong = (original_pattern.search(prose) if original_pattern is not None
+                     else term_occurs(original, corrected_pattern.sub(" ", prose)))
+            if wrong:
+                issues.append(f"{heading or '正文'}: incorrect caption spelling {original!r} must stay in 字幕更正")
     return _result("C04d", issues, "explanations use marked blocks")
 
 
@@ -1527,7 +1639,14 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     if not evidence:
         return ("R13", False, f"{ACTION_HEADING} needs a supporting ⏱ link")
     clean = re.sub(r"[（(]改写讲者做法[）)]", "", prose_without_times(prose))
-    sentences = [sentence.strip() for sentence in _SENTENCE_SPLIT.split(clean) if sentence.strip()]
+    def mask_url(match: re.Match[str]) -> str:
+        url = match[0].rstrip(".!?;")
+        return " " * len(url) + match[0][len(url):]
+
+    separators = list(_SENTENCE_SPLIT.finditer(_URL.sub(mask_url, clean)))
+    starts = [0, *(match.end() for match in separators)]
+    ends = [*(match.start() for match in separators), len(clean)]
+    sentences = [sentence for start, end in zip(starts, ends) if (sentence := clean[start:end].strip())]
     if not sentences or len(sentences) > 2:
         return ("R13", False, f"{ACTION_HEADING} needs one action in at most two sentences")
     action = sentences[0]
