@@ -205,8 +205,11 @@ _EN_NUMBER_WORD_PATTERN = (
     r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
     r"couple|hundred|thousand|million|billion|dozens?|decades?"
 )
+# A scale may introduce the rest of one number. A plain "one and two"
+# enumerates two values, so neither endpoint can be replaced with their sum.
+_EN_SCALE_AND = r"(?:(?<=hundred)|(?<=thousand)|(?<=million)|(?<=billion))[ -]+and[ -]+"
 _EN_NUMBER = re.compile(
-    rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:[ -]+(?:(?:and)[ -]+)?(?:{_EN_NUMBER_WORD_PATTERN}))*\b",
+    rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:(?:[ -]+|{_EN_SCALE_AND})(?:{_EN_NUMBER_WORD_PATTERN}))*\b",
     re.IGNORECASE,
 )
 
@@ -238,6 +241,12 @@ def number_is_supported(
         source_low <= high and source_high >= low
         for source_low, source_high, _ in source_number_mentions(source)
     )
+
+
+_EN_COUNT_RANGE = re.compile(
+    rf"({_EN_NUMBER.pattern})[ \t]+(?:or|to)[ \t]+({_EN_NUMBER.pattern})",
+    re.IGNORECASE,
+)
 
 
 _SPOKEN_DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
@@ -1240,10 +1249,14 @@ _SPOKEN_YEAR = re.compile(
 _ZH_YEAR = re.compile(
     rf"(?<![A-Za-z0-9$€£¥{_ZH_NUMERAL}])(?P<year>(?:19|20)[0-9]{{2}}|[二两][〇零一二三四五六七八九]{{3}})[ \t]*年"
 )
+_BARE_YEAR = re.compile(r"(?<![A-Za-z0-9_.,$€£¥+\-])(?:19|20)[0-9]{2}(?![A-Za-z0-9_%]|[.,][0-9])")
 _QUANTITY_SUFFIX = re.compile(
-    r"^[ \t]*(?:%|[个個家人项項次秒分天周月元块塊张張份本台件]|美元|小时|小時"
+    r"^[ \t]*(?:%|[个個家人项項次秒分天周月元块塊张張份本台件名位条條行篇倍种種万萬亿億多余餘]|美元|小时|小時"
     r"|(?:hours?|minutes?|seconds?|days?|weeks?|months?|years?|images?|recordings?|stores?|markets?"
-    r"|models?|systems?|items?|users?|boxes|tests?|requests?|countries|pieces?|tokens?|percent|dollars?|bytes?|[KMGT]B)\b)", re.IGNORECASE,
+    r"|models?|systems?|items?|users?|engineers?|employees?|people|boxes|tests?|requests?|countries|pieces?"
+    r"|PRs?|repos?|repositor(?:y|ies)|lines?|files?|agents?|teams?"
+    r"|tokens?|percent|dollars?|bytes?|[KMGT]B|hundred|thousand|million|billion|dozens?|decades?|plus)\b)",
+    re.IGNORECASE,
 )
 
 
@@ -1260,11 +1273,20 @@ class NumericValue:
     label: str
 
     def supports(self, claim: NumericValue) -> bool:
-        if isinstance(self.value, NumberRange) and isinstance(claim.value, NumberRange):
-            return self.value.low <= claim.value.high and self.value.high >= claim.value.low
+        if claim.kind == "count_range":
+            return self.kind == claim.kind and self.value == claim.value
+        if {self.kind, claim.kind} == {"year", "bare_year"}:
+            return self.value == claim.value
+        source_value = NumberRange(self.value, self.value) if self.kind == "bare_year" else self.value
+        claim_value = NumberRange(claim.value, claim.value) if claim.kind == "bare_year" else claim.value
+        if isinstance(source_value, NumberRange) and isinstance(claim_value, NumberRange):
+            if self.kind == "count_range":
+                return any(claim_value.low <= endpoint <= claim_value.high
+                           for endpoint in (source_value.low, source_value.high))
+            return source_value.low <= claim_value.high and source_value.high >= claim_value.low
         # Older notes can already cite a literal number for their version label.
-        if isinstance(self.value, NumberRange) and claim.kind == "version" and isinstance(claim.value, int):
-            return self.value.low <= claim.value <= self.value.high
+        if isinstance(source_value, NumberRange) and claim.kind == "version" and isinstance(claim_value, int):
+            return source_value.low <= claim_value <= source_value.high
         return self.kind == claim.kind and self.value == claim.value
 
 
@@ -1322,6 +1344,34 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
     text = _ZH_YEAR.sub(year_value, text)
     text, months = split_months(text)
     values.extend(NumericValue("month", month, label) for month, label in months.items())
+
+    def bare_year(match: re.Match[str]) -> str:
+        if _QUANTITY_SUFFIX.match(text[match.end():]) or re.search(r"[$€£¥][ \t]*$", text[:match.start()]):
+            return match[0]
+        values.append(NumericValue("bare_year", int(match[0]), match[0]))
+        return " " * len(match[0])
+
+    text = _BARE_YEAR.sub(bare_year, text)
+
+    def count_range(low: float, high: float, label: str) -> str:
+        if 1 <= low < high <= 9 and high == low + 1:
+            values.append(NumericValue("count_range", NumberRange(low, high), label))
+            return " " * len(label)
+        return label
+
+    def chinese_count_range(match: re.Match[str]) -> str:
+        label = match[0]
+        if len(label) != 2:
+            return label
+        return count_range(_chinese_integer(label[0]), _chinese_integer(label[1]), label)
+
+    def english_count_range(match: re.Match[str]) -> str:
+        if re.match(r"[ \t]+point\b", text[match.end():], re.IGNORECASE):
+            return match[0]
+        return count_range(_english_integer(match[1]), _english_integer(match[2]), match[0])
+
+    text = _ZH_NUMBER.sub(chinese_count_range, text)
+    text = _EN_COUNT_RANGE.sub(english_count_range, text)
     values.extend(NumericValue("number", NumberRange(low, high), label) for low, high, label in number_mentions(text))
     return text, values
 
@@ -1352,7 +1402,8 @@ def _grounding_word(match: re.Match[str]) -> str:
         word = word[:-2]
     elif word.endswith("s'"):
         word = word[:-1]
-    if len(word) < 4 or word.endswith(("ss", "us", "is")):
+    short_acronym_plural = len(word) == 3 and match[0][:2].isupper() and match[0][2:3] == "s"
+    if (len(word) < 4 and not short_acronym_plural) or word.endswith(("ss", "us", "is")):
         return word
     if word.endswith("ies") and word[-4] not in "aeiou":
         return word[:-3] + "y"
