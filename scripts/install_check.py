@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FALLBACK_FILES = (
     "scripts/claim_ground_check.py",
     "scripts/coverage_check.py",
+    "scripts/extract_quote.py",
     "scripts/install_check.py",
     "scripts/knowledge_note.py",
     "scripts/quality_gate.py",
