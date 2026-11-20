@@ -54,7 +54,7 @@ class OnboardingTests(unittest.TestCase):
     def test_independent_review_and_missing_metadata(self):
         note = self.job / "note.md"
         text = note.read_text(encoding="utf-8")
-        text = text.replace("published: 2026-04-08\n", "").replace("channel: 合成园艺课堂\n", "")
+        text = text.replace("published: 2026-04-08\n", "published:\n").replace("channel: 合成园艺课堂\n", "channel:\n")
         text = text.replace("合成园艺课堂在 2026-04-08 聊怎样收种子", "这里聊怎样收种子")
         note.write_text(text.replace("title: 整理种子盒", "title: \"整理: 种子?盒\""), encoding="utf-8")
         self.receipt("independent")
