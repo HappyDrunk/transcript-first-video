@@ -1,0 +1,170 @@
+[
+  {
+    "name": "probe-view-count",
+    "good": "一年约有 1 亿次页面浏览。 ⏱ 01:06",
+    "bad": "一年约有 10 亿次页面浏览。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] stats. So, we have 100 million page views annually. We have 9 million drafts happen on an annual basis. It's a fairly popular"
+    ]
+  },
+  {
+    "name": "probe-drafts",
+    "good": "一年有 900 万次选秀。 ⏱ 01:06",
+    "bad": "一年有 90 万次选秀。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] stats. So, we have 100 million page views annually. We have 9 million drafts happen on an annual basis. It's a fairly popular"
+    ]
+  },
+  {
+    "name": "probe-start-small",
+    "good": "先选一两名系统知识最好的工程师。 ⏱ 08:33",
+    "bad": "先选三四名系统知识最好的工程师。 ⏱ 08:33",
+    "quotes": [
+      "> [08:33] got to pick the engineers which have the best system in the knowledge and I think every engineering team probably has one or multiple engineers where if anyone ever gets kind of stuck or hung up on anything they're like, you should speak to them. They'll be able to sort it out."
+    ]
+  },
+  {
+    "name": "probe-multiplier",
+    "good": "两人产出约为 10 倍（10x）。 ⏱ 03:27",
+    "bad": "两人产出约为 11 倍（10x）。 ⏱ 03:27",
+    "quotes": [
+      "> [03:27] So, we basically blended the number of tickets with the code complexity and we found that their we found that their that their output was 10x."
+    ]
+  },
+  {
+    "name": "no-multiplier-prefix",
+    "good": "产出约为 10 倍。 ⏱ 03:27",
+    "bad": "产出约为 1 倍。 ⏱ 03:27",
+    "quotes": [
+      "> [03:27] So, we basically blended the number of tickets with the code complexity and we found that their we found that their that their output was 10x."
+    ]
+  },
+  {
+    "name": "probe-repeated-half",
+    "good": "引入前的质量分约 7 到 7.5 分。 ⏱ 04:34",
+    "bad": "引入前的质量分约 14 到 14.5 分。 ⏱ 04:34",
+    "quotes": [
+      "> [04:34] happy. And so we did statistically we did statistically significant surveys and the average quality score was 8.6 out of 10. What's interesting was before AI we would probably average seven seven and a half. So, we weren't"
+    ]
+  },
+  {
+    "name": "probe-mixed-decimal",
+    "good": "调查得分是 10 分里的 8.6 分。 ⏱ 04:34",
+    "bad": "调查得分是 10 分里的 8.5 分。 ⏱ 04:34",
+    "quotes": [
+      "> [04:34] happy. And so we did statistically we did statistically significant surveys and the average quality score was eight.6 out of 10. What's interesting was before AI we would probably average seven seven and a half. So, we weren't"
+    ]
+  },
+  {
+    "name": "x5-hundreds-thousands",
+    "good": "成本扩展到几十、上百乃至数千份 PDF 就会非常贵。 ⏱ 05:01",
+    "bad": "成本扩展到数十万份 PDF 就会非常贵。 ⏱ 05:01",
+    "quotes": [
+      "> [05:01] If I'm sending this to a model that's maybe $30 per million output tokens, you can see how this can get quite expensive as I scale this up to dozens or hundreds or, in a lot of cases, thousands of PDFs that"
+    ]
+  },
+  {
+    "name": "x5-hundreds-of-thousands",
+    "good": "若要处理数十万份 PDF，可以把它部署成接口。 ⏱ 16:39",
+    "bad": "若要处理上千份 PDF，可以把它部署成接口。 ⏱ 16:39",
+    "quotes": [
+      "> [16:39] But what happens when we have hundreds or hundreds of thousands of PDFs that we want to have processed? Well, this is where we can deploy docling as a REST API service using something that's known as docling serve. This allows us to scale things up and to run this as a microservice as a container or through Kubernetes. So, when we set things up here, we're going to do a pip install docling serve"
+    ]
+  },
+  {
+    "name": "x5-volume-gpu-cost",
+    "good": "对照里 rolmOCR 处理 3.68 亿份文档消耗 25 万 GPU 小时、75 万美元。 ⏱ 07:32",
+    "bad": "对照里 rolmOCR 处理 36.8 亿份文档消耗 25 万 GPU 小时、75 万美元。 ⏱ 07:32",
+    "quotes": [
+      "> [07:32][画面] > rolmOCR: 368M docs → 250k GPUh, $750k"
+    ]
+  },
+  {
+    "name": "x5-vcpu-cost",
+    "good": "处理 9.18 亿份文档消耗 240 万 vCPU 小时、3.5 万美元。 ⏱ 07:32",
+    "bad": "处理 9.18 亿份文档消耗 24 万 vCPU 小时、3.5 万美元。 ⏱ 07:32",
+    "quotes": [
+      "> [07:32][画面] > docling: 918M docs → 2.4M vCPUh, $35k"
+    ]
+  },
+  {
+    "name": "x5-trillion",
+    "good": "抽出约 3 万亿 token（约 2,918B）。 ⏱ 07:32",
+    "bad": "抽出约 30 万亿 token（约 2,918B）。 ⏱ 07:32",
+    "quotes": [
+      "> [07:32][画面] ~3 trillion tokens (~2,918B) extracted"
+    ]
+  },
+  {
+    "name": "x5-spaced-name",
+    "good": "这一项目整理出 FinePDFs，供训练模型等用途。 ⏱ 07:39",
+    "bad": "这一项目整理出 FineCSVs，供训练模型等用途。 ⏱ 07:39",
+    "quotes": [
+      "> [07:39] there is a public use case I want to show you from Leandro at Hugging Face where he compared a source of common crawl PDFs and where he did a little bit of pre-work on them and actually extracted the structure using OCR and using DocLing in order to remove certain parts and clean this up for the fine PDFs export which is thousands of tokens from PDFs around the web that you could use for training a model etc. But the two comparisons he did using GPU and using CPU for DocLing allowed him to do this at 50 times of a cost savings compared to VLMs and OCR naively."
+    ]
+  },
+  {
+    "name": "billion-thousand",
+    "good": "分别处理了 20 亿份与 2 万份记录。 ⏱ 01:06",
+    "bad": "分别处理了 2 亿份与 20 万份记录。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] They processed two billion records in the first system and twenty thousand records in the second system."
+    ]
+  },
+  {
+    "name": "nonquantified-percentage",
+    "good": "只看这个百分之几的通过率看不出来。 ⏱ 01:06",
+    "bad": "只看百分之三的通过率看不出来。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] We could not find it if we were just doing a categorical check like the this x% pass rate or not."
+    ]
+  },
+  {
+    "name": "small-range",
+    "good": "三四名工程师一起负责。 ⏱ 01:06",
+    "bad": "四五名工程师一起负责。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] They suggested that three or four engineers share the responsibility for the prototype."
+    ]
+  },
+  {
+    "name": "repeated-magnitude",
+    "good": "团队累计处理了 300 万份记录。 ⏱ 01:06",
+    "bad": "团队累计处理了 600 万份记录。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] We processed three three million items across every stage of the experiment for this run."
+    ]
+  },
+  {
+    "name": "nearby-suffix-is-not-magnitude",
+    "good": "设备重量 10 公斤。 ⏱ 01:06",
+    "bad": "设备重量 1 万公斤。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] The device has a recorded weight of 10 kilograms or 10kg when fully packed for delivery."
+    ]
+  },
+  {
+    "name": "repeated-multiword-number",
+    "good": "试验用了 24 份文档。 ⏱ 01:06",
+    "bad": "试验用了 48 份文档。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] We got twenty-four twenty-four sample documents for this precision test and ran them one at a time."
+    ]
+  },
+  {
+    "name": "x5-joined-name-reverse",
+    "good": "这里使用了 Fine PDFs 来训练模型。 ⏱ 07:32",
+    "bad": "这里使用了 Fine CSVs 来训练模型。 ⏱ 07:32",
+    "quotes": [
+      "> [07:32][画面] FinePDFs"
+    ]
+  },
+  {
+    "name": "vague-evidence-cannot-prove-an-exact-count",
+    "good": "同一批收到几百份记录。 ⏱ 01:06",
+    "bad": "同一批收到 610 份记录。 ⏱ 01:06",
+    "quotes": [
+      "> [01:06] It was a large batch and they received hundreds of records throughout the test."
+    ]
+  }
+]

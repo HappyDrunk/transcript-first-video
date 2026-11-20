@@ -79,7 +79,8 @@ class ConferenceC04cTests(unittest.TestCase):
 
 
 class Whue9NormalizationTests(unittest.TestCase):
-    def grounded(self, claim: str, quotes: list[str]) -> tuple[bool, str]:
+    def grounded(self, claim: str, quotes: list[str], *, heading: str = "主线讲了什么",
+                 check=rules.c04c_grounding) -> tuple[bool, str]:
         with tempfile.TemporaryDirectory() as tmp:
             transcript = Path(tmp) / "transcript.txt"
             speech = [line.removeprefix("> ") for line in quotes if "[画面]" not in line]
@@ -87,12 +88,64 @@ class Whue9NormalizationTests(unittest.TestCase):
             transcript.write_text("\n".join(speech), encoding="utf-8")
             if screen:
                 transcript.with_name("screen.txt").write_text("\n".join(screen), encoding="utf-8")
-            note = "## 主线讲了什么\n\n" + claim + "\n\n## 原文依据\n" + "\n".join(quotes)
+            note = f"## {heading}\n\n" + claim + "\n\n## 原文依据\n" + "\n".join(quotes)
             with patch.dict(os.environ, {"TFV_SCREEN_MODE": "slides"}):
                 context = rules.build_context(transcript, note, job=True)
             self.assertEqual(len(context.valid_quotes), len(quotes), context.evidence_errors)
-            _, passed, message = rules.c04c_grounding(context)
+            _, passed, message = check(context)
             return passed, message
+
+    def test_phase4_original_quantity_pairs(self) -> None:
+        fixture = ROOT / "evals/fixtures" / CORPUS / "phase4-quantity-pairs.json"
+        for case in json.loads(fixture.read_text(encoding="utf-8")):
+            for sample, expected in (("good", True), ("bad", False)):
+                with self.subTest(case=case["name"], sample=sample):
+                    passed, message = self.grounded(case[sample], case["quotes"])
+                    self.assertEqual(passed, expected, message)
+
+    def test_phase4_caption_corrections_ignore_markdown_code_only(self) -> None:
+        quote = ["> [01:06] For this walkthrough we used DocLing to convert the source documents to Markdown."]
+        block = "\n\n> [!warning] 字幕更正\n> 字幕写作 DocLing，实为 Docling。"
+        for claim, expected in (
+            ("安装命令是 `pip install docling`，接着运行转换。 ⏱ 01:06", True),
+            ("完整路径是 ibm-granite-community / docling-workshop。 ⏱ 01:06", True),
+            ("转换前安装软件。 ⏱ 01:06\n\n```sh\npip install docling\n\necho docling\n```", True),
+            ("安装 `docling` 后用 DocLing 转换文档。 ⏱ 01:06", False),
+        ):
+            with self.subTest(claim=claim):
+                passed, message = self.grounded(claim + block, quote, check=rules.c04d_explanations)
+                self.assertEqual(passed, expected, message)
+
+    def test_phase4_correction_checks_linked_screen_spelling(self) -> None:
+        correct = "幻灯片点名了 Azure AI Document Intelligence。 ⏱ 01:28"
+        source = "> [01:28][画面] Azure Al Document Intelligence"
+        pair = "\n\n> [!warning] 字幕更正\n> 画面写作 Azure Al Document Intelligence，实为 Azure AI Document Intelligence。"
+        for label, claim, quotes, rule, expected in (
+            ("good-form", correct + pair, [source], rules.c04d_explanations, True),
+            ("good-grounding", correct + pair, [source], rules.c04c_grounding, True),
+            ("wrong-old-word", correct + pair.replace("Azure Al", "Azure AX"), [source], rules.c04d_explanations, False),
+            ("wrong-link", correct.replace("⏱ 01:28", "⏱ 01:50") + pair,
+             [source, "> [01:50][画面] A different tool"], rules.c04c_grounding, False),
+            ("wrong-spelling-in-prose", correct.replace("AI", "Al") + pair,
+             [source], rules.c04d_explanations, False),
+        ):
+            with self.subTest(case=label):
+                passed, message = self.grounded(claim, quotes, check=rule)
+                self.assertEqual(passed, expected, message)
+
+    def test_phase4_url_periods_keep_the_action_sentence(self) -> None:
+        action = ("改写讲者做法：在本机执行 `pip install docling`，再用 "
+                  "`docling https://arxiv.org/pdf/2408.09869.pdf` 把一份 PDF 转成 Markdown，"
+                  "检查表格和标题是否还保持原有结构。")
+        quote = ["> [06:48][画面] docling https://arxiv.org/pdf/2408.09869.pdf",
+                 "> [06:48][画面] pip install docling"]
+        for claim, expected in (
+            (action, True), (action.replace("`", ""), True), (action + "记下结果。再交给主管。", False)
+        ):
+            with self.subTest(claim=claim):
+                passed, message = self.grounded(claim + " ⏱ 06:48", quote,
+                                                heading=rules.ACTION_HEADING, check=rules.r13_today_step)
+                self.assertEqual(passed, expected, message)
 
     def test_original_claims_and_incorrect_values(self) -> None:
         fixture = ROOT / "evals/fixtures" / CORPUS / "whue9-normalization.json"

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -433,6 +434,45 @@ class HostTests(unittest.TestCase):
             youtube_host.parse_youtube_ref("https://notyoutube.com/watch?v=KwhgfwOSToQ")
         with self.assertRaises(youtube_host.HostError):
             youtube_host.parse_youtube_ref("https://evil.example/watch?v=KwhgfwOSToQ")
+
+    def test_youtube_metadata_reaches_status_and_scaffold_without_extra_request(self) -> None:
+        video_id = "AbC123dEfGh"
+        provider = {"id": video_id, "title": 'A "short" lesson — field notes',
+                    "channel": "Example Classroom", "upload_date": "20260408",
+                    "description": "This field is never published.", "language": "en",
+                    "subtitles": {"en": [{"ext": "vtt"}]}}
+        captions = (ROOT / "evals/fixtures/usable_en_transcript.txt").read_text(encoding="utf-8")
+
+        def run_ytdlp(command, timeout):
+            if "-J" in command:
+                return youtube_host.subprocess.CompletedProcess(command, 0, json.dumps(provider), "")
+            output = Path(command[command.index("-o") + 1]).parent / "en.vtt"
+            output.write_text(captions, encoding="utf-8")
+            return youtube_host.subprocess.CompletedProcess(command, 0, "", "")
+
+        for expected_language in (None, "en"):
+            with (self.subTest(expected_language=expected_language), tempfile.TemporaryDirectory() as temp,
+                  patch.dict(os.environ, {"TFV_SCREEN_MODE": "off"}),
+                  patch.object(youtube_host, "ytdlp_base", return_value=["yt-dlp"]),
+                  patch.object(youtube_host, "_run", side_effect=run_ytdlp) as command):
+                out = Path(temp)
+                source = f"https://www.youtube.com/watch?v={video_id}"
+                args = dict(video_id=video_id, source=source, out_dir=out,
+                            expected_lang=expected_language, asr_choice="off", verify=True)
+                result = youtube_host.run_host(**args)
+                self.assertEqual(result["exit_code"], 0, result)
+                self.assertEqual(command.call_count, 2)
+                job = out / f"youtube_{video_id}"
+                metadata = {"title": provider["title"], "channel": provider["channel"],
+                            "published": "2026-04-08"}
+                for result in (result, youtube_host.run_host(**args, settle_text=captions)):
+                    self.assertEqual({key: result.get(key) for key in metadata}, metadata)
+                    self.assertNotIn("description", result)
+                status = json.loads((job / "status.json").read_text(encoding="utf-8"))
+                scaffold = knowledge_note.parse_frontmatter((job / "note.scaffold.md").read_text(encoding="utf-8"))
+                self.assertEqual({key: status.get(key) for key in metadata}, metadata)
+                self.assertEqual({key: scaffold.get(key) for key in metadata}, metadata)
+                self.assertFalse((job / "note.md").exists())
 
     def test_select_caption_language_ignores_title(self) -> None:
         info = {

@@ -200,6 +200,9 @@ def normalize_newlines(text: str) -> str:
 
 def check_destination(job: Path, output: Path) -> None:
     resolved = output.resolve()
+    placeholder = r"^(?:—(?:\s+.+?)?|[0-9]{4}-[0-9]{2}-[0-9]{2}\s+—)\s+-\s+"
+    if any(re.match(placeholder, name) for name in (output.name, resolved.name)):
+        raise RenderError("--output contains a metadata placeholder; omit missing fields or use the title or video ID")
     if any(path.is_relative_to(job / rules.SCREEN_FRAMES) for path in (output, resolved)):
         raise RenderError(f"--output would use the screenshot directory: {output}")
     if any(path.parent == job and ARCHIVED_NOTE.fullmatch(path.name) for path in (output, resolved)):

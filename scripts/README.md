@@ -39,7 +39,7 @@ Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`,
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=KwhgfwOSToQ" --out artifacts
 ```
 
-Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. The scaffold title is the job id. The platform title and description are not written into the scaffold. The host does not analyze the caption. Transcripts from two public runs, with the old template notes removed, are `evals/results/live/youtube_jNQXAC9IVRw/transcript.txt` and `evals/results/live/youtube_KwhgfwOSToQ/transcript.txt`.
+Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. When yt-dlp supplies verified YouTube title, channel and publication date, status.json and the scaffold preserve those fields. The scaffold falls back to the job ID if the title is unavailable. The description stays out of the transcript and scaffold. The host does not analyze the caption. Transcripts from two public runs, with the old template notes removed, are `evals/results/live/youtube_jNQXAC9IVRw/transcript.txt` and `evals/results/live/youtube_KwhgfwOSToQ/transcript.txt`.
 
 ## Twitter/X video
 

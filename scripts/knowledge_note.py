@@ -111,17 +111,19 @@ def render_scaffold(
     caption_trust: str | None = None,
     skill_version: str = "unknown",
     selection_end: str | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Frontmatter, empty single-note headings, and fill instructions.
 
     The body does not analyze a transcript and does not copy one in.
     """
+    metadata = metadata or {}
     lines = [
         "---",
-        f"title: {yaml_double(job_id)}",
+        f"title: {yaml_double(metadata.get('title') or job_id)}",
         f"source: {yaml_double(source)}",
-        'channel: ""',
-        'published: ""',
+        f"channel: {yaml_double(metadata.get('channel', ''))}",
+        f"published: {yaml_double(metadata.get('published', ''))}",
         'type: ""',
         f"caption_kind: {yaml_double(caption_kind or '')}",
         f"skill_version: {yaml_double(skill_version)}",
