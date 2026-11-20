@@ -185,6 +185,23 @@ class Phase4ReviewTests(unittest.TestCase):
         result = self.warning_draft(NOTE.replace(CLAIM, "stopping 21.1 or 63 centimeters below the rim", 1))
         self.assertEqual([item["term"] for item in result["c04c"]], ["21.1", "63"])
 
+    def test_repeated_claim_needs_its_own_final_warning_decision(self):
+        first = self.warning_draft()
+        self.receipt("- C04c-001 | 21.1 | two centimeters below the rim | 误报", result="changes")
+        claim = first["c04c"][0]["claim"]
+        self.note(BAD.replace(claim, f"{claim}\n\n{claim}", 1))
+        result = self.render()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.output.exists())
+        verifier = self.status()["verifier"]
+        self.assertEqual([row["id"] for row in verifier["c04c"]], ["C04c-001", "C04c-002"])
+        with (self.job / "review.md").open("a", encoding="utf-8") as file:
+            file.write(f'<!-- tfv-c04c-final: {verifier["c04c_sha256"]} -->\n')
+            file.write("- 终稿 C04c-002 | 21.1 | two centimeters below the rim | 误报\n")
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.output.is_file())
+
     def test_concurrent_review_change_preserves_prior_reading_file(self):
         self.warning_draft()
         self.receipt("- C04c-001 | 21.1 | two centimeters below the rim | 误报")
