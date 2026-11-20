@@ -134,6 +134,26 @@ class Whue9NormalizationTests(unittest.TestCase):
                 _, values = rules.canonical_numbers(quote)
                 self.assertFalse(any(value.supports(claims[0]) for value in values))
 
+    def test_year_does_not_match_common_english_or_chinese_quantities(self) -> None:
+        _, claims = rules.canonical_numbers("2025 年上半年")
+        for unit in ("PRs", "repos", "repositories", "lines", "files", "agents", "teams",
+                     "名工程师", "位员工", "条记录", "行代码", "篇文章", "倍", "种", "万", "亿", "多", "余"):
+            with self.subTest(unit=unit):
+                _, values = rules.canonical_numbers(f"we merged 2025 {unit}")
+                self.assertFalse(any(value.supports(claims[0]) for value in values))
+
+    def test_adjacent_count_needs_both_endpoints_in_the_same_range(self) -> None:
+        for quote, expected in (
+            ("four or five agents", True),
+            ("four agents and five developers", False),
+            ("twenty four or five hundred agents", False),
+        ):
+            with self.subTest(quote=quote):
+                _, claims = rules.canonical_numbers("四五个智能体")
+                _, values = rules.canonical_numbers(quote)
+                self.assertTrue(claims)
+                self.assertEqual(all(any(value.supports(claim) for value in values) for claim in claims), expected)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

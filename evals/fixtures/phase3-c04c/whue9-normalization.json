@@ -59,5 +59,19 @@
         "9"
       ]
     ]
+  },
+  {
+    "name": "adjacent-count",
+    "claim": "到这一步，工程师常常同时跑四五个智能体，而且数量还在增加。包括许多 AI Champions 在内的一小群人，开始自研编排器 Builder Bot，用来协调这些智能体，并把组织推向自治。 ⏱ 14:49",
+    "quotes": [
+      "> [14:49] So, at this point, the engineers are cooking. They got four or five agents running at any given time, and that number is growing. So, a small group of engineers, including many of the AI champions, started building our own orchestrator to coordinate all of these agents, Builder Bot. And we needed Builder Bot to get us to an autonomous engineering org."
+    ],
+    "edits": [
+      [
+        "四五个",
+        "五六个",
+        "五六"
+      ]
+    ]
   }
 ]
