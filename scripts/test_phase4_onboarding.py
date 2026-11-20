@@ -70,7 +70,8 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(len(groups["base"]), 1)
         self.assertTrue(groups["base"][0].startswith("yt-dlp"))
         self.assertIn({"include-group": "base"}, groups["screen"])
-        self.assertTrue({"rapidocr", "onnxruntime"}.issubset(groups["screen"]))
+        self.assertIn("rapidocr", groups["screen"])
+        self.assertIn("onnxruntime", groups["screen"])
 
 
 if __name__ == "__main__":

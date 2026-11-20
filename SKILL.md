@@ -40,15 +40,15 @@ In every mode, the evidence note preserves Obsidian properties and the original-
 
 ## Run
 
-1. Confirm `language.txt`. Run `python3 scripts/youtube_host.py "<YouTube URL>"` or `python3 scripts/x_host.py "<X status URL>"`. Optional YouTube screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
+1. Install with `python3 -m pip install --group base` (`--group screen` adds OCR). Confirm `language.txt`. Run `python3 scripts/youtube_host.py "<YouTube URL>"` or `python3 scripts/x_host.py "<X status URL>"`. Optional YouTube screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
 2. When the transcript is ready, read it in full. If it has no reliable clock, keep it and report「缺时间戳，请用带时间戳的转写重跑」.
 3. Write `selection.md` in transcript order, one line per unit, with time range, category, 留 or 略, and a one-sentence reason. Cover the full transcript with adjacent ranges. Keep the main claims, steps and their order, the speaker's lists, supporting numbers, named cases, and essential technical elements. Mark greetings, ads, repetition, and off-topic conversation 略.
 4. Write `note.md` from the retained units. Follow [references/delivery-format.md](references/delivery-format.md) for the Obsidian properties, fixed headings, middle sections by video type, and marked explanations. Start with `## 先记住一句话`. Complete the retained lists and cases, and explain essential terms at first use. Write one grounded action for the reader in at most two sentences.
 5. Link each middle claim and the action with `⏱ mm:ss`. Write `本文略去` and finish with `## 原文依据`. Copy speech quotes of at least 40 contiguous characters with their timestamps and original spelling. For `screen.txt`, follow the [screen evidence format](references/delivery-format.md#画面引文). Keep steps, conditions, and claims within the cited evidence. Mark terms, analogies, and caption corrections.
-6. Run `python3 scripts/verify_note.py --job "<dir>" --structure-only` (read-only), then `python3 scripts/verify_note.py --job "<dir>" --with-coverage`. If the initial submission and two repairs fail, return `note.md` and `issues.md`. C04c warnings use no repair round. Send matching passes and their warnings to a Task that did not write the note.
-7. The Task follows the [semantic review checklist](references/rules.md#independent-semantic-review). It reads `note.md`, the full transcript, and `selection.md`. With screen evidence, it uses `screen.txt` to locate screenshots and opens doubtful images and those supporting key numbers. It writes only `review.md`, with the bound receipt and located issues. It may use `render_reading_note.render_note()` on that same note for a reading preview. A preview does not replace formal delivery.
+6. Run `python3 scripts/verify_note.py --job "<dir>" --structure-only` (read-only), then `python3 scripts/verify_note.py --job "<dir>" --with-coverage`. If the initial submission and two repairs fail, return `note.md` and `issues.md`. C04c warnings use no repair round. Send matching passes and warnings for review.
+7. A separate Task follows the [review checklist](references/rules.md#independent-semantic-review) and writes the bound `review.md`. If a Task is unavailable, self-review and add `"reviewer":"self"` to the receipt. The reading copy says「未经独立复核」.
 8. Process one review batch. Explain rejected suggestions in `review.md`. If the first corrected draft fails the final checks, allow one repair within that batch. On a second failure return the draft and issues.
-9. Run `python3 scripts/render_reading_note.py --require-review --task-dir "<dir>" --output "<channel folder>/〈发布日期〉 〈频道〉 - 〈标题〉.md"`. It reruns both checks and verifies the bound review and warning decisions before delivery.
+9. Run `python3 scripts/render_reading_note.py --require-review --task-dir "<dir>" --output-dir "<channel folder>"`. It reruns both checks and verifies the bound review and warning decisions before delivery.
 10. Deliver the generated reading copy from the channel folder. Keep `note.md`, `review.md`, `selection.md`, the transcript, and the status in the job directory.
 
 Leave source files and drafts available after a stop. See [rules](references/rules.md) and [commands](scripts/README.md). The Task checks whether the evidence supports the meaning.
@@ -66,7 +66,7 @@ link
        fail → upgrade model once (e.g. small→medium) OR stop with a reason
   → verify_note.py --job --with-coverage → both gates pass on the same inputs
   → independent Task → review.md → one bounded review batch
-  → render_reading_note.py --require-review --task-dir --output
+  → render_reading_note.py --require-review --task-dir --output-dir
        verify and coverage again → reading copy on the final bound inputs
   → three ordinary drafts; one review correction follows a first final-check failure
   → historical all-N/A → no-extractable-content, archive note.md
