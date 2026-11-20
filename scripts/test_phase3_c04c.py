@@ -11,9 +11,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import screen_ocr
 import verify_report
+import verify_rules as rules
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,6 +76,83 @@ class ConferenceC04cTests(unittest.TestCase):
                     failures = {item["id"]: item["message"] for item in output["rules"] if not item["ok"]}
                     self.assertEqual(set(failures), set() if expected == "PASS" else {"C04c"}, failures)
                     self.assertEqual(result.returncode == 0, expected == "PASS", output["reasons"])
+
+
+class Whue9NormalizationTests(unittest.TestCase):
+    def grounded(self, claim: str, quotes: list[str]) -> tuple[bool, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = Path(tmp) / "transcript.txt"
+            speech = [line.removeprefix("> ") for line in quotes if "[画面]" not in line]
+            screen = [line.removeprefix("> ") for line in quotes if "[画面]" in line]
+            transcript.write_text("\n".join(speech), encoding="utf-8")
+            if screen:
+                transcript.with_name("screen.txt").write_text("\n".join(screen), encoding="utf-8")
+            note = "## 主线讲了什么\n\n" + claim + "\n\n## 原文依据\n" + "\n".join(quotes)
+            with patch.dict(os.environ, {"TFV_SCREEN_MODE": "slides"}):
+                context = rules.build_context(transcript, note, job=True)
+            self.assertEqual(len(context.valid_quotes), len(quotes), context.evidence_errors)
+            _, passed, message = rules.c04c_grounding(context)
+            return passed, message
+
+    def test_original_claims_and_incorrect_values(self) -> None:
+        fixture = ROOT / "evals/fixtures" / CORPUS / "whue9-normalization.json"
+        for case in json.loads(fixture.read_text(encoding="utf-8")):
+            with self.subTest(case=case["name"]):
+                passed, message = self.grounded(case["claim"], case["quotes"])
+                self.assertTrue(passed, message)
+            for original, wrong, label in case["edits"]:
+                with self.subTest(case=case["name"], altered=wrong):
+                    claim = case["claim"].replace(original, wrong, 1)
+                    self.assertNotEqual(claim, case["claim"])
+                    passed, message = self.grounded(claim, case["quotes"])
+                    self.assertFalse(passed, message)
+                    self.assertIn(f"number '{label}'", message)
+
+    def test_number_lists_do_not_supply_the_sum(self) -> None:
+        _, values = rules.canonical_numbers("The engineers were between stages one and two.")
+        for count, supported in ((1, True), (2, True), (3, False)):
+            with self.subTest(count=count):
+                claim = rules.NumericValue("number", rules.NumberRange(count, count), str(count))
+                self.assertEqual(any(value.supports(claim) for value in values), supported)
+
+    def test_compound_number_does_not_supply_its_components(self) -> None:
+        _, values = rules.canonical_numbers("There were one hundred and two projects in the program.")
+        for count, supported in ((102, True), (1, False), (2, False)):
+            with self.subTest(count=count):
+                claim = rules.NumericValue("number", rules.NumberRange(count, count), str(count))
+                self.assertEqual(any(value.supports(claim) for value in values), supported)
+
+    def test_calendar_year_does_not_match_a_count_or_percent(self) -> None:
+        _, claims = rules.canonical_numbers("活动在 2025 年开始。")
+        for quote in (
+            "They invited 2025 engineers to the event.",
+            "The figure grew by 2025%.",
+            "They spent 2025 million dollars on the program.",
+            "会上到了 2025 个工程师。",
+        ):
+            with self.subTest(quote=quote):
+                _, values = rules.canonical_numbers(quote)
+                self.assertFalse(any(value.supports(claims[0]) for value in values))
+
+    def test_year_does_not_match_common_english_or_chinese_quantities(self) -> None:
+        _, claims = rules.canonical_numbers("2025 年上半年")
+        for unit in ("PRs", "repos", "repositories", "lines", "files", "agents", "teams",
+                     "名工程师", "位员工", "条记录", "行代码", "篇文章", "倍", "种", "万", "亿", "多", "余"):
+            with self.subTest(unit=unit):
+                _, values = rules.canonical_numbers(f"we merged 2025 {unit}")
+                self.assertFalse(any(value.supports(claims[0]) for value in values))
+
+    def test_adjacent_count_needs_both_endpoints_in_the_same_range(self) -> None:
+        for quote, expected in (
+            ("four or five agents", True),
+            ("four agents and five developers", False),
+            ("twenty four or five hundred agents", False),
+        ):
+            with self.subTest(quote=quote):
+                _, claims = rules.canonical_numbers("四五个智能体")
+                _, values = rules.canonical_numbers(quote)
+                self.assertTrue(claims)
+                self.assertEqual(all(any(value.supports(claim) for value in values) for claim in claims), expected)
 
 
 if __name__ == "__main__":
