@@ -181,6 +181,51 @@ class Phase4ReviewTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertEqual(self.status()["repair_rounds"], 0)
 
+    def test_adjudicated_new_error_uses_only_the_review_correction_allowance(self):
+        self.warning_draft()
+        initial = "- C04c-001 | 21.1 | two centimeters below the rim | 真错"
+        self.receipt(initial, result="changes")
+        original_receipt = (self.job / "review.md").read_text(encoding="utf-8")
+        confirmed = "- 已修 C04c-001 | stopping two centimeters below the rim\n"
+        receipt = self.job / "review.md"
+
+        def reject_new_claim(value):
+            self.note(NOTE.replace("three days. ⏱ 01:00", f"{value} days. ⏱ 01:00", 1))
+            receipt.write_text(original_receipt + confirmed, encoding="utf-8")
+            self.assertNotEqual(self.render().returncode, 0)
+            status = self.status()
+            verifier = status["verifier"]
+            self.assertEqual([row["term"] for row in verifier["c04c"]], [str(value)])
+            receipt.write_text(
+                original_receipt + confirmed
+                + f'<!-- tfv-c04c-final: {verifier["c04c_sha256"]} -->\n'
+                + f"- 终稿 C04c-001 | {value} | three days | 真错\n",
+                encoding="utf-8",
+            )
+            self.assertNotEqual(self.render().returncode, 0)
+            self.assertEqual(self.status()["repair_rounds"], 0)
+            self.assertFalse(self.output.exists())
+
+        reject_new_claim(12)
+        self.assertEqual(self.status()["review"]["failures"], 1)
+        self.assertNotEqual(self.render().returncode, 0)
+        self.assertEqual(self.status()["review"]["failures"], 1)
+        if self._testMethodName.endswith("_stops"):
+            reject_new_claim(13)
+            self.assertEqual(self.status()["status"], "needs_user_input")
+            self.assertIn("C04c-001", (self.job / "issues.md").read_text(encoding="utf-8"))
+            self.note(NOTE)
+            self.assertEqual(self.submit("--resume").returncode, 0)
+        else:
+            self.note(NOTE)
+            receipt.write_text(original_receipt + confirmed, encoding="utf-8")
+            result = self.render()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(self.output.is_file())
+
+    def test_second_adjudicated_new_error_stops(self):
+        self.test_adjudicated_new_error_uses_only_the_review_correction_allowance()
+
     def test_same_sentence_distinct_values_get_distinct_warnings(self):
         result = self.warning_draft(NOTE.replace(CLAIM, "stopping 21.1 or 63 centimeters below the rim", 1))
         self.assertEqual([item["term"] for item in result["c04c"]], ["21.1", "63"])
