@@ -226,6 +226,35 @@ class Phase4ReviewTests(unittest.TestCase):
     def test_second_adjudicated_new_error_stops(self):
         self.test_adjudicated_new_error_uses_only_the_review_correction_allowance()
 
+    def test_wrong_replacement_can_be_adjudicated_without_claiming_original_is_fixed(self):
+        self.warning_draft()
+        initial = "- C04c-001 | 21.1 | two centimeters below the rim | 真错"
+        self.receipt(initial, result="changes")
+        receipt = self.job / "review.md"
+        original_receipt = receipt.read_text(encoding="utf-8")
+        self.note(BAD.replace("21.1", "21.2", 1))
+        self.assertNotEqual(self.render().returncode, 0)
+        self.assertEqual(self.status()["review"]["failures"], 0)
+        verifier = self.status()["verifier"]
+        receipt.write_text(
+            original_receipt
+            + f'<!-- tfv-c04c-final: {verifier["c04c_sha256"]} -->\n'
+            + "- 终稿 C04c-001 | 21.2 | two centimeters below the rim | 真错\n",
+            encoding="utf-8",
+        )
+        self.assertNotEqual(self.render().returncode, 0)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(self.status()["review"]["failures"], 1)
+        self.assertEqual(self.status()["repair_rounds"], 0)
+        self.note(NOTE)
+        receipt.write_text(
+            original_receipt + "- 已修 C04c-001 | stopping two centimeters below the rim\n",
+            encoding="utf-8",
+        )
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.output.is_file())
+
     def test_same_sentence_distinct_values_get_distinct_warnings(self):
         result = self.warning_draft(NOTE.replace(CLAIM, "stopping 21.1 or 63 centimeters below the rim", 1))
         self.assertEqual([item["term"] for item in result["c04c"]], ["21.1", "63"])
