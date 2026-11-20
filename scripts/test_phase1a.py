@@ -61,7 +61,7 @@ class Phase1AStatusTests(unittest.TestCase):
             self.assertFalse(status["finished"])
             self.assertTrue(status["verifier"]["reasons"])
 
-    def test_third_failed_verify_locks_job_and_coverage_failure_counts_too(self) -> None:
+    def test_third_failed_check_stops_job_and_coverage_failure_counts_too(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             job = self._job(Path(tmp))
             (job / "note.md").write_text("bad note", encoding="utf-8")
@@ -75,13 +75,14 @@ class Phase1AStatusTests(unittest.TestCase):
             self.assertTrue(
                 any(reason.startswith("S01 FAIL:") for reason in status["failure_lines"]), status,
             )
-            self.assertEqual(status["status"], "not_deposited")
+            self.assertEqual(status["status"], "needs_user_input")
+            self.assertFalse(status["locked"])
             locked_verify = self._run("verify_note.py", job)
             self.assertNotEqual(locked_verify.returncode, 0)
-            self.assertIn("未交：已超过 2 轮", locked_verify.stdout + locked_verify.stderr)
+            self.assertIn("issues.md", locked_verify.stdout + locked_verify.stderr)
             locked_coverage = self._run("coverage_check.py", job)
             self.assertNotEqual(locked_coverage.returncode, 0)
-            self.assertIn("未交：已超过 2 轮", locked_coverage.stdout + locked_coverage.stderr)
+            self.assertIn("issues.md", locked_coverage.stdout + locked_coverage.stderr)
 
 
 if __name__ == "__main__":

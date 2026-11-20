@@ -238,7 +238,8 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(outcomes[:3], [0, 0, 0], "the valid note must be deliverable before the retry limit")
         self.assertNotEqual(outcomes[-1], 0)
         self.assertFalse(status.get("finished", False))
-        self.assertIn("locked", json.dumps(status).casefold())
+        self.assertFalse(status["locked"])
+        self.assertEqual(status["status"], "needs_user_input")
 
     def test_red11_chinese_number_without_transcript_support_fails_r07(self) -> None:
         transcript, control = _usable("en")
@@ -247,7 +248,8 @@ class RegressionTests(unittest.TestCase):
         self.assertIn("四千万", note)
         result = _verify(transcript, note)
         self.assertIn("C04c", failed_ids(result), result["reasons"])
-        self.assertTrue(any("四千万" in line or "40000000" in line for line in result["reasons"]), result["reasons"])
+        self.assertTrue(result["allowed"], result["reasons"])
+        self.assertTrue(any("四千万" in line or "40000000" in line for line in result["warnings"]), result["warnings"])
         self.assertTrue(_verify(transcript, control)["allowed"])
 
     def test_red12_partial_install_reports_missing_script_file(self) -> None:
@@ -289,7 +291,9 @@ class RegressionTests(unittest.TestCase):
                 )
                 result = _verify(transcript, attack)
                 self.assertEqual(failed_ids(result), {"C04c"}, result["reasons"])
-                self.assertTrue(any(detail.casefold() in line.casefold() or detail.split()[-1].casefold() in line.casefold() for line in result["reasons"]), result["reasons"])
+                self.assertTrue(result["allowed"], result["reasons"])
+                terms = {row["term"].casefold() for row in result["c04c"]}
+                self.assertTrue(terms.intersection({detail.casefold(), detail.split()[-1].casefold()}), result)
         self.assertTrue(_verify(transcript, control)["allowed"])
 
 

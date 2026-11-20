@@ -75,7 +75,8 @@ class ConferenceC04cTests(unittest.TestCase):
                     self.assertTrue(output["coverage"]["ok"], output["coverage"]["reasons"])
                     failures = {item["id"]: item["message"] for item in output["rules"] if not item["ok"]}
                     self.assertEqual(set(failures), set() if expected == "PASS" else {"C04c"}, failures)
-                    self.assertEqual(result.returncode == 0, expected == "PASS", output["reasons"])
+                    self.assertEqual(result.returncode, 0, output["reasons"])
+                    self.assertEqual(bool(output["c04c"]), expected == "FAIL", output)
 
 
 class Whue9NormalizationTests(unittest.TestCase):

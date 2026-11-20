@@ -142,7 +142,7 @@ class ReviewCorrectionTests(unittest.TestCase):
         self.assertEqual((status["edit_rounds"], status["repair_rounds"]), (1, 0), status)
         self.assertEqual(status["verifier"]["inputs"], status["coverage"]["inputs"])
 
-    def test_second_review_failure_locks_the_task(self) -> None:
+    def test_second_review_failure_stops_the_task(self) -> None:
         self.first_review_check_fails(initial_failures=1)
         self.note(REVIEW_BAD_AGAIN)
         result = self.render()
@@ -152,8 +152,8 @@ class ReviewCorrectionTests(unittest.TestCase):
         self.assertEqual(status["edit_rounds"], 3, status)
         self.assertEqual(status["repair_rounds"], 3, status)
         self.assertEqual(status.get("review_rounds"), 1, status)
-        self.assertTrue(status.get("locked"), status)
-        self.assertEqual(status["status"], "not_deposited", status)
+        self.assertFalse(status.get("locked"), status)
+        self.assertEqual(status["status"], "needs_user_input", status)
         self.assertFalse(status["finished"], status)
         self.assertFalse(self.output.exists())
 
@@ -162,7 +162,8 @@ class ReviewCorrectionTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result)
         after = self.status()
         self.assertEqual((after["edit_rounds"], after["repair_rounds"]), (3, 3), after)
-        self.assertTrue(after.get("locked"), after)
+        self.assertFalse(after.get("locked"), after)
+        self.assertEqual(after["status"], "needs_user_input", after)
         self.assertFalse(self.output.exists())
 
     def test_first_review_failure_at_two_previous_failures_still_allows_the_bound_correction(self) -> None:
@@ -178,8 +179,8 @@ class ReviewCorrectionTests(unittest.TestCase):
         status = self.status()
         self.assertEqual(status["edit_rounds"], 4, status)
         self.assertEqual(status["repair_rounds"], 1, status)
-        self.assertTrue(status.get("locked"), status)
-        self.assertEqual(status["status"], "not_deposited", status)
+        self.assertFalse(status.get("locked"), status)
+        self.assertEqual(status["status"], "needs_user_input", status)
         self.assertFalse(status["finished"], status)
         self.assertFalse(self.output.exists())
 

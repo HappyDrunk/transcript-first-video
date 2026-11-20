@@ -33,9 +33,9 @@ EMPTY_SECTION = re.compile(
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 JOB_FILES = (
     "note.md", "transcript.txt", "selection.md", "status.json", "segments.json", ".status.lock", "delivery.md",
-    rules.SCREEN_FILE, "review.md",
+    rules.SCREEN_FILE, "review.md", "issues.md",
 )
-ARCHIVED_NOTE = re.compile(r"(?:note|delivery|review)\.prev(?:\.[0-9]+)?\.md", re.IGNORECASE)
+ARCHIVED_NOTE = re.compile(r"(?:note|delivery|review|issues)\.prev(?:\.[0-9]+)?\.md", re.IGNORECASE)
 
 
 class RenderError(ValueError):
@@ -240,16 +240,23 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_revie
     with verify_note.job_lock(job):
         status = verify_note.read_job_status(job)
         if verify_note.repair_lock(status, review=True):
-            raise RenderError(verify_note.lock_message(status))
+            stopped = verify_note.stopped_result(job, status)
+            raise RenderError(" · ".join([*stopped["reasons"], *(stopped[key] for key in ("draft", "issues") if key in stopped)]))
         verify_note.prepare_job_note(job)
         receipt = verify_note.prepare_review_submission(job, required=require_review)
         review, reviewed_inputs = receipt if receipt is not None else (None, None)
-        result = verify_note.check_job_submission(job, with_coverage=True, reviewed_inputs=reviewed_inputs)
+        result = verify_note.check_job_submission(job, with_coverage=True, reviewed_inputs=reviewed_inputs,
+                                                  review_content=review)
         coverage = result.get("coverage", {})
         for line in result["reasons"] + result.get("warnings", []) + coverage.get("not_checked", []):
             print(line, file=sys.stderr)
         if not result["allowed"]:
+            for key in ("draft", "issues"):
+                if key in result:
+                    print(f"{key}: {result[key]}", file=sys.stderr)
             raise RenderError("verify or coverage failed")
+        if result.get("c04c") and review is None:
+            raise RenderError("C04c warnings require a bound review before reading delivery")
         inputs = verify_note.job_inputs(job)
         verifier = verify_note.read_job_status(job).get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
