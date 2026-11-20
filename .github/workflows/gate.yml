@@ -50,8 +50,8 @@ jobs:
         run: python3 scripts/test_regressions.py RegressionTests.test_red1_successful_settle_preserves_accepted_note
       - name: RED-2 old deposit survives failed settle
         run: python3 scripts/test_regressions.py RegressionTests.test_red2_failed_settle_preserves_all_existing_deposit_files
-      - name: RED-10 third edit is locked
-        run: python3 scripts/test_regressions.py RegressionTests.test_red10_third_consecutive_edit_is_locked_as_not_delivered
+      - name: RED-10 fourth edit is locked
+        run: python3 scripts/test_regressions.py RegressionTests.test_red10_fourth_consecutive_edit_is_locked_as_not_delivered
       - name: Phase 1B required regressions
         run: >-
           python3 -m unittest

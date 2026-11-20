@@ -117,6 +117,42 @@ def _c04_reasons(result: dict) -> set[str]:
     return {rule for rule in failed_ids(result) if rule.startswith("C04")}
 
 
+class MixedScriptGroundingTests(unittest.TestCase):
+    def test_cross_language_examples_keep_the_english_overlap_gate(self) -> None:
+        excerpt = "Reformat the document and isolate tabular content before running the indexing jobs."
+        rows = [(30, excerpt), *ARCS[1:3]]
+        cases = (
+            ("先做 normalization decomposition configuration 再检查输出。", True),
+            ("We isolate tabular fragments while reviewers examine unrelated excerpts.", False),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, (claim, ok) in enumerate(cases):
+                with self.subTest(claim=claim):
+                    note = _arc_note(rows).replace(excerpt + " ⏱ 00:30", claim + " ⏱ 00:30", 1)
+                    job = _write_job(Path(tmp) / str(index), note, _transcript(rows), None, 180)
+                    result = _check_note(job)
+                    self.assertEqual("C04b" not in failed_ids(result), ok, result["reasons"])
+                    if not ok:
+                        self.assertIn("needs three shared content tokens", " ".join(result["reasons"]))
+
+    def test_word_forms_need_support_in_the_linked_excerpt(self) -> None:
+        cases = (
+            ("PDF", "PDFs", True), ("PDFs", "PDF", True),
+            ("PDF’s", "PDF", True), ("PDF", "PDF's", True),
+            ("PDF", "DOCXs", False),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for index, (claim, evidence, ok) in enumerate(cases):
+                with self.subTest(claim=claim, evidence=evidence):
+                    excerpt = f"We process {evidence} in batches and keep the original layout intact for readers."
+                    rows = [(30, excerpt), (90, "The separate appendix discusses PDF handling for older tools."), ARCS[2]]
+                    note = _arc_note(rows).replace(excerpt + " ⏱ 00:30",
+                                                  f"这一步处理 {claim} 文件。 ⏱ 00:30", 1)
+                    job = _write_job(Path(tmp) / str(index), note, _transcript(rows), None, 180)
+                    result = _check_note(job)
+                    self.assertEqual("C04c" not in failed_ids(result), ok, result["reasons"])
+
+
 class StructurePreflightTests(unittest.TestCase):
     def test_preflight_uses_formal_endpoint_and_leaves_job_untouched(self) -> None:
         rows = ARCS[:3]

@@ -215,7 +215,7 @@ class RegressionTests(unittest.TestCase):
         self.assertTrue(any("先记住一句话" in line for line in result["reasons"]), result["reasons"])
         self.assertTrue(_verify(transcript, control)["allowed"])
 
-    def test_red10_third_consecutive_edit_is_locked_as_not_delivered(self) -> None:
+    def test_red10_fourth_consecutive_edit_is_locked_as_not_delivered(self) -> None:
         transcript, note = _usable("en")
         with tempfile.TemporaryDirectory() as tmp:
             job = Path(tmp) / "job"
@@ -227,7 +227,7 @@ class RegressionTests(unittest.TestCase):
             (job / "selection.md").write_text(_fixture("usable_selection.md"), encoding="utf-8")
             (job / "status.json").write_text('{"status":"transcript_ready","duration_seconds":120}\n', encoding="utf-8")
             outcomes = []
-            for attempt in range(1, 4):
+            for attempt in range(1, 5):
                 if attempt > 1:
                     updated = note.replace("\n---\n", f"\nrevision: {attempt}\n---\n", 1)
                     (job / "note.md").write_text(updated, encoding="utf-8")
@@ -235,7 +235,7 @@ class RegressionTests(unittest.TestCase):
                     outcomes.append(verify_note.main(["--job", str(job), "--json"]))
             status_path = job / "status.json"
             status = json.loads(status_path.read_text(encoding="utf-8")) if status_path.is_file() else {}
-        self.assertEqual(outcomes[:2], [0, 0], "the valid note must be deliverable before the retry limit")
+        self.assertEqual(outcomes[:3], [0, 0, 0], "the valid note must be deliverable before the retry limit")
         self.assertNotEqual(outcomes[-1], 0)
         self.assertFalse(status.get("finished", False))
         self.assertIn("locked", json.dumps(status).casefold())
