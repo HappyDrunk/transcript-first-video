@@ -138,6 +138,8 @@ def verify(
 
 NO_EXTRACTABLE = "no-extractable-content"
 REPAIR_LIMIT_MESSAGE = "未交：已超过 2 轮"
+MAX_ORDINARY_DRAFTS = 3
+DRAFT_LIMIT_MESSAGE = f"未交：普通稿超过 {MAX_ORDINARY_DRAFTS} 份"
 
 
 def read_job_status(job: Path) -> dict:
@@ -310,14 +312,22 @@ def job_inputs(job: Path) -> dict:
     return inputs
 
 
+def draft_limit_exceeded(status: dict) -> bool:
+    drafts = status.get("edit_rounds", 0)
+    return type(drafts) is int and drafts > MAX_ORDINARY_DRAFTS
+
+
+def lock_message(status: dict) -> str:
+    return DRAFT_LIMIT_MESSAGE if draft_limit_exceeded(status) else REPAIR_LIMIT_MESSAGE
+
+
 def repair_lock(status: dict, *, review: bool = False) -> bool:
     repair_rounds = status.get("repair_rounds", 0)
-    edit_rounds = status.get("edit_rounds", 0)
     return (
         status.get("status") == "not_deposited"
         or (isinstance(repair_rounds, int) and not isinstance(repair_rounds, bool) and repair_rounds > 2
             and not (review and _review_retry(status)))
-        or (isinstance(edit_rounds, int) and not isinstance(edit_rounds, bool) and edit_rounds > 2)
+        or draft_limit_exceeded(status)
     )
 
 
@@ -353,7 +363,7 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
 
     status = read_job_status(job)
     if repair_lock(status, review=True):
-        raise ValueError(REPAIR_LIMIT_MESSAGE)
+        raise ValueError(lock_message(status))
     inputs = job_inputs(job)
     batch = status.get("review")
     if batch is None:
@@ -450,10 +460,10 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
         data["coverage"] = {"allowed": False, "reasons": ["note changed after verification"]}
         if data.get("status") == "finished":
             data["status"] = "transcript_ready"
-        if rounds > 2:
+        if rounds > MAX_ORDINARY_DRAFTS:
             data["status"] = "not_deposited"
             data["locked"] = True
-            data["reason"] = REPAIR_LIMIT_MESSAGE
+            data["reason"] = DRAFT_LIMIT_MESSAGE
     write_job_status(job, data)
     return data
 
@@ -609,7 +619,7 @@ def check_job_submission(
     review = reviewed_inputs is not None
     status = read_job_status(job)
     if repair_lock(status, review=review):
-        return {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}
+        return {"allowed": False, "reasons": [lock_message(status)]}
 
     try:
         prepare_job_note(job)
@@ -632,7 +642,7 @@ def check_job_submission(
     elif note is not None:
         status = record_note_revision(job, note)
         if repair_lock(status, review=review):
-            return {"allowed": False, "reasons": [REPAIR_LIMIT_MESSAGE]}
+            return {"allowed": False, "reasons": [lock_message(status)]}
         result = verify(
             job / "transcript.txt", note, job=True, confidence=confidence,
             expected_lang=expected_lang or inputs["expected_lang"], job_status=status.get("status"),
@@ -669,7 +679,7 @@ def check_job_submission(
         result.setdefault("warnings", []).extend(coverage["warnings"])
     if repair_lock(status, review=review) and (note is not None or with_coverage):
         result["allowed"] = False
-        result["reasons"].append(REPAIR_LIMIT_MESSAGE)
+        result["reasons"].append(lock_message(status))
     return result
 
 

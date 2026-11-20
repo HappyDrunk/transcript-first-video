@@ -235,8 +235,9 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_revie
     check_destination(job, output)
 
     with verify_note.job_lock(job):
-        if verify_note.repair_lock(verify_note.read_job_status(job), review=True):
-            raise RenderError(verify_note.REPAIR_LIMIT_MESSAGE)
+        status = verify_note.read_job_status(job)
+        if verify_note.repair_lock(status, review=True):
+            raise RenderError(verify_note.lock_message(status))
         verify_note.prepare_job_note(job)
         receipt = verify_note.prepare_review_submission(job, required=require_review)
         review, reviewed_inputs = receipt if receipt is not None else (None, None)

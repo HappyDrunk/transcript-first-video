@@ -653,7 +653,7 @@ def _content_tokens(text: str) -> set[str]:
 
 def _script_counts(text: str) -> tuple[int, int]:
     cjk = sum(len(run) for run in _CJK_RUN.findall(text))
-    latin = sum(len(word) for word in _LATIN_WORD.findall(text))
+    latin = len(_LATIN_WORD.findall(text))
     return cjk, latin
 
 
@@ -1346,6 +1346,28 @@ def _adjacent_screen_excerpts(quotes: list[Quote]) -> list[str]:
     return joined
 
 
+def _grounding_word(match: re.Match[str]) -> str:
+    word = match[0].casefold().replace("’", "'")
+    if word.endswith("'s"):
+        word = word[:-2]
+    elif word.endswith("s'"):
+        word = word[:-1]
+    if len(word) < 4 or word.endswith(("ss", "us", "is")):
+        return word
+    if word.endswith("ies") and word[-4] not in "aeiou":
+        return word[:-3] + "y"
+    if word.endswith(("sses", "shes", "ches", "xes", "zzes")):
+        return word[:-2]
+    return word[:-1] if word.endswith("s") else word
+
+
+def _grounded_term_occurs(term: str, source: str) -> bool:
+    """Accept regular English plurals and possessives in the same evidence."""
+    return term_occurs(term, source) or term_occurs(
+        _LATIN_WORD.sub(_grounding_word, term), _LATIN_WORD.sub(_grounding_word, source)
+    )
+
+
 def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
     issues, unknown_quoted = [], {}
     valid = ctx.valid_quotes
@@ -1387,7 +1409,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             }
             missing_names = {
                 name for name in proper_names(numeric_prose)
-                if not any(term_occurs(name, excerpt) for excerpt in source)
+                if not any(_grounded_term_occurs(name, excerpt) for excerpt in source)
             }
             supported_originals = set()
             original_excerpts = [*excerpts, *_adjacent_screen_excerpts(evidence)]
@@ -1395,7 +1417,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 original = (match[1] or match[2]).strip()
                 if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
                     continue
-                if any(term_occurs(original, excerpt) for excerpt in original_excerpts):
+                if any(_grounded_term_occurs(original, excerpt) for excerpt in original_excerpts):
                     supported_originals.add(match.start())
                 else:
                     issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
@@ -1404,7 +1426,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                     continue
                 term = (match[1] or match[2]).strip()
                 if term and not term.startswith("[") and term.casefold() not in _PROPER_SKIP:
-                    if not any(term_occurs(term, excerpt) for excerpt in source):
+                    if not any(_grounded_term_occurs(term, excerpt) for excerpt in source):
                         unknown_quoted.setdefault(term.casefold(), term)
             issues.extend(f"{section.heading}: number {label!r} is absent from the end evidence"
                           for label in sorted(missing_numbers))

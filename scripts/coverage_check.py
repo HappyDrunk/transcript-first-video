@@ -395,7 +395,7 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
 def _check_and_record(job: Path, delivery: Path | None) -> dict:
     status = verify_note.read_job_status(job)
     if verify_note.repair_lock(status):
-        return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
+        return {"ok": False, "reasons": [verify_note.lock_message(status)], "warnings": [], "not_checked": []}
     try:
         verify_note.prepare_job_note(job)
     except (OSError, RuntimeError) as exc:
@@ -404,7 +404,7 @@ def _check_and_record(job: Path, delivery: Path | None) -> dict:
     if inputs["note"] is not None:
         status = verify_note.record_note_revision(job, digest=inputs["note"])
         if verify_note.repair_lock(status):
-            return {"ok": False, "reasons": [verify_note.REPAIR_LIMIT_MESSAGE], "warnings": [], "not_checked": []}
+            return {"ok": False, "reasons": [verify_note.lock_message(status)], "warnings": [], "not_checked": []}
     checked_delivery = delivery
     delivery_bytes = None
     if delivery is not None and inputs["note"] is not None:
@@ -433,7 +433,7 @@ def _check_and_record(job: Path, delivery: Path | None) -> dict:
         result["not_checked"].append("完成 NOT CHECKED: run verify and coverage on the current job files")
     if verify_note.repair_lock(status):
         result["ok"] = False
-        result["reasons"].append(verify_note.REPAIR_LIMIT_MESSAGE)
+        result["reasons"].append(verify_note.lock_message(status))
     return result
 
 
