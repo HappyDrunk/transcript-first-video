@@ -77,7 +77,25 @@ def fingerprint(value: tuple[int, str, str], job: Path) -> str:
     # A random directory is the only input that differs across checkouts.
     stdout = stdout.replace(job.as_posix(), "<job>")
     stderr = stderr.replace(job.as_posix(), "<job>")
-    encoded = json.dumps([code, json.loads(stdout), stderr], ensure_ascii=False, sort_keys=True)
+    payload = json.loads(stdout)
+    # The frozen digest predates C04c review. Restore just its old display
+    # and exit for this comparison, leaving all other gate output unchanged.
+    findings = payload.pop("c04c", [])
+    payload.pop("c04c_sha256", None)
+    payload.get("warnings", [])[:] = [
+        warning for warning in payload.get("warnings", []) if not warning.startswith("C04c-")
+    ]
+    for rule in payload.get("rules", []):
+        if rule.get("severity") != "WARN":
+            continue
+        assert rule["id"] == "C04c" and findings
+        rule.pop("severity")
+        reasons = payload["reasons"]
+        before = next((i for i, reason in enumerate(reasons) if reason.startswith("C04d FAIL:")), len(reasons))
+        reasons.insert(before, f'C04c FAIL: {rule["message"]}')
+        payload["allowed"] = False
+        code = 2
+    encoded = json.dumps([code, payload, stderr], ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -183,7 +201,8 @@ class Phase2ETests(unittest.TestCase):
         rule = self.assert_rule(result, "C04c", False)
         self.assertIn("72%", rule["message"])
         self.assertEqual([item["id"] for item in result["rules"] if not item["ok"]], ["C04c"])
-        self.assertEqual(code, 2, result)
+        self.assertEqual(code, 0, result)
+        self.assertEqual(rule["severity"], "WARN")
 
     def test_screen_only_name_supports_prose(self) -> None:
         line = "[01:35][画面] Vellora"
@@ -467,7 +486,7 @@ class Phase2ETests(unittest.TestCase):
         note = note.replace("## 翻车或别用\n", "画面显示含水率为 72%。 ⏱ 00:30\n\n## 翻车或别用\n")
         write(job / "note.md", note)
         code, result = self.verify(job)
-        self.assertEqual(code, 2, result)
+        self.assertEqual(code, 0, result)
         self.assertIn("72%", self.assert_rule(result, "C04c", False)["message"])
 
     def test_nameplate_mode_scans_the_first_three_minutes(self) -> None:

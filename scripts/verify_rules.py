@@ -1528,8 +1528,10 @@ def _grounded_term_occurs(term: str, source: str) -> bool:
     return " " in split_term and term_occurs(split_term, _COMPOUND_NAME_BOUNDARY.sub(" ", source))
 
 
-def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
+def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tuple[str, bool, str]:
     issues, unknown_quoted = [], {}
+    quoted_findings = {}
+    cursor = 0
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
@@ -1541,10 +1543,33 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 continue
             source_claims = section.prose if claim == section.heading else [claim]
             times = delivery_times(claim).union(*(delivery_times(item) for item in source_claims))
-            linked = [quote for stamp in times for quote in match_link(stamp, valid)[0]]
+            linked = [quote for stamp in sorted(times) for quote in match_link(stamp, valid)[0]]
             if times and not linked:
                 continue
             evidence = linked if times else valid
+            numbers_by_quote = [canonical_numbers(quote.text, screen=quote.screen)[1] for quote in evidence]
+            if findings is not None:
+                located = re.compile(r"\s+".join(map(re.escape, claim.split()))).search(ctx.note, cursor)
+                start = located.start() if located else cursor
+                line = ctx.note.count("\n", 0, start) + 1
+                if located:
+                    cursor = located.end()
+                citations = [{
+                    "time": _fmt(quote.stamp), "text": quote.text, "screen": quote.screen,
+                    "source_line": quote.match.offset + 1 if quote.screen else None,
+                    "values": [number.label for number in numbers],
+                } for quote, numbers in zip(evidence, numbers_by_quote)]
+
+            def finding(kind: str, term: str, offset: int) -> dict:
+                return {"kind": kind, "term": term, "line": line, "offset": offset,
+                        "section": section.heading, "claim": claim, "citations": citations}
+
+            def add(kind: str, terms) -> None:
+                if findings is not None:
+                    for term in terms:
+                        matches = list(re.finditer(re.escape(term), claim, re.IGNORECASE))
+                        for match in matches or (None,):
+                            findings.append(finding(kind, term, match.start() if match else 0))
             excerpts = [quote.text for quote in evidence]
             screen_excerpts = [quote.text for quote in evidence if quote.screen]
             local_corrections = [corrected for original, corrected in screen_corrections
@@ -1553,7 +1578,7 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
             prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
             if parent == _C04_START[1]:
                 prose = _remove_properties(prose, ctx.fields)
-            support = [value for quote in evidence for value in canonical_numbers(quote.text, screen=quote.screen)[1]]
+            support = [value for numbers in numbers_by_quote for value in numbers]
             if not ctx.has_screen_file:
                 support.extend(value for excerpt in corrections for value in canonical_numbers(excerpt)[1])
             numeric_text = prose
@@ -1588,6 +1613,8 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                     supported_originals.add(match.start())
                 else:
                     issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
+                    if findings is not None:
+                        findings.append(finding("original", original, match.start()))
             for match in _QUOTED_TERM.finditer(prose):
                 if match.end() in supported_originals:
                     continue
@@ -1595,12 +1622,22 @@ def c04c_grounding(ctx: RuleContext) -> tuple[str, bool, str]:
                 if term and not term.startswith("[") and term.casefold() not in _PROPER_SKIP:
                     if not any(_grounded_term_occurs(term, excerpt) for excerpt in source):
                         unknown_quoted.setdefault(term.casefold(), term)
+                        if findings is not None:
+                            quoted_findings.setdefault(term.casefold(), finding("quoted", term, match.start()))
             issues.extend(f"{section.heading}: number {label!r} is absent from the end evidence"
                           for label in sorted(missing_numbers))
             issues.extend(f"{section.heading}: name {name!r} is absent from the end evidence"
                           for name in sorted(missing_names))
+            add("number", sorted(missing_numbers))
+            add("name", sorted(missing_names))
     if len(unknown_quoted) > 2:
         issues.append(f"quoted names are absent from the end evidence: {', '.join(list(unknown_quoted.values())[:6])}")
+        if findings is not None:
+            findings.extend(list(quoted_findings.values())[:6])
+    if findings is not None:
+        findings.sort(key=lambda row: (row["line"], row["offset"]))
+        for number, row in enumerate(findings, 1):
+            row["id"] = f"C04c-{number:03}"
     return _result("C04c", issues, "numbers and names have end evidence")
 
 
@@ -1704,8 +1741,8 @@ RULES = (r01_gate, r04_quotes_verbatim, r05_timestamps, r13_today_step, r14_plat
          r15_failed_status, c04a_structure, c04b_trace, c04c_grounding, c04d_explanations)
 
 
-def run_rules(ctx: RuleContext) -> list[tuple[str, bool, str]]:
-    return [rule(ctx) for rule in RULES]
+def run_rules(ctx: RuleContext, c04c: list[dict] | None = None) -> list[tuple[str, bool, str]]:
+    return [c04c_grounding(ctx, c04c) if rule is c04c_grounding else rule(ctx) for rule in RULES]
 
 
 def failure_lines(results: list[tuple[str, bool, str]]) -> list[str]:

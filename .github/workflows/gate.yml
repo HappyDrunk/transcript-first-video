@@ -23,6 +23,8 @@ jobs:
         run: python3 scripts/test_render_reading_note.py
       - name: Read-only speech quote extraction
         run: python3 scripts/test_extract_quote.py
+      - name: Resumable stop and C04c review
+        run: python3 scripts/test_phase4_c04c_review.py
       - name: Automatic screen acquisition
         run: python3 scripts/test_phase4_auto_screen.py
       - name: Frozen regression samples (other work packages pending)
