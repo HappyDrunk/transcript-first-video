@@ -324,6 +324,8 @@ def draft_limit_exceeded(status: dict) -> bool:
 
 
 def lock_message(status: dict) -> str:
+    if status.get("status") == NEEDS_USER and status.get("reason"):
+        return status["reason"]
     return DRAFT_LIMIT_MESSAGE if draft_limit_exceeded(status) else REPAIR_LIMIT_MESSAGE
 
 
@@ -540,7 +542,7 @@ def resume_job(job: Path) -> None:
 def record_gate_result(
     job: Path, gate: str, allowed: bool, reasons: list[str], *, inputs: dict | None = None,
     coverage: dict | None = None, review: bool = False, c04c: list[dict] | None = None,
-    review_pending: bool = False, note_inputs: dict | None = None,
+    review_error: ValueError | None = None, note_inputs: dict | None = None,
 ) -> dict:
     """Persist a single submission, optionally containing both gate results."""
     data = read_job_status(job)
@@ -585,7 +587,7 @@ def record_gate_result(
             and verifier.get("inputs") == inputs
             and verifier.get("skill_version") == current_skill_version()
         ):
-            pending = review_pending or (not review and bool(verifier.get("c04c")))
+            pending = bool(review_error) or (not review and bool(verifier.get("c04c")))
             data["finished"] = not pending
             data["status"] = "transcript_ready" if pending else "finished"
             data["note"] = "note.md"
@@ -595,6 +597,13 @@ def record_gate_result(
             data.pop("failure_lines", None)
             if review and not pending:
                 data["review"]["final_inputs"] = inputs
+            if isinstance(review_error, c04c_review.ConfirmedError):
+                batch = data["review"]
+                if batch.get("c04c_rejected_inputs") != inputs:
+                    batch["c04c_rejected_inputs"] = inputs
+                    batch["failures"] += 1
+                if batch["failures"] >= 2:
+                    stop_for_user(job, data, str(review_error), note_inputs or inputs)
     write_job_status(job, data)
     return data
 
@@ -734,7 +743,7 @@ def check_job_submission(
             c04c_review.final(review_content, batch.get("c04c", []), batch.get("c04c_decisions", {}),
                               result.get("c04c", []), note)
         except ValueError as exc:
-            review_error = str(exc)
+            review_error = exc
     if no_extractable and not changed:
         coverage_reasons = coverage["reasons"] if coverage is not None else []
         status = apply_no_extractable(
@@ -745,7 +754,7 @@ def check_job_submission(
         status = record_gate_result(
             job, "verify", result["allowed"], result["reasons"],
             inputs=inputs if canonical_note else None, coverage=coverage, review=review,
-            c04c=result.get("c04c"), review_pending=bool(review_error), note_inputs=inputs,
+            c04c=result.get("c04c"), review_error=review_error, note_inputs=inputs,
         )
     if coverage is not None:
         coverage["finished"] = status["finished"]
@@ -759,7 +768,7 @@ def check_job_submission(
         result["reasons"].extend(stopped.pop("reasons"))
         result.update(stopped)
     if review_error:
-        result["reasons"].append(review_error)
+        result["reasons"].append(str(review_error))
     return result
 
 

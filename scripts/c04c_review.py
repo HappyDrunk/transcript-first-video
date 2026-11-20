@@ -95,6 +95,10 @@ def _identity(row: dict) -> tuple:
             json.dumps(row["citations"], sort_keys=True))
 
 
+class ConfirmedError(ValueError):
+    """A bound follow-up has identified a true error in the current draft."""
+
+
 def final(content: bytes, original: list[dict], verdicts: dict,
           current: list[dict], note: str) -> None:
     original_by_id = {row["id"]: row for row in original}
@@ -127,9 +131,11 @@ def final(content: bytes, original: list[dict], verdicts: dict,
             confirmed.add(key)
         elif line.startswith("- 终稿 "):
             _row("- " + line.removeprefix("- 终稿 "), remaining, final_verdicts)
-    if set(final_verdicts) != set(remaining) or any(value != "误报" for value in final_verdicts.values()):
+    if set(final_verdicts) != set(remaining):
         raise ValueError("uncleared C04c warnings need decisions on the current draft")
     if remaining and final_digest != digest(current):
         raise ValueError("final C04c warning snapshot is missing or stale")
     if confirmed != needed:
         raise ValueError("C04c true or unsupported warnings need confirmed corrections")
+    if any(value == "真错" for value in final_verdicts.values()):
+        raise ConfirmedError("the C04c follow-up found a true error in this review draft")
