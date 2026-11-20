@@ -1,0 +1,63 @@
+[
+  {
+    "name": "first-half",
+    "claim": "2025 年上半年，她曾为全公司约 12000 人做 AI 赋能，覆盖市场、设计、财务、法务等职能。随后首席技术官（CTO）把任务定为：建成一个 agentic 工程组织。 ⏱ 01:55 ⏱ 02:07",
+    "quotes": [
+      "> [01:55] I spent the first half of 2025 leading AI enablement for our entire company. So, 12,000 employees across every function, marketing, design, finance, legal.",
+      "> [02:07] Now, our CTO tasked me with building an agentic engineering org."
+    ],
+    "edits": [
+      [
+        "2025 年上半年",
+        "2026 年上半年",
+        "2026"
+      ]
+    ]
+  },
+  {
+    "name": "maturity",
+    "claim": "六个阶段是：第 0 阶段完全不用 AI 工具；第 1 阶段只用自动补全，可能从未进过智能体模式；第 2 阶段会和智能体聊天，但还不靠它产出拉取请求（PR）；第 3 阶段把任务交给智能体并审查输出；第 4 阶段并行运行多个智能体；第 5 阶段把完整任务交给智能体，并且智能体不必一直靠人引导也能产出可上线的结果。幻灯片上的简称依次是 Unengaged（未使用）、Assisted（辅助）、Conversational（对话）、Directed（指挥）、Parallel（并行）、Autonomous（自治）。她说，上半年结束时，大多数工程师还在第 1 到第 2 阶段，而她需要把他们带到第 5 阶段。 ⏱ 03:32 ⏱ 03:36 ⏱ 03:44 ⏱ 03:52 ⏱ 04:00 ⏱ 04:10",
+    "quotes": [
+      "> [03:32] So, stage zero is where the engineer doesn't use AI tools in their workflow at all. Stage one, they use AI to auto complete, but they've never used it in agent mode, maybe. Uh stage two is where engineers are chatting with agents, but not using it to produce any PRs. Stage three, engineers are delegating tasks to agents and reviewing the output. Those at stage four are running multiple agents in parallel. And then stage five is that final boss where engineers are delegating complete tasks to agents and the agent is able to produce shippable results without the human necessarily needing to guide it.",
+      "> [03:36][画面] Unengaged",
+      "> [03:36][画面] Assisted",
+      "> [03:44][画面] Conversational",
+      "> [03:52][画面] Directed",
+      "> [04:00][画面] Parallel",
+      "> [04:00][画面] Autonomous",
+      "> [04:10] So, I'd say by the end of the first half, the bulk of our engineers were between stages one and two. And I needed to get them to stage five."
+    ],
+    "edits": [
+      [
+        "第 1 到第 2 阶段",
+        "第 1 到第 8 阶段",
+        "8"
+      ]
+    ]
+  },
+  {
+    "name": "month-and-stage",
+    "claim": "当时大多数人仍在第 1 到第 2 阶段，会聊天但很少用智能体产出 PR。这大约是 2025 年 6 月：模型已经能写功能，但代码常常不符合团队规范，开发者还不敢把工作交给它。于是第一件事是让仓库对 AI 就绪。她的判断是：把 AI 直接嵌进仓库，智能体会表现更好，而且整个团队都能受益，不只是那 1%。 ⏱ 06:36 ⏱ 07:12",
+    "quotes": [
+      "> [06:36] Now, remember at this point, most of our engineers were between stages one and two where they're chatting with AI but not really using it to produce PRs. So, I wanted to get the AI champions to stage three. This was about June 2025. So, the models were decent enough to write a feature for you, right? But chances were pretty high that the code wouldn't conform to your team's conventions and standards. So, developers didn't trust the agents enough to delegate work to it yet. So, the first area that we focused on was making our repos AI ready.",
+      "> [07:12] My theory here was if I can get engineers to embed AI directly into their repos, then not only would the agents perform better but the entire team would benefit, not just the 1%."
+    ],
+    "edits": [
+      [
+        "2025 年 6 月",
+        "2026 年 6 月",
+        "2026"
+      ],
+      [
+        "第 1 到第 2 阶段",
+        "第 1 到第 8 阶段",
+        "8"
+      ],
+      [
+        "2025 年 6 月",
+        "2025 年 9 月",
+        "9"
+      ]
+    ]
+  }
+]
