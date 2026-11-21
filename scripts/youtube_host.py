@@ -489,8 +489,8 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
                     raw._sock = orig_sock
     except urllib.error.HTTPError as exc:
         raise HostError(f"HTTP {exc.code} for caption request") from exc
-    except http.client.InvalidURL as exc:
-        raise HostError("caption request failed: invalid URL") from exc
+    except http.client.InvalidURL:
+        raise HostError("caption request failed: invalid URL") from None
     except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
         raise HostError(f"caption request failed: {redact(str(exc))}") from exc
     return bytes(data)
