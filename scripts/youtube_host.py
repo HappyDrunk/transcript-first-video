@@ -16,6 +16,8 @@ Exit 1 usage.
 from __future__ import annotations
 
 import argparse
+import http.client
+import ipaddress
 import json
 import math
 import os
@@ -24,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -41,6 +44,10 @@ import verify_rules  # noqa: E402
 
 USER_AGENT = "Mozilla/5.0 (compatible; transcript-first-video/1.0)"
 INSTANCE_LIST = "https://api.invidious.io/instances.json?sort_by=health"
+# This single built-in seed is a single point of failure used only when public discovery fails or yields no usable hosts.
+SEED_INVIDIOUS_INSTANCES = ("https://yt.chocolatemoo53.com",)
+MIRROR_REQUEST_TIMEOUT = 7
+MIRROR_TOTAL_BUDGET = 30.0
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 _SECRET = re.compile(
@@ -114,7 +121,8 @@ class HostError(Exception):
 
 
 def redact(text: str, limit: int = 700) -> str:
-    cleaned = _SECRET.sub(r"\1\2<redacted>", text or "")
+    cleaned = re.sub(r"(?i)(https?://)[^/\s?#]+@", r"\1<redacted>@", text or "")
+    cleaned = _SECRET.sub(r"\1\2<redacted>", cleaned)
     cleaned = re.sub(r"sk-[A-Za-z0-9]{8,}", "sk-<redacted>", cleaned)
     cleaned = re.sub(r"https?://\S+", lambda match: match.group(0).split("?")[0], cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -419,7 +427,31 @@ def fetch_ytdlp_captions(
     }
 
 
-def http_get(url: str, *, limit: int, timeout: int, accept: str) -> bytes:
+class _DeadlineSocket:
+    def __init__(self, sock, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+
+    def _arm(self) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("caption request exceeded deadline")
+        self._sock.settimeout(remaining)
+
+    def recv_into(self, buffer, *args, **kwargs):
+        self._arm()
+        return self._sock.recv_into(buffer, *args, **kwargs)
+
+    def recv(self, *args, **kwargs):
+        self._arm()
+        return self._sock.recv(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._sock, name)
+
+
+def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> bytes:
+    deadline = time.monotonic() + float(timeout)
     request = urllib.request.Request(
         url,
         headers={
@@ -428,29 +460,89 @@ def http_get(url: str, *, limit: int, timeout: int, accept: str) -> bytes:
             "Accept-Encoding": "identity",
         },
     )
+    data = bytearray()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = response.read(limit + 1)
+            is_http_response = isinstance(response, http.client.HTTPResponse)
+            read_chunk = response.read1 if is_http_response else response.read
+            raw = getattr(getattr(response, "fp", None), "raw", None)
+            orig_sock = getattr(raw, "_sock", None)
+            try:
+                if orig_sock is not None:
+                    raw._sock = _DeadlineSocket(orig_sock, deadline)
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise HostError("caption request exceeded deadline")
+                    chunk = read_chunk(min(16_384, limit + 1 - len(data)))
+                    data.extend(chunk)
+                    if len(data) > limit:
+                        raise HostError("caption response too large")
+                    if time.monotonic() > deadline:
+                        raise HostError("caption request exceeded deadline")
+                    if not chunk:
+                        if is_http_response and not response.chunked and response.length not in (None, 0):
+                            raise HostError("caption response was truncated before Content-Length")
+                        break
+            finally:
+                if orig_sock is not None:
+                    raw._sock = orig_sock
     except urllib.error.HTTPError as exc:
         raise HostError(f"HTTP {exc.code} for caption request") from exc
-    except urllib.error.URLError as exc:
-        raise HostError(f"caption request failed: {redact(str(exc.reason))}") from exc
-    if len(data) > limit:
-        raise HostError("caption response too large")
-    return data
+    except http.client.InvalidURL as exc:
+        raise HostError("caption request failed: invalid URL") from exc
+    except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
+        raise HostError(f"caption request failed: {redact(str(exc))}") from exc
+    return bytes(data)
 
 
-def invidious_bases() -> list[str]:
-    raw = os.environ.get("INVIDIOUS_INSTANCE", "").strip()
-    if raw.casefold() == "off":
-        return []
-    if raw:
-        return [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+def _mirror_host(base: str) -> str:
+    parsed = urllib.parse.urlparse(base)
+    host = parsed.hostname or ""
+    port = parsed.port
+    if port is not None and ":" in host:
+        host = f"[{host}]"
+    return f"{host}:{port}" if port is not None else host
+
+
+def _valid_mirror_base(base: str, *, require_https: bool = False) -> str | None:
+    if not base or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in base):
+        return None
     try:
-        payload = http_get(INSTANCE_LIST, limit=1_000_000, timeout=20, accept="application/json")
-        data = json.loads(payload.decode("utf-8", errors="replace"))
-    except (HostError, json.JSONDecodeError, TimeoutError) as exc:
-        raise HostError(f"could not list public caption mirrors: {redact(str(exc))}") from exc
+        parsed = urllib.parse.urlparse(base)
+        host = parsed.hostname
+        schemes = {"https"} if require_https else {"http", "https"}
+        if parsed.scheme not in schemes or parsed.query or parsed.fragment or not host:
+            return None
+        if require_https and (parsed.username is not None or parsed.password is not None or "@" in parsed.netloc):
+            return None
+        port = parsed.port
+        hostport = parsed.netloc.rsplit("@", 1)[-1]
+        expected_host = f"[{host}]" if ":" in host else host
+        if port is None:
+            if hostport.casefold() != expected_host.casefold():
+                return None
+        else:
+            if ":" not in hostport:
+                return None
+            raw_host, raw_port = hostport.rsplit(":", 1)
+            if raw_host.casefold() != expected_host.casefold():
+                return None
+            if not (raw_port.isascii() and raw_port.isdigit() and int(raw_port) == port):
+                return None
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            if not re.fullmatch(rf"{label}(?:\.{label})*\.?", host):
+                return None
+        return _mirror_host(base)
+    except ValueError:
+        return None
+
+
+def _public_invidious_bases(payload: bytes) -> list[str]:
+    data = json.loads(payload.decode("utf-8", errors="replace"))
     bases: list[str] = []
     if not isinstance(data, list):
         return bases
@@ -460,14 +552,27 @@ def invidious_bases() -> list[str]:
         meta = item[1]
         if meta.get("api") is not True:
             continue
-        if meta.get("type") not in {None, "https"}:
+        if meta.get("type") not in (None, "https"):
             continue
         uri = str(meta.get("uri") or "").rstrip("/")
-        if uri.startswith("https://"):
+        if _valid_mirror_base(uri, require_https=True):
             bases.append(uri)
         if len(bases) >= 3:
             break
     return bases
+
+
+def invidious_bases() -> list[str]:
+    raw = os.environ.get("INVIDIOUS_INSTANCE", "").strip()
+    if raw.casefold() == "off":
+        return []
+    if raw:
+        return [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+    try:
+        payload = http_get(INSTANCE_LIST, limit=1_000_000, timeout=MIRROR_REQUEST_TIMEOUT, accept="application/json")
+        return _public_invidious_bases(payload)
+    except (HostError, ValueError, OSError, RecursionError) as exc:
+        raise HostError(f"could not list public caption mirrors: {redact(str(exc))}") from exc
 
 
 def _track_lang(track: dict) -> tuple[str | None, bool]:
@@ -518,20 +623,62 @@ def safe_caption_url(base: str, url: str) -> str:
 
 
 def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
-    try:
-        bases = invidious_bases()
-    except HostError as exc:
-        return {"text": None, "error": redact(str(exc))}
-    if not bases:
-        return {"text": None, "error": "caption mirror disabled (INVIDIOUS_INSTANCE=off)"}
-    errors: list[str] = []
-    for base in bases:
-        host = urllib.parse.urlparse(base).netloc or base
+    deadline = time.monotonic() + MIRROR_TOTAL_BUDGET
+    mirror_attempts: list[dict] = []
+    raw = os.environ.get("INVIDIOUS_INSTANCE", "").strip()
+    layer = "env" if raw else "public-list"
+
+    class BudgetExhausted(HostError):
+        pass
+
+    def remaining_budget() -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise BudgetExhausted("caption mirror budget exhausted")
+        return remaining
+
+    def get(url: str, *, limit: int, accept: str) -> bytes:
+        return http_get(url, limit=limit, timeout=min(MIRROR_REQUEST_TIMEOUT, remaining_budget()), accept=accept)
+
+    def record(ok: bool, detail: str) -> None:
+        mirror_attempts.append({
+            "source": "caption-mirror", "layer": layer, "ok": ok, "detail": redact(detail),
+        })
+
+    def failure(error: str) -> dict:
+        return {"text": None, "error": error, "mirror_layer": layer, "mirror_attempts": mirror_attempts}
+
+    if raw.casefold() == "off":
+        return failure("caption mirror disabled (INVIDIOUS_INSTANCE=off)")
+    if raw:
+        bases = [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
+        if not bases:
+            record(False, "INVIDIOUS_INSTANCE contains no caption mirror URLs")
+    else:
         try:
-            listing = http_get(
+            bases = _public_invidious_bases(get(INSTANCE_LIST, limit=1_000_000, accept="application/json"))
+            if not bases:
+                raise HostError("public caption mirror list contained no usable HTTPS API hosts")
+        except BudgetExhausted as exc:
+            record(False, str(exc))
+            return failure(str(exc))
+        except (HostError, ValueError, OSError, RecursionError) as exc:
+            record(False, f"could not list public caption mirrors: {exc}")
+            layer = "seed-fallback"
+            bases = SEED_INVIDIOUS_INSTANCES
+            log(f"public caption mirror discovery failed, trying seed-fallback at {_mirror_host(bases[0])} if budget remains")
+
+    for base in bases:
+        host = "invalid mirror URL"
+        try:
+            remaining_budget()
+            mirror_host = _valid_mirror_base(base)
+            if mirror_host is None:
+                raise HostError("mirror URL must use http or https with a host")
+            host = mirror_host
+            listing = get(
                 f"{base}/api/v1/captions/{video_id}",
                 limit=1_000_000,
-                timeout=25,
                 accept="application/json",
             )
             data = json.loads(listing.decode("utf-8", errors="replace"))
@@ -543,19 +690,34 @@ def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
                 want = quality_gate.normalize_lang(expected_lang) or "a default"
                 raise HostError(f"no caption track for {want}")
             target = safe_caption_url(base, picked["url"])
-            body = http_get(target, limit=2_000_000, timeout=40, accept="text/vtt, text/plain, */*")
+            body = get(target, limit=2_000_000, accept="text/vtt, text/plain, */*")
+            if time.monotonic() > deadline:
+                raise BudgetExhausted("caption mirror budget exhausted")
+            if not body:
+                raise HostError("mirror caption track was empty")
             text = body.decode("utf-8", errors="replace")
+            language = picked["lang"]
+            kind = "auto" if picked["auto"] else "manual"
+            record(True, f"{language} {kind} via {host} (layer={layer})")
             return {
                 "text": text,
-                "language": picked["lang"],
-                "kind": "auto" if picked["auto"] else "manual",
+                "language": language,
+                "kind": kind,
                 "error": None,
                 "source": "caption-mirror",
                 "mirror_host": host,
+                "mirror_layer": layer,
+                "mirror_attempts": mirror_attempts,
             }
-        except (HostError, json.JSONDecodeError, TimeoutError) as exc:
-            errors.append(f"{host}: {redact(str(exc))}")
-    return {"text": None, "error": "; ".join(errors) or "no public caption mirror responded"}
+        except BudgetExhausted as exc:
+            record(False, str(exc))
+            break
+        except (HostError, ValueError, OSError, RecursionError) as exc:
+            record(False, f"{host}: {exc}")
+            if time.monotonic() >= deadline:
+                record(False, "caption mirror budget exhausted")
+                break
+    return failure("; ".join(attempt["detail"] for attempt in mirror_attempts))
 
 
 def asr_plan(choice: str) -> tuple[str, str | None]:
@@ -1303,9 +1465,12 @@ def run_host(
             attempts.append({"source": "yt-dlp", "ok": False, "detail": fetched.get("error") or "no captions"})
 
     if caption is None and os.environ.get("INVIDIOUS_INSTANCE", "").strip().casefold() != "off":
-        log("yt-dlp did not yield captions; trying a public caption mirror")
+        log("yt-dlp did not yield captions. Trying caption mirrors.")
         mirrored = fetch_mirror_captions(video_id, expected_lang)
-        if mirrored.get("text"):
+        mirror_attempts = mirrored.get("mirror_attempts")
+        if mirror_attempts:
+            attempts.extend(mirror_attempts)
+        elif mirrored.get("text"):
             attempts.append(
                 {
                     "source": "caption-mirror",
@@ -1313,11 +1478,10 @@ def run_host(
                     "detail": f"{mirrored.get('language')} {mirrored.get('kind')} via {mirrored.get('mirror_host')}",
                 }
             )
-            caption = mirrored
         else:
-            attempts.append(
-                {"source": "caption-mirror", "ok": False, "detail": mirrored.get("error") or "no captions"}
-            )
+            attempts.append({"source": "caption-mirror", "ok": False, "detail": mirrored.get("error") or "no captions"})
+        if mirrored.get("text"):
+            caption = mirrored
 
     if caption and caption.get("text"):
         log(f"captions acquired via {caption.get('source')} ({caption.get('language')} {caption.get('kind')})")
@@ -1331,7 +1495,11 @@ def run_host(
             caption_language=caption.get("language"),
             caption_kind=caption.get("kind"),
             verify=verify,
-            extra={"attempts": attempts, "mirror_host": caption.get("mirror_host")},
+            extra={
+                "attempts": attempts,
+                "mirror_host": caption.get("mirror_host"),
+                "mirror_layer": caption.get("mirror_layer"),
+            },
             screen_download=screen_download,
             media_duration=caption.get("media_duration"),
             metadata=metadata,
@@ -1339,6 +1507,12 @@ def run_host(
 
     backend, block = asr_plan(asr_choice)
     if block:
+        if backend == "off" and "ASR is not configured" in block:
+            block = (
+                "The YouTube job is not finished because no usable captions were found and ASR is not configured. "
+                "Retry with a working caption mirror in INVIDIOUS_INSTANCE, or set ASR_BACKEND=whisper "
+                "for local transcription or ASR_BACKEND=openai with OPENAI_API_KEY. No note was written."
+            )
         detail = "; ".join(
             f"{item['source']}: {item['detail']}" for item in attempts if not item["ok"]
         )
