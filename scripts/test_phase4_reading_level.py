@@ -259,6 +259,8 @@ class ClosingTests(JobCase):
                 "\n\n本文略去", f"\n\n{PLAIN_H2}\n\n{APPLICATIONS[0]}\n\n本文略去"), "C04a"),
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
             ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
+            ("hidden link destination only", concise_note((APPLICATIONS[0], "[...](https://example.com) ⏱ 00:20")), "R13"),
+            ("html comment only", concise_note((APPLICATIONS[0], "<!-- hidden text --> ⏱ 00:20")), "R13"),
             ("three sentences", concise_note((APPLICATIONS[0],
                 "写上播种月份。把信封收好。查看标签。 ⏱ 00:20")), "R13"),
         )
@@ -322,6 +324,26 @@ class ClosingTests(JobCase):
             result = self.render(require_review=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn(PLAIN_H2, self.output.read_text(encoding="utf-8").splitlines())
+
+    def test_both_closing_headings_with_expected_last_refuses_without_consuming_changes_batch(self):
+        self.reopen_level("concise")
+        note = concise_note()
+        self.write_note(note)
+        self.bind_review("changes")
+        self.assertIsNone(self.status().get("review"))
+        self.write_note(note.replace(CONCISE_H2, f"{PLAIN_H2}\n\n{APPLICATIONS[0]}\n\n{CONCISE_H2}", 1))
+
+        result = cli("verify_note.py", "--job", self.job, "--with-coverage")
+        with self.subTest(stage="verify exit"):
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        with self.subTest(stage="verify review status"):
+            self.assertIsNone(self.status().get("review"))
+
+        result = self.render(require_review=True)
+        with self.subTest(stage="render exit"):
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        with self.subTest(stage="render review status"):
+            self.assertIsNone(self.status().get("review"))
 
     def test_scaffold_uses_matching_heading(self):
         for level, expected, other in (
@@ -794,6 +816,21 @@ class ExampleTests(unittest.TestCase):
             "SKILL.md still advertises an outdated example count": "four synthetic examples" not in skill,
         }
         self.assertEqual([message for message, passed in checks.items() if not passed], [])
+
+    def test_gitattributes_pins_note_example_fixtures_to_lf(self):
+        fixtures = sorted(path.relative_to(ROOT).as_posix() for path in EXAMPLE.iterdir() if path.is_file())
+        self.assertTrue(fixtures)
+        result = subprocess.run(
+            ["git", "check-attr", "-z", "text", "eol", "--", *fixtures],
+            cwd=ROOT, capture_output=True, check=True,
+        )
+        fields = result.stdout.decode("utf-8").split("\0")[:-1]
+        attributes = {(path, name): value for path, name, value in zip(
+            fields[::3], fields[1::3], fields[2::3], strict=True,
+        )}
+        unpinned = [path for path in fixtures if attributes[path, "text"] != "unset"
+                    and (attributes[path, "text"], attributes[path, "eol"]) != ("set", "lf")]
+        self.assertEqual(unpinned, [], ".gitattributes must pin note-example fixtures to LF")
 
     def test_example_screen_checksum_matches_lf_fixture(self):
         status = read_json(EXAMPLE / "status.json")
