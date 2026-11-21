@@ -16,6 +16,7 @@ from unittest.mock import patch
 import knowledge_note
 import render_reading_note
 import verify_note
+import verify_rules
 from test_render_reading_note import FRONTMATTER, NOTE, ROOT, write_job
 
 
@@ -303,6 +304,8 @@ class ClosingTests(JobCase):
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
             ("timestamp hidden in link title", concise_note((
                 '[查看示例](https://example.test "⏱ 00:20")。',)), "R13"),
+            ("nested bracket link hides timestamp in title", concise_note((
+                '[查看 [嵌套] 示例](https://example.test "⏱ 00:20")。',)), "R13"),
             ("timestamp after closing paren in quoted link title", concise_note((
                 '[查看示例](https://example.test "note) ⏱ 00:20")。',)), "R13"),
             ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
@@ -337,16 +340,32 @@ class ClosingTests(JobCase):
                 with self.assertRaises(ValueError):
                     verify_note.check_closing_heading_pair(note.encode("utf-8"), "plain")
 
+    def test_unclosed_html_comment_masks_headings_to_eof(self):
+        with self.subTest(case="comment only"):
+            self.assertEqual(verify_rules.markdown_headings("<!--\n## hidden\n"), [])
+        with self.subTest(case="heading before comment"):
+            headings = verify_rules.markdown_headings(f"{CONCISE_H2}\n\n<!--\n## hidden")
+            self.assertEqual(
+                [(level, heading) for level, heading, _, _ in headings],
+                [(2, CONCISE_H2[3:])],
+            )
+        with self.subTest(case="concise closing before comment"):
+            note = concise_note().replace("\n\n本文略去", "\n\n<!--\n## hidden\n\n本文略去")
+            verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
+
     def test_closing_heading_pair_rejects_multiline_setext_and_indented_code_break(self):
         cases = (
             ("multiline Setext", "额外前提\n可以怎么用、可以拿去讨论什么\n-----"),
             ("indented code before thematic break", "    可以怎么用、可以拿去讨论什么\n-----"),
+            ("space-tab indented code before thematic break", " \t可以怎么用、可以拿去讨论什么\n-----"),
         )
         for case, replacement in cases:
             with self.subTest(case=case):
                 note = concise_note().replace(CONCISE_H2, replacement, 1)
                 with self.assertRaises(ValueError):
                     verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
+        with self.subTest(case="space-tab indentation in heading parser"):
+            self.assertEqual(verify_rules.markdown_headings(" \tcode\n---"), [])
 
     def test_closing_heading_pair_rejects_bare_empty_h2(self):
         note = concise_note().replace("\n\n本文略去", "\n\n##\n\n本文略去")
