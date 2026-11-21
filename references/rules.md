@@ -9,15 +9,17 @@ R01 到 R17 和 Coverage C 不检查意思是否和引文一致，意思由复�
 | R01 | The current transcript exists and passes the transcription quality gate. |
 | R04 | Each line under 原文依据 contains at least 40 contiguous verbatim characters. Matching folds whitespace and case and permits adjacent cues. |
 | R05 | Each quote stamp is within 15 seconds of the nearest cue start covered by its verbatim span. Equidistant cue starts resolve to the earlier start. An untimed transcript is preserved and refused with「缺时间戳，请用带时间戳的转写重跑」. |
-| R13 | 今天立刻动手一步 provides a short, linked action in at most two sentences. A same-language action needs a literal match or at least 30% content-token support from an instruction in its evidence. |
+| R13 | 今天立刻动手一步 provides a short, linked action in at most two sentences. A same-language action needs a literal match or at least 30% content-token support from an instruction in its evidence. 可以怎么用、可以拿去讨论什么 has 1–3 items, each with 1–2 sentences and its own valid time link. |
 | R14 | An optional `platform_title` with more than three unsupported content tokens fails. |
 | R15 | Failure, unfinished, and no-extractable-content statuses forbid delivery. |
 | C02 | Long jobs need at least three quartiles, based on the full transcript. A known duration uses verified cue times. Character positions remain available for the no-clock diagnostic. |
-| C04a | Obsidian properties, current `transcript_path`, ordered headings for the chosen type, meaningful prose, and the final 本文略去 line and evidence section. |
+| C04a | Obsidian properties, current `transcript_path`, ordered headings for the chosen type, meaningful prose, and the final 本文略去 line and evidence section. Use one closing H2. 今天立刻动手一步 keeps one prose item. 可以怎么用、可以拿去讨论什么 uses 1–3 bullets or short paragraphs, without callouts or orphan text. |
 | C04b | Each middle claim has a time link. Each link selects all valid quotes at the exact stamp or the unique nearest quote within 15 seconds. Same-script speech pairs need three shared content tokens. Each end quote must be used, with at most one speech quote per second. |
 | C04c | Numbers, calendar dates, years, months, and versions are normalized by type before comparison with the linked original words. Calendar values do not supply ordinary quantities. Claims without links use the end evidence. Only 这场在谈什么、谁 may repeat `published`, `channel`, or `title` verbatim. Markdown list numbering is formatting. Caption corrections may supply a supported spelling. |
 | C04d | Term, analogy, and caption-correction blocks follow the specified forms. Terms accept aliases and hyphen spacing. A correction gives the original spelling from the transcript or a cited trusted screen line, and the corrected spelling. Titles and prose use the corrected spelling and exclude commentary about preparing or checking the note. |
 | S01 | Selection ranges cover the transcript in order. Verified quotes hit at least `max(3, ceil(0.9 × retained units))` retained units. The note's omission line lists the omitted ranges, and its links, quote spans, and identifiable verbatim excerpts stay within retained material. In slides mode, a ready, hash-matching `screen.txt` with slide markers requires one selection row per slide, using its number and start time, 留 or 略, and a reason. |
+
+R13 and C04a use the closing H2 in the note. The renderer pairs that heading with the job reading level.
 
 S01 warns when the omitted intervals exceed half the runtime. Verify warns when the readable Chinese body exceeds 1.2 Han characters per English word in the full English transcript. Properties, times, the omission line, end evidence, and explanation blocks are excluded from the Chinese count. A warning leaves the repair count and exit status alone.
 
@@ -43,7 +45,12 @@ Report only issues with a location and evidence. Follow this checklist. Do not r
 - For screen-only numbers, inspect the actual image for units, comparison targets, and conditions. Check compatibility with the note and spoken context. Remove uses unsupported by the image or contradicted by that context.
 - Find commentary in prose about preparing, checking, or selecting material, including new wording missed by C04d. Preserve legitimate source attribution, technical discussion of recognition, and marked caption corrections.
 
-Every `review.md` must include `## 未解释的术语和基础词`. Read the reading copy or the preview generated from this note section by section. Check essential terms, abbreviations and basic words at their first technical use. Flag a bare abbreviation or expansion that lacks a plain explanation of what it means here. Write one bullet per unexplained term in `词 | 首次出现的小节 | 原句` format, using that section's heading and quoting the first-use sentence verbatim. If the list is empty after checking every section, write `已逐节查过，没有`. Include any findings from this section in the same batch of changes.
+Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.
+
+- Plain and legacy use `## 未解释的术语和基础词`. Check essential terms, abbreviations and basic words at their first technical use. Flag a bare abbreviation or expansion that lacks a plain explanation of its local meaning.
+- Concise uses `## 精炼版也必须解释的词`. 逐节只查视频自造的词、冷门专名、首次出现且需要解释的缩写，以及讲者用法与通行定义不一致的词（W8）。PR、CTO、LLM、IDE、JVM 在常规用法下不必标出。
+
+In either section, write one bullet per unexplained term in `词 | 首次出现的小节 | 原句` format, using that section's heading and quoting the first-use sentence verbatim. If the list is empty after checking every section, write `已逐节查过，没有`. Include any findings from this section in the same batch of changes.
 
 The Task writes `review.md` with the bound receipt. Give each issue one row: note section or selection interval, original words or screenshot location, problem, and minimal change. Merge issues with the same cause. Use `clear` when the initial review finds no issue and `changes` when proposing a batch. The writer may reject a suggestion, leaving it in the receipt body with a one-sentence reason. Keep the Task's first-line judgment unchanged. The reviewer checks only this batch's treatment and affected evidence or selection. The scripts enforce input binding and bounded counting, not the semantic quality or the independence of the Task.
 

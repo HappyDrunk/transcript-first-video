@@ -1,0 +1,431 @@
+[00:02] So, I've spent the last couple of years
+[00:04] transforming Block's 3,500-person
+[00:08] engineering org into an autonomous one.
+[00:09] And this is a challenge that most tech
+[00:11] companies are actively trying to solve
+[00:14] or will be in the very near future. So,
+[00:16] today I'll share our path to getting
+[00:18] there.
+[00:20] Our agentic coding journey started very
+[00:22] early. We were building Goose, our
+[00:25] internal coding agent, even before the
+[00:27] LLM supported tool calling. We worked
+[00:29] with Anthropic as design partners for
+[00:32] the initial release of MCP, and Goose
+[00:33] became the reference implementation for
+[00:37] the MCP client. So, internally, our most
+[00:40] curious engineers were some of the very
+[00:42] first in the industry to use these types
+[00:44] of coding agents.
+[00:47] After a couple of months, about 90% of
+[00:49] our engineers were now using tools like
+[00:52] Goose and Claude Code regularly to
+[00:54] generate code. So, on paper, it looked
+[00:57] like we were all in on AI.
+[00:58] But our CEO was convinced that
+[01:00] engineering wasn't using AI at all.
+[01:02] Like, they couldn't be, right? As far as
+[01:04] he was concerned, because we weren't
+[01:07] shipping any faster.
+[01:08] Well, I had the numbers, both the
+[01:12] metrics and the token bills. So, I knew
+[01:14] that engineering was, in fact, using AI,
+[01:16] but he was right. Features certainly
+[01:18] weren't making it to our customers any
+[01:20] faster. So, I began to dig into this a
+[01:22] bit.
+[01:24] I think of AI enablements in three
+[01:27] phases: experimentation, adoption, and
+[01:30] impact. I'd say that we surpassed the
+[01:32] experimentation phase as 90% of our
+[01:37] engineering org was using AI, but they
+[01:38] still were kind of using it inside of
+[01:41] their IDE, you know, asking questions or
+[01:43] writing boilerplate code. And I knew
+[01:45] that if we really wanted to see
+[01:46] impactful outcomes, then we needed a way
+[01:49] to integrate AI into how we built and
+[01:51] ship.
+[01:55] I spent the first half of 2025 leading
+[01:58] AI enablement for our entire company.
+[02:00] So, 12,000 employees across every
+[02:03] function, marketing, design, finance,
+[02:04] legal.
+[02:07] Now, our CTO tasked me with building an
+[02:09] agentic engineering org.
+[02:11] Okay, sure.
+[02:13] But, what does that actually mean?
+[02:15] There's no playbook for any of this
+[02:17] stuff, right? And I know because I went
+[02:19] looking at your blogs hoping that you
+[02:22] all had it all figured out. But, I only
+[02:24] saw a bunch of posts saying how you all
+[02:27] were making it up as you went along. So,
+[02:30] I did the same, right? In the simplest
+[02:32] of terms, I defined an agentic
+[02:35] engineering org as one where engineers
+[02:37] leverage AI agents as their primary
+[02:40] means of producing engineering outcomes.
+[02:43] So, that meant that our engineers needed
+[02:45] to treat agents as core members of their
+[02:48] engineering workflow. Not just using AI
+[02:49] to help them write code here and there,
+[02:53] but actually working with agents.
+[02:56] Decomposing problems, delegating work,
+[02:59] reviewing and verifying what was done.
+[03:01] And we wanted them directing the work as
+[03:03] their default way of operating. But, of
+[03:06] course, the vast majority of our
+[03:08] engineers were not here. So, to see
+[03:10] where we needed to go, I came up with
+[03:12] the maturity model.
+[03:14] This model measures the engineer's
+[03:16] relationship with AI agents. So, how
+[03:20] they think and delegate and orchestrate.
+[03:22] And while I had some form of this model
+[03:25] in Q3 of last year, Steve Yegge's
+[03:28] Gastown article helped me reorganize it
+[03:30] into a better model.
+[03:32] So, stage zero is where the engineer
+[03:34] doesn't use AI tools in their workflow
+[03:37] at all. Stage one,
+[03:39] they use AI to auto complete, but
+[03:42] they've never used it in agent mode,
+[03:43] maybe.
+[03:44] Uh stage two is where engineers are
+[03:47] chatting with agents, but not using it
+[03:49] to produce any PRs. Stage three,
+[03:52] engineers are delegating tasks to agents
+[03:55] and reviewing the output. Those at stage
+[03:56] four are running multiple agents in
+[03:59] parallel. And then stage five is that
+[04:01] final boss where engineers are
+[04:03] delegating complete tasks to agents and
+[04:05] the agent is able to produce shippable
+[04:08] results without the human necessarily
+[04:10] needing to guide it. So, I'd say by the
+[04:12] end of the first half, the bulk of our
+[04:14] engineers were between stages one and
+[04:15] two.
+[04:18] And I needed to get them to stage five.
+[04:21] Now, I wasn't quite sure how to get
+[04:23] 3,500 engineers to that level,
+[04:26] especially when one, this is all highly
+[04:28] experimental, right? There's no
+[04:31] playbook, again, for any of this. Um
+[04:33] two, things were moving so fast
+[04:35] that what might be a best practice this
+[04:38] week could be outdated when a new tool
+[04:40] or a new model drops next week. And
+[04:42] honestly, this was leading to AI
+[04:43] fatigue.
+[04:45] And then three,
+[04:47] people were already feeling turned off
+[04:49] by the top-down pressure from leadership
+[04:52] to essentially AI or die.
+[04:55] So, I thought about the 1990 rule where
+[04:58] in digital communities about 1% create,
+[05:02] 9% interact, and 90% passively consume.
+[05:04] And this maps almost perfectly to how
+[05:07] engineers adopt AI. So, you'll have a
+[05:09] small percentage that'll deep dive and
+[05:12] start creating agentic patterns and
+[05:13] discovering useful techniques for
+[05:16] working with agents. You'll have some
+[05:18] that might tweak the agent's MD file
+[05:21] here or there. But most people aren't
+[05:23] going to spend the extra cycles to
+[05:27] figure this stuff out. So, I realized
+[05:29] that if my AI strategy depends on every
+[05:32] individual leveling themselves up, I'm
+[05:35] never going to see that broad impact.
+[05:37] So, I leaned into this model. And I used
+[05:40] it to my advantage. Instead of focusing
+[05:43] on all 3,500 engineers, I decided to
+[05:47] focus on forming the 1%, the power
+[05:50] users, from our most critical teams.
+[05:52] So, I started an AI champions program
+[05:55] where I handpicked about 50 engineers
+[05:57] across the company who could pioneer
+[05:59] what a genetic engineering looks like
+[06:01] for their team. Now, this was not a call
+[06:04] for volunteers, all right? I needed to
+[06:07] be strategic about the selection. I
+[06:10] needed engineers who were willing to
+[06:12] dedicate at least 30% of their time to
+[06:15] investing in AI enablement. I needed
+[06:17] those who wouldn't be discouraged by the
+[06:19] non-deterministic nature of AI and give
+[06:21] up on it all when it didn't work out of
+[06:24] the box, which it often did not, right?
+[06:27] So, I spent the week talking to tech
+[06:29] leads and managers to find the 50
+[06:31] engineers who could represent our most
+[06:34] critical repositories.
+[06:36] Now, remember at this point, most of our
+[06:38] engineers were between stages one and
+[06:40] two where they're chatting with AI but
+[06:44] not really using it to produce PRs. So,
+[06:46] I wanted to get the AI champions to
+[06:49] stage three. This was about June 2025.
+[06:52] So, the models were decent enough to
+[06:53] write a feature for you, right? But
+[06:55] chances were pretty high that the code
+[06:57] wouldn't conform to your team's
+[06:59] conventions and standards. So,
+[07:01] developers didn't trust the agents
+[07:03] enough to delegate work to it yet. So,
+[07:06] the first area that we focused on was
+[07:09] making our repos AI ready.
+[07:12] My theory here was if I can get
+[07:14] engineers to embed AI directly into
+[07:17] their repos, then not only would the
+[07:19] agents perform better but the entire
+[07:22] team would benefit, not just the 1%.
+[07:25] And the repos are a central point of
+[07:27] reference for every engineer that's
+[07:28] contributing code.
+[07:31] So, to make their repos AI friendly,
+[07:33] they added assets like contacts and
+[07:35] rules files so that agents could
+[07:37] reliably understand and navigate the
+[07:41] code base as well as contribute to it.
+[07:44] Now, when building the AI champions, I
+[07:46] made sure that we have folks from every
+[07:48] corner of Block engineering: Square,
+[07:52] Cash App, Afterpay, Tidal, across
+[07:54] front end, back end, mobile, data,
+[07:57] infra, right? Um we covered repos of all
+[07:59] shapes and sizes, the nasty big legacy
+[08:02] massive mono repos, the smaller
+[08:05] services, mobile apps, right? And that
+[08:08] mix let us pressure test patterns across
+[08:11] very different engineering realities so
+[08:13] that we could quickly see what actually
+[08:14] scales.
+[08:17] As expected, mono repos came with their
+[08:20] own challenges. But my JVM devs were
+[08:23] already strong in inheritance patterns,
+[08:26] so we set shared contexts and rules at
+[08:28] the root, then layered more specific
+[08:31] ones at the service levels.
+[08:33] We also learned fast that what worked
+[08:35] for web didn't necessarily work for
+[08:38] mobile. So Android and iOS even needed
+[08:41] different approaches at times.
+[08:42] So instead of
+[08:44] forcing a one-size-fits-all solution,
+[08:46] each champion figured out what worked
+[08:49] for their repo, and then teams with
+[08:51] similar shapes and sizes naturally
+[08:54] converged on the same tools and
+[08:57] patterns. And honestly, engineers loved
+[09:00] this, right? We let them choose what
+[09:01] made sense for their repo instead of
+[09:05] pushing a top-down mandate on them.
+[09:07] So we ended up with a standard set of
+[09:09] components that would make a repo AI
+[09:12] friendly, but again, customized for each
+[09:14] team's needs. Some context files like
+[09:17] agents.md or claude.md to provide the
+[09:21] agent with repo guidance, rules files to
+[09:23] provide the agent with some guardrails,
+[09:26] repeatable workflows like slash commands
+[09:28] and later agent skills,
+[09:31] um an enabled AI code reviewer,
+[09:32] preferably with some instructions on
+[09:35] what matters and what it should review.
+[09:39] And then AI attribution on PRs.
+[09:42] So at this point, we've done a lot of
+[09:44] great work and technically, we do have
+[09:46] the agents writing PRs, but I had a
+[09:48] couple of concerns, right? Not many
+[09:50] outside of the AI champions had gotten
+[09:52] to this level where they were delegating
+[09:55] work to agents. And the idea is to have
+[09:59] the work of the 1% lift everyone up. So,
+[10:01] we weren't there yet.
+[10:03] And then even with the champions, they
+[10:05] were delegating, but they were still
+[10:08] kind of babysitting the process. So, I
+[10:10] wanted to explore if we could delegate
+[10:12] work to the agents in a more hands-off
+[10:15] approach and make it easier for others
+[10:17] outside of the champions program to do
+[10:19] so as well.
+[10:20] So, there's three common places where
+[10:23] engineers receive requirements for work.
+[10:26] Issue trackers like Jira or Linear,
+[10:29] GitHub issues, and informally in Slack.
+[10:31] I wanted to be able to delegate work to
+[10:33] the agents from any of these places. And
+[10:36] the champions implemented all three.
+[10:38] So, true story.
+[10:40] We were in Slack one day, an engineer
+[10:42] saw a bug with the product and wrote,
+[10:44] you know, like, "Hey, I saw this bug.
+[10:46] Anybody else seen it?" So, engineer two
+[10:50] responds to that and goes, "Mhm, no, I
+[10:52] hadn't seen that one." Engineer three
+[10:55] @goose right there in Slack and says,
+[10:58] "Hey goose, have you seen this bug
+[10:59] before? Like, can you can you go and
+[11:02] check if this is a bug?" So, goose goes
+[11:04] to the repo, it like pulls the files
+[11:06] down, and says, "Yeah, this is a bug.
+[11:09] Here it is right here. But, here's also
+[11:11] three options of how you might implement
+[11:13] a solution, right?"
+[11:15] Right there in Slack, code snippets. And
+[11:18] so, engineer one goes, "I like option
+[11:20] one." Engineer two goes, "Yeah, yeah, me
+[11:21] too." So, engineer three says, "Hey
+[11:24] goose, go implement option one." Goose
+[11:27] does so, returns with a link to the PR,
+[11:29] right? So, the entire cycle from
+[11:32] discussion, diagnosis, issue creation,
+[11:35] alignment, and the fix took like 5
+[11:37] minutes all right there in Slack. Very
+[11:39] cool party trick, by the way.
+[11:42] Um engineers were also able to assign
+[11:44] linear and Jira tickets, as well as
+[11:46] GitHub issues to an agent, and have the
+[11:49] agent implement the work end to end. So,
+[11:51] now the agents have become a part of the
+[11:54] sprint. This blew everyone's minds. The
+[11:57] first time we did this, the team ran out
+[11:59] of work and had to pull in more tickets
+[12:02] like twice, right? So, of course,
+[12:04] engineering managers, product teams,
+[12:06] they love this flow. And the beauty
+[12:09] about these flows is that
+[12:10] all engineers didn't necessarily have to
+[12:13] learn a new skill. The champions had
+[12:15] already laid the foundation so that
+[12:17] agents were able to work well within
+[12:20] these repos, and they worked well all of
+[12:21] this worked well because it made
+[12:24] delegation feel native to how people
+[12:27] already work.
+[12:29] So, now I felt comfortable claiming that
+[12:31] we were truly delegating work to the
+[12:32] agents.
+[12:35] At this point, it had been 3 months
+[12:37] since launching the champions program,
+[12:39] and we were seeing great results.
+[12:43] AI-authored code was up by 69% reported
+[12:45] time savings increased 37%, and
+[12:49] automated PRs increased 21 times.
+[12:51] We were ready to pursue stage four,
+[12:54] multi-agent parallelism.
+[12:56] And with our setup, honestly, moving to
+[12:58] stage four was almost free. We were
+[13:01] pretty good at delegating work to the
+[13:04] agents now. But, this stage introduced
+[13:06] several new challenges that we needed to
+[13:08] solve. Engineers are now tripling,
+[13:10] quadrupling the number of PRs that
+[13:12] they're producing, but
+[13:14] the PRs are stuck waiting for code
+[13:16] reviews, right? So,
+[13:18] people struggled to stay on top of code
+[13:20] reviews even before we added AI to the
+[13:23] mix, so you know that it's bad now. And
+[13:25] I'll be honest, this isn't a totally
+[13:28] solved problem, but I'll share how we
+[13:30] did stop the bleeding a bit.
+[13:32] We absolutely had to get the bots to
+[13:35] help us review PRs. So, earlier in the
+[13:37] process, this was optional. Mostly
+[13:39] because the AI code reviewers sucked so
+[13:41] badly, and we were just pissing the
+[13:44] engineers off by having them use them.
+[13:46] But now, with the repo readiness work
+[13:48] that the champions had done, coupled
+[13:51] with better models and tools, shout out
+[13:54] to Codex, uh we were getting much better
+[13:58] results here. So, we enabled Codex on
+[14:00] all the repos, and we also created an
+[14:03] auto-fix loop where if Codex identified
+[14:05] issues, another agent will automatically
+[14:07] fix those issues and commit them to the
+[14:09] PR. So, now, at least people would no
+[14:11] longer complain about not wanting to
+[14:13] review sloppy PRs from bots, right? By
+[14:16] time they got to them, they were in
+[14:18] pretty good shape.
+[14:20] Another issue, specifically when running
+[14:22] multiple agents in parallel, was that
+[14:24] the agents were bumping into each other
+[14:26] as they were trying to work. And
+[14:28] more importantly, our machines couldn't
+[14:30] handle the load anymore. Like,
+[14:32] engineers' laptops were running out of
+[14:33] memory.
+[14:35] CPU was choking, you know? So, we
+[14:38] invested in dedicated cloud workspaces
+[14:41] where each agent ran in its own isolated
+[14:43] environment. And this allowed us to
+[14:46] easily run them in parallel and from
+[14:47] anywhere.
+[14:49] So, at this point, the engineers are
+[14:52] cooking. They got four or five agents
+[14:53] running at any given time, and that
+[14:57] number is growing. So, a small group of
+[14:59] engineers, including many of the AI
+[15:01] champions, started building our own
+[15:04] orchestrator to coordinate all of these
+[15:07] agents, Builder Bot.
+[15:09] And we needed Builder Bot to get us to
+[15:13] an autonomous engineering org.
+[15:15] We realized that if we're trying to
+[15:17] build anything close to an autonomous
+[15:19] engineering org, the agents need to
+[15:21] understand where everything lives and
+[15:24] what depends on what. So, we built a
+[15:27] company world modeled based on the
+[15:29] entirety of our
+[15:31] 25,000
+[15:34] repo code base, right? And this was a
+[15:36] machine-readable view of every single
+[15:40] service and how they all connect.
+[15:42] And this allowed orchestrators and the
+[15:44] agents that they delegated to to pull
+[15:47] context in as needed and understand the
+[15:49] landscape as they implement.
+[15:52] And this enabled multiple agents to
+[15:53] explore different parts of the system in
+[15:56] parallel, each building their own
+[15:58] understanding and then come back
+[16:00] together and have the orchestrator put
+[16:02] all of this together, right? Put in a
+[16:04] plan that spans across multiple code
+[16:07] bases, which was especially useful for
+[16:09] us as we were building offerings that
+[16:12] spanned multiple products.
+[16:14] Now, with this, we had successfully
+[16:16] reached stage five, where engineers are
+[16:19] delegating complete tasks to agents. The
+[16:20] agents are able to produce shippable
+[16:23] results without human hand-holding. In
+[16:25] fact, this wasn't even limited to
+[16:29] engineers anymore. Anyone at the company
+[16:31] could act Build-A-Bot in Slack and have
+[16:36] it fix a bug or implement a new feature.
+[16:38] They didn't even need GitHub.
+[16:49] You know, of course, all layoffs are
+[16:52] tough, but this one felt different.
+[16:54] I had so many questions.
+[16:56] Was this my fault?
+[16:59] Did enabling employees to do the most
+[17:01] incredible work of their careers
+[17:09] Just the day before I had felt so proud.
+[17:12] I was in awe of the way we were working,
+[17:14] feeling quite accomplished that I
+[17:16] successfully built an autonomous
+[17:21] But to what end?
+[17:23] I guess I'll leave you all with a few
+[17:25] questions.
+[17:27] What are we doing?
+[17:30] Where are we heading?
+[17:32] You know, we sure

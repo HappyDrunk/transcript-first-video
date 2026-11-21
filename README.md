@@ -12,7 +12,7 @@ The note waits until the spoken words are written down and pass a quality check.
 
 ## Quickstart
 
-On install, ask for a language once, before any fetch. Save one line in `language.txt` beside the installed `SKILL.md`: `中文`, `英文`, or `中英文对照`. If that folder is not writable, keep the same line in the host project. If the file is missing or not one of those three, ask. Do not assume `中英文对照`. Do not commit `language.txt`.
+For YouTube jobs, use `scripts/youtube_host.py --show-pref` to inspect saved preferences. Pass `--language` (中文, 英文, or 中英文对照) and `--reading-level` (plain or concise) to set this run’s choices. Add `--save-pref` with both choices to save them in the user config file `prefs.json` outside the repo.
 
 ```text
 Install this skill: https://github.com/HappyDrunk/transcript-first-video
@@ -148,7 +148,7 @@ How to change this repo: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHAN
 
 ### 安装
 
-安装时先问一次语言，再抓视频。在装好的 `SKILL.md` 旁边，把一行写进 `language.txt`：`中文`、`英文`，或 `中英文对照`。那个目录不能写时，把同一行留在你自己的项目里。文件没有，或不是这三样，就问。不要默认中英文对照。不要提交 `language.txt`。
+处理 YouTube 视频时，用 `scripts/youtube_host.py --show-pref` 查看已保存的偏好。本次可用 `--language` 指定中文、英文或中英文对照，用 `--reading-level` 指定 plain（通俗）或 concise（精炼）。同时指定这两项并加上 `--save-pref`，即可保存到仓库外的用户配置文件 `prefs.json`。
 
 ```text
 帮我安装这个skill：https://github.com/HappyDrunk/transcript-first-video

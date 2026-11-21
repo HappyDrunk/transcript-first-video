@@ -13,12 +13,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import knowledge_note
+import user_prefs
 import verify_note
 import verify_rules as rules
 
 
-INTRO = "带竖线的行是 AI 补充的名词解释或比方，不是视频里说的话。"
-SCREEN_HINT = "标明来自画面的内容由机器识别，可能有个别字符误差。"
+INTRO = "竖线行是 AI 补充解释"
+SCREEN_HINT = "标明来自画面的内容由机器识别，可能有误差"
+LEVEL_DESCRIPTIONS = {
+    "zh": {
+        "plain": "讲解方式：通俗版——术语和背景都做了解释。",
+        "concise": "讲解方式：精炼版——默认读者有相关背景，只解释少见的词。",
+    },
+    "en": {
+        "plain": "Reading level: Plain — terms and background are explained.",
+        "concise": "Reading level: Concise — assumes relevant background; only uncommon terms are explained.",
+    },
+}
 OUTRO = "每句话对应的视频原话和时间点，保存在这条视频的证据版里。"
 FRONTMATTER = re.compile(r"\A---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
 TIME_GROUP = re.compile(
@@ -109,22 +120,19 @@ def render_lines(body: str) -> tuple[str, set[int]]:
 
 @dataclass
 class Section:
-    heading: re.Match[str]
+    level: int
+    title: str
     body: str
     times: set[int]
 
-    @property
-    def level(self) -> int:
-        return len(self.heading[1])
-
 
 def render_body(body: str) -> str:
-    headings = list(rules._HEADING.finditer(body))
-    ends = [heading.start() for heading in headings[1:]] + [len(body)]
+    headings = rules.markdown_headings(body)
+    ends = [start for _, _, start, _ in headings[1:]] + [len(body)]
     sections: list[Section] = []
-    for heading, end in zip(headings, ends):
-        content, times = render_lines(body[heading.end():end])
-        sections.append(Section(heading, content, times | rules.delivery_times(heading[2])))
+    for (level, title, _, heading_end), end in zip(headings, ends):
+        content, times = render_lines(body[heading_end:end])
+        sections.append(Section(level, title, content, times | rules.delivery_times(title)))
 
     kept: list[Section] = []
     for index, section in enumerate(sections):
@@ -134,8 +142,7 @@ def render_body(body: str) -> str:
 
     parts = []
     for index, section in enumerate(kept):
-        heading = section.heading
-        title = remove_times(heading[2])
+        title = remove_times(section.title)
         if section.level == 3:
             times = section.times.copy()
             for child in kept[index + 1:]:
@@ -151,12 +158,30 @@ def render_body(body: str) -> str:
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
-        parts.extend((heading.string[heading.start():heading.start(2)], title,
-                      heading.string[heading.end(2):heading.end()], content))
+        parts.extend((f"{'#' * section.level} {title}", content))
     return "".join(parts).strip("\n")
 
 
-def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False) -> bytes:
+def _delivery_language(body: str, requested: str | None) -> str:
+    if requested in ("英文", "en"):
+        return "en"
+    if requested in ("中文", "中英文对照", "zh"):
+        return "zh"
+    parts: list[str] = []
+    offset = 0
+    for _, _, start, end in rules.markdown_headings(body):
+        parts.append(body[offset:start])
+        offset = end
+    parts.append(body[offset:])
+    prose = re.sub(r"(?m)^(?:[ \t]*>|本文略去[｜|]).*$", "", "\n".join(parts))
+    cjk, latin = rules._script_counts(prose)
+    return "en" if latin > 0 and cjk < 4 and cjk * 20 < latin else "zh"
+
+
+def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False,
+                reading_level: str | None = None, delivery_language: str | None = None) -> bytes:
+    if reading_level is not None and reading_level not in knowledge_note.READING_LEVELS:
+        raise RenderError(f"invalid reading_level: {reading_level!r}")
     text = note.decode("utf-8-sig")
     frontmatter = FRONTMATTER.match(text)
     if frontmatter is None:
@@ -166,26 +191,28 @@ def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = Fals
         raise RenderError("could not read note.md properties")
 
     body = normalize_newlines(text[frontmatter.end():])
-    evidence = next((heading for heading in rules._HEADING.finditer(body)
-                     if heading.groups() == ("##", rules.EVIDENCE_HEADING)), None)
+    evidence = next(((start, end) for level, title, start, end in rules.markdown_headings(body)
+                     if level == 2 and title == rules.EVIDENCE_HEADING), None)
     if evidence is None:
         raise RenderError("note.md is missing the 原文依据 section")
+    evidence_start, evidence_end = evidence
     screen_quote = re.compile(r"^\s*>[ \t]+\[(?:\d+:)?\d{2,}:[0-5]\d\]\[画面\]", re.MULTILINE)
-    has_screen = bool(screen_quote.search(body, evidence.end()))
-    body = body[:evidence.start()]
+    has_screen = bool(screen_quote.search(body, evidence_end))
+    body = body[:evidence_start]
     omission = OMISSION.search(body)
     if omission is None:
         raise RenderError("note.md is missing the 本文略去 line")
 
-    intro = [INTRO]
-    if self_review:
-        intro.insert(0, "未经独立复核")
-    if has_screen:
-        intro.append(SCREEN_HINT)
+    intro = ("未经独立复核" if self_review else None, INTRO, SCREEN_HINT if has_screen else None)
+    notices = ["说明：" + "；".join(part for part in intro if part is not None) + "。"]
+    if reading_level is not None:
+        prose = body[:omission.start()]
+        language = _delivery_language(prose, delivery_language)
+        notices.append(LEVEL_DESCRIPTIONS[language][reading_level])
     markdown = "\n\n".join((
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
-        "\n\n".join(intro),
+        *notices,
         render_body(body[:omission.start()]),
         "---",
         f"没写进来的部分：{omission[1]}",
@@ -272,7 +299,7 @@ def owns_generated_output(output: Path, source: str) -> bool:
 
 
 def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, require_review: bool = False,
-               output_dir: Path | None = None) -> Path:
+               output_dir: Path | None = None, delivery_language: str | None = None) -> Path:
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
@@ -289,8 +316,15 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if verify_note.repair_lock(status, review=True):
             stopped = verify_note.stopped_result(job, status)
             raise RenderError(" · ".join([*stopped["reasons"], *(stopped[key] for key in ("draft", "issues") if key in stopped)]))
+        reading_level = knowledge_note.read_reading_level(status)
         verify_note.prepare_job_note(job)
-        receipt = verify_note.prepare_review_submission(job, required=require_review)
+        note_path = job / "note.md"
+        try:
+            receipt = verify_note.prepare_review_submission(job, required=require_review)
+            if receipt is None and note_path.is_file():
+                verify_note.check_closing_heading_pair(note_path.read_bytes(), reading_level)
+        except ValueError as exc:
+            raise RenderError(str(exc)) from exc
         review, reviewed_inputs = receipt if receipt is not None else (None, None)
         result = verify_note.check_job_submission(job, with_coverage=True, reviewed_inputs=reviewed_inputs,
                                                   review_content=review)
@@ -310,11 +344,17 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
         check_finished(job, inputs, verifier, review)
-        note = (job / "note.md").read_bytes()
+        note = note_path.read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
         self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
-        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review)
+        try:
+            reading_level = knowledge_note.read_reading_level(status)
+            verify_note.check_closing_heading_pair(note, reading_level)
+        except ValueError as exc:
+            raise RenderError(str(exc)) from exc
+        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review,
+                               reading_level=reading_level, delivery_language=delivery_language)
         if output is None:
             output = reading_path(output_dir, job, note)
             check_destination(job, output)
@@ -340,9 +380,10 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
 
 
 def main(argv: list[str] | None = None) -> int:
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-dir", type=Path, required=True, help="Job directory containing the evidence note")
@@ -350,12 +391,15 @@ def main(argv: list[str] | None = None) -> int:
     destination.add_argument("--output", type=Path, help="Full path for the reading Markdown file")
     destination.add_argument("--output-dir", type=Path, help="Folder for a filename generated from the note properties")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
+    parser.add_argument("--language", choices=user_prefs.VALID_LANGUAGES, default=None,
+                        help="Delivery language for reading-level header")
     parser.add_argument("--require-review", action="store_true",
                         help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
     args = parser.parse_args(argv)
     try:
         path = render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter,
-                          require_review=args.require_review, output_dir=args.output_dir)
+                          require_review=args.require_review, output_dir=args.output_dir,
+                          delivery_language=args.language)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)
         return 1

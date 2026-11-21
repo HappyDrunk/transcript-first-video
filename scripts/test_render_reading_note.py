@@ -112,7 +112,7 @@ NOTE = FRONTMATTER + """
 EXPECTED_READING = """\
 # 整理种子盒
 合成园艺课堂 · 2026-04-08 · [原视频](https://example.invalid/videos/seed-box)
-带竖线的行是 AI 补充的名词解释或比方，不是视频里说的话。
+说明：竖线行是 AI 补充解释。
 ## 先记住一句话
 收好种子前，先写清月份，把发潮的信封另放。
 ## 这场在谈什么、谁

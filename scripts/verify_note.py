@@ -230,17 +230,17 @@ def format_note_text(note: str) -> str:
     if frontmatter is None:
         return note
     prefix = frontmatter[0]
-    lines = note[len(prefix):].splitlines(keepends=True)
-    evidence = None
-    for index, line in enumerate(lines):
-        heading = verify_rules._HEADING.fullmatch(line.rstrip("\r\n"))
-        if heading and heading.groups() == ("##", verify_rules.EVIDENCE_HEADING):
-            evidence = index + 1
-    if evidence is None or any(
-        line.strip() and not line.lstrip().startswith((">", "＞")) for line in lines[evidence:]
+    body = note[len(prefix):]
+    evidence = next((end for level, title, _, end in reversed(verify_rules.markdown_headings(body))
+                     if level == 2 and title == verify_rules.EVIDENCE_HEADING), None)
+    if evidence is None:
+        return note
+    lines = body[evidence:].splitlines(keepends=True)
+    if any(
+        line.strip() and not line.lstrip().startswith((">", "＞")) for line in lines
     ):
         return note
-    return prefix + "".join(lines[:evidence]) + "".join(_format_quote_line(line) for line in lines[evidence:])
+    return prefix + body[:evidence] + "".join(_format_quote_line(line) for line in lines)
 
 
 def _normalized_note_text(content: bytes) -> str:
@@ -304,6 +304,9 @@ def job_inputs(job: Path) -> dict:
         else:
             inputs[key] = digest
     status = read_job_status(job)
+    level = knowledge_note.read_reading_level(status)
+    if level is not None:
+        inputs["reading_level"] = level
     mode = verify_rules.screen_mode(job)
     if mode != "off":
         screen = job / verify_rules.SCREEN_FILE
@@ -352,6 +355,18 @@ def _review_retry(status: dict) -> bool:
     )
 
 
+def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> None:
+    text = _normalized_note_text(note_bytes)
+    body = _FORMAT_FRONTMATTER.sub("", text, count=1)
+    delivery, _, _ = verify_rules.delivery_evidence(body)
+    headings = [heading for level, heading, _, _ in verify_rules.markdown_headings(delivery) if level == 2]
+    expected = knowledge_note.closing_heading_for_level(reading_level)
+    recognized = {knowledge_note.PLAIN_ACTION_HEADING, knowledge_note.CONCISE_ACTION_HEADING}
+    closing_headings = [heading for heading in headings if heading in recognized]
+    if closing_headings != [expected] or headings[-1] != expected:
+        raise ValueError(f"note.md closing H2 must be {expected} for this reading level")
+
+
 def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[bytes, dict] | None:
     """Bind one independent review to its prior two-gate receipt, under the job lock."""
     path = job / "review.md"
@@ -359,7 +374,11 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     lines = content.splitlines()
     first = lines[0].decode("utf-8-sig", errors="replace") if lines else ""
     if not first.startswith("<!-- tfv-review:"):
-        if required:
+        status = read_job_status(job)
+        batch = status.get("review")
+        if batch is not None and not isinstance(batch, dict):
+            raise ValueError("stored review batch in status.json is malformed")
+        if required or batch is not None:
             raise ValueError("a Task review.md receipt is required before reading delivery")
         return None
     header = re.fullmatch(r"<!-- tfv-review: (.+) -->", first)
@@ -380,6 +399,8 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     inputs = job_inputs(job)
     batch = status.get("review")
     if batch is None:
+        if inputs.get("reading_level") != receipt["inputs"].get("reading_level"):
+            raise ValueError("review source evidence changed; the receipt is stale")
         verifier, coverage = status.get("verifier"), status.get("coverage")
         if (not isinstance(verifier, dict) or not isinstance(coverage, dict)
                 or verifier.get("allowed") is not True or coverage.get("allowed") is not True
@@ -399,6 +420,14 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
         raise ValueError("only the original review batch may be processed")
 
     baseline = batch["inputs"]
+
+    def sources(values: dict) -> dict:
+        return {key: value for key, value in values.items()
+                if key not in {"note", "note_file", "selection"}}
+
+    if sources(inputs) != sources(baseline):
+        raise ValueError("review source evidence changed; the receipt is stale")
+    check_closing_heading_pair((job / "note.md").read_bytes(), knowledge_note.read_reading_level(status))
     original = batch.get("c04c", [])
     if receipt.get("c04c_sha256") != batch.get("c04c_sha256"):
         raise ValueError("only the original C04c warning snapshot may be processed")
@@ -408,13 +437,6 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     if inputs == baseline:
         c04c_review.final(content, original, decisions, original, (job / "note.md").read_text(encoding="utf-8"))
     batch["c04c_decisions"] = decisions
-
-    def sources(values: dict) -> dict:
-        return {key: value for key, value in values.items()
-                if key not in {"note", "note_file", "selection"}}
-
-    if sources(inputs) != sources(baseline):
-        raise ValueError("review source evidence changed; the receipt is stale")
     if batch["result"] == "clear" and inputs != baseline:
         raise ValueError("a clear review only covers the unchanged reviewed inputs")
     if batch.get("final_inputs") is not None and inputs != batch["final_inputs"]:
@@ -810,19 +832,30 @@ def main(argv: list[str] | None = None) -> int:
         if not args.job.is_dir():
             _emit_verify({"allowed": False, "reasons": [f"job directory does not exist: {args.job}"]}, as_json=args.json)
             return 1
-        if args.structure_only:
-            import coverage_check
-            return _emit_verify(coverage_check.check_structure(args.job), as_json=args.json)
-        with job_lock(args.job):
-            if args.resume:
-                try:
+        try:
+            if args.structure_only:
+                import coverage_check
+                knowledge_note.read_reading_level(read_job_status(args.job))
+                return _emit_verify(coverage_check.check_structure(args.job), as_json=args.json)
+            with job_lock(args.job):
+                status = read_job_status(args.job)
+                knowledge_note.read_reading_level(status)
+                if args.resume:
                     resume_job(args.job)
-                except ValueError as exc:
-                    return _emit_verify({"allowed": False, "reasons": [str(exc)]}, as_json=args.json)
-            result = check_job_submission(
-                args.job, note_arg=args.note, confidence=args.confidence,
-                expected_lang=args.expected_lang, with_coverage=args.with_coverage,
-            )
+                    status = read_job_status(args.job)
+                receipt = None
+                if (args.with_coverage and status.get("status") != SCREEN_PENDING
+                        and not repair_lock(status, review=True)):
+                    prepare_job_note(args.job)
+                    receipt = prepare_review_submission(args.job)
+                review_content, reviewed_inputs = receipt if receipt else (None, None)
+                result = check_job_submission(
+                    args.job, note_arg=args.note, confidence=args.confidence,
+                    expected_lang=args.expected_lang, with_coverage=args.with_coverage,
+                    reviewed_inputs=reviewed_inputs, review_content=review_content,
+                )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return _emit_verify({"allowed": False, "reasons": [str(exc)]}, as_json=args.json)
         return _emit_verify(result, as_json=args.json)
     if args.transcript is None:
         parser.error("pass --transcript, or pass --job")
