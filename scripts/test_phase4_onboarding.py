@@ -102,6 +102,24 @@ class OnboardingTests(unittest.TestCase):
             "合成园艺课堂 · 2026-04-08 · [原视频](https://example.invalid/videos/seed-box)\n"
         ).encode("utf-8"))
 
+    def test_refuses_vertical_tab_line_boundaries(self):
+        self.assert_automatic_overwrite_refused((
+            "---\ntitle: memo\v---\v# Memo\v"
+            "[原视频](https://example.invalid/videos/seed-box)\n"
+        ).encode("utf-8"))
+
+    def test_refuses_unicode_line_separator_boundaries(self):
+        self.assert_automatic_overwrite_refused((
+            "---\ntitle: memo\u2028---\u2028# Memo\u2028"
+            "[原视频](https://example.invalid/videos/seed-box)\n"
+        ).encode("utf-8"))
+
+    def test_refuses_bare_cr_line_boundaries(self):
+        self.assert_automatic_overwrite_refused((
+            "---\rtitle: memo\r---\r# Memo\r"
+            "[原视频](https://example.invalid/videos/seed-box)\r"
+        ).encode("utf-8"))
+
     def test_refuses_non_utf8_file(self):
         self.assert_automatic_overwrite_refused(b"\xff\xfe\x80\x81")
 
@@ -146,6 +164,23 @@ class OnboardingTests(unittest.TestCase):
 
     def test_overwrites_generated_note_with_closed_frontmatter(self):
         self.assert_generated_note_can_be_overwritten(("--keep-frontmatter",), ())
+
+    def test_overwrites_crlf_note_with_closed_frontmatter(self):
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        path.parent.mkdir(parents=True)
+        path.write_bytes((
+            "---\r\n"
+            "title: 整理种子盒\r\n"
+            "---\r\n\r\n"
+            "# 整理种子盒\r\n\r\n"
+            "合成园艺课堂 · 2026-04-08 · [原视频](https://example.invalid/videos/seed-box)\r\n\r\n"
+            "旧内容\r\n"
+        ).encode("utf-8"))
+
+        self.receipt("self")
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("旧内容", path.read_text(encoding="utf-8"))
 
     def test_require_review_help_describes_review_marker(self):
         result = self.run_cli("render_reading_note.py", "--help")
