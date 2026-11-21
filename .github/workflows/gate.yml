@@ -21,6 +21,8 @@ jobs:
         run: python3 scripts/test_gate.py
       - name: A1 caption mirror fallback
         run: python3 scripts/test_a1_caption_mirror.py
+      - name: A1 caption mirror fallback (Round 2)
+        run: python3 scripts/test_a1_caption_mirror_round2.py
       - name: Reading note output
         run: python3 scripts/test_render_reading_note.py
       - name: Read-only speech quote extraction
