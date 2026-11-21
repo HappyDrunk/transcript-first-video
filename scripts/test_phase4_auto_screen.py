@@ -8,11 +8,13 @@ import io
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import zlib
 
 import coverage_check
 import render_reading_note
@@ -243,8 +245,18 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.out = Path(folder.name)
         self.job = self.out / f"youtube_{VIDEO}"
 
+    @staticmethod
+    def gray_png(shade):
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        header = struct.pack(">IIBBBBB", 160, 90, 8, 0, 0, 0, 0)
+        rows = (b"\0" + bytes([shade]) * 160) * 90
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
     @contextmanager
-    def ocr_io(self, seconds_per_call, model_load_seconds=0):
+    def ocr_io(self, seconds_per_call, model_load_seconds=0, *, sample_decode=0,
+               full_frames=1, calibration=None):
         elapsed = 0.0
         recognition = SimpleNamespace(
             boxes=[[(10, y), (240, y), (240, y + 16), (10, y + 16)]
@@ -256,32 +268,63 @@ class AutoScreenBudgetTests(unittest.TestCase):
             ],
             scores=[0.99, 0.99, 0.99],
         )
-        stream = json.dumps({
+        stream = {
             "duration": self.DURATION,
             "height": 480,
-            "url": "https://media.example/track",
-        })
+            "url": "https://media.example/480.mp4",
+        }
+        if calibration:
+            stream["requested_downloads"] = [
+                {"url": stream["url"], "height": 480, "http_headers": {}},
+                {"url": "https://media.example/1080.mp4", "height": 1080,
+                 "filesize": calibration.filesize, "http_headers": {}},
+            ]
+        calibration_clips = set()
 
         def run(scan, args, step, **kwargs):
+            nonlocal elapsed
             scan.remaining()
             if step == "yt-dlp sample stream":
-                return SimpleNamespace(stdout=stream)
+                return SimpleNamespace(stdout=json.dumps(stream))
+            output = Path(args[-1])
+            stderr = ""
             if step == "FFmpeg sample frames":
                 for index in (1, 2):
-                    Path(args[-1].replace("%02d", f"{index:02d}")).write_bytes(b"image")
+                    output.with_name(output.name.replace("%02d", f"{index:02d}")).write_bytes(b"image-480")
+                elapsed += sample_decode
             elif step == "video download":
                 Path(args[args.index("-o") + 1].replace("%(ext)s", "mp4")).write_bytes(b"video")
+            elif step == "FFmpeg calibration clip":
+                output.write_bytes(b"calibration clip")
+                calibration_clips.add(output)
+                elapsed += 0.1
             elif step == "frame extraction":
-                # One retained frame drives both real OCR passes without thumbnail grouping.
-                Path(args[-1].replace("%06d", "000001")).write_bytes(b"image")
-                return SimpleNamespace(
-                    stderr="[Parsed_showinfo_1 @ 0x1] n: 0 pts: 0 pts_time:0 checksum:ABCD\n",
+                is_calibration = Path(args[args.index("-i") + 1]) in calibration_clips
+                count = 1 if is_calibration else full_frames
+                for index in range(count):
+                    frame = output.with_name(output.name.replace("%06d", f"{index + 1:06d}"))
+                    frame.write_bytes(b"image-1080")
+                stderr = "".join(
+                    f"[Parsed_showinfo_1 @ 0x1] n: {i} pts: {i} pts_time:{8 * i} checksum:{i:08X}\n"
+                    for i in range(count)
                 )
+                if is_calibration:
+                    elapsed += calibration.decode
+            elif step == "FFmpeg calibration frame":
+                output.write_bytes(b"image-1080")
+                elapsed += 0.1
+            elif step == "slide grouping":
+                index = int(output.stem.removesuffix("-group").rsplit("-", 1)[-1]) if full_frames > 1 else 1
+                output.write_bytes(self.gray_png(255 * (index % 2)))
+                elapsed += calibration.grouping if calibration else 0.05
             elif step == "FFmpeg half transform":
-                Path(args[-1]).write_bytes(b"image")
+                output.write_bytes(b"image-540")
+                if calibration:
+                    elapsed += calibration.half_transform
             else:
                 self.fail(f"Unexpected external command: {step}")
-            return SimpleNamespace(stdout="", stderr="")
+            scan.remaining()
+            return SimpleNamespace(stdout="", stderr=stderr)
 
         def recognize(scan, operation, *args):
             nonlocal elapsed
@@ -291,7 +334,10 @@ class AutoScreenBudgetTests(unittest.TestCase):
                 value = model
             else:
                 self.assertIs(operation, model)
-                elapsed += seconds_per_call
+                timings = {b"image-480": seconds_per_call}
+                if calibration:
+                    timings.update({b"image-1080": calibration.first_pass, b"image-540": calibration.second_pass})
+                elapsed += timings.get(args[0], seconds_per_call)
                 value = recognition
             scan.remaining()
             return value
@@ -308,7 +354,7 @@ class AutoScreenBudgetTests(unittest.TestCase):
         ):
             yield recognize_call
 
-    def host(self, seconds_per_call, *, mode=None, model_load_seconds=0):
+    def host(self, seconds_per_call, *, mode=None, sample_result=None, **io_options):
         env = {key: value for key, value in os.environ.items() if key != MODE}
         if mode is not None:
             env[MODE] = mode
@@ -322,10 +368,12 @@ class AutoScreenBudgetTests(unittest.TestCase):
                 "kind": "manual",
                 "media_duration": self.DURATION,
             }),
-            self.ocr_io(seconds_per_call, model_load_seconds),
+            self.ocr_io(seconds_per_call, **io_options),
             patch.object(screen_ocr, "sample_slides", wraps=screen_ocr.sample_slides) as sample,
             patch.object(screen_ocr, "extract", wraps=screen_ocr.extract) as extract,
         ):
+            if sample_result is not None:
+                sample.return_value = sample_result
             result = youtube_host.run_host(
                 video_id=VIDEO, source=SOURCE, out_dir=self.out, expected_lang="en",
                 asr_choice="off", verify=True,
@@ -382,13 +430,92 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.assertEqual(result["screen_ocr"]["state"], "ready")
 
     def test_auto_scans_when_estimate_fits_budget(self):
-        for seconds_per_call in (0.2, 2.0):
+        # 2.0s * 2 * 125 = 500s exceeds the 70% safe budget (350s).
+        # 1.4s * 2 * 125 = 350s fits.
+        for seconds_per_call in (0.2, 1.4):
             with self.subTest(seconds_per_call=seconds_per_call):
                 result, sample, extract = self.host(seconds_per_call)
 
                 sample.assert_called_once()
                 self.assertEqual(result["screen_ocr"]["sample"]["result"], "slides_detected")
                 self.assert_slides_ready(result, extract)
+
+    def assert_timeout_fallback(self, result):
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["next_step"], "write-note")
+        screen = result["screen_ocr"]
+        self.assertEqual((screen["mode"], screen["state"], screen["result"]),
+                         ("off", "fallback", "timeout"))
+        self.assertEqual(screen["hint"], self.HINT)
+        return screen
+
+    def test_auto_skips_when_1080p_calibration_cost_exceeds_safe_budget(self):
+        self.DURATION = 1069
+        self.host(0.70, mode="off")
+        transcript = self.job / "transcript.txt"
+        expected_transcript = transcript.read_bytes()
+        # 14s download plus 134 frames at (0.85 + 0.05 + 2.36)s exceeds 374.15s.
+        calibration = SimpleNamespace(filesize=30_000_000, decode=0.85, grouping=0.05,
+                                      first_pass=1.50, half_transform=0.06, second_pass=0.80)
+        with patch.object(screen_ocr, "_measure_download_seconds", create=True, return_value=14.0):
+            result, sample, extract = self.host(0.70, sample_decode=1.8, calibration=calibration)
+
+        sample.assert_called_once()
+        self.assertEqual(extract.call_count, 0)
+        screen = self.assert_timeout_fallback(result)
+        self.assertGreater(screen["estimated_seconds"], 374.15)
+        self.assertGreater(screen["sample"]["calibration"]["estimated_total_seconds"], 374.15)
+        self.assertEqual(transcript.read_bytes(), expected_transcript)
+        self.assertFalse((self.job / "screen.txt").exists())
+
+    def test_auto_skips_when_sample_extract_plus_ocr_exceeds_safe_budget(self):
+        # (1.8s extraction + 1.6s OCR) * 125 = 425s, above the 350s safe budget.
+        result, sample, extract = self.host(0.8, sample_decode=3.6)
+
+        sample.assert_called_once()
+        self.assertEqual(extract.call_count, 0)
+        screen = self.assert_timeout_fallback(result)
+        self.assertGreater(screen["estimated_seconds"], 350)
+
+    def test_auto_fast_machine_one_hour_slide_video_is_not_skipped(self):
+        self.DURATION = 3600
+        # 20s download plus 450 frames at (0.25 + 0.02 + 0.52)s fits within 1260s.
+        calibration = SimpleNamespace(filesize=120_000_000, decode=0.25, grouping=0.02,
+                                      first_pass=0.30, half_transform=0.02, second_pass=0.20)
+        with patch.object(screen_ocr, "_measure_download_seconds", create=True, return_value=20.0) as download:
+            result, sample, extract = self.host(0.25, sample_decode=0.4, calibration=calibration)
+
+        sample.assert_called_once()
+        self.assert_slides_ready(result, extract)
+        download.assert_called()
+
+    def test_auto_aborts_live_full_scan_on_sustained_overrun_while_explicit_slides_exempt(self):
+        self.host(26.0, mode="off")
+        transcript = self.job / "transcript.txt"
+        expected_transcript = transcript.read_bytes()
+        sample_result = {"result": "slides_detected", "duration": 1000, "mean_frame_ocr_seconds": 0.2}
+
+        with self.subTest(mode="auto"):
+            with patch.object(screen_ocr, "_read_frame", wraps=screen_ocr._read_frame) as read_frame:
+                result, sample, extract = self.host(26.0, full_frames=10,
+                                                    sample_result=sample_result)
+
+            sample.assert_called_once()
+            extract.assert_called_once()
+            self.assertGreater(read_frame.call_count, 0)
+            self.assertLess(read_frame.call_count, 8)
+            self.assert_timeout_fallback(result)
+            self.assertFalse((self.job / "screen.txt").exists())
+            self.assertEqual(transcript.read_bytes(), expected_transcript)
+
+        with self.subTest(mode="slides"):
+            with patch.object(screen_ocr, "_read_frame", wraps=screen_ocr._read_frame) as read_frame:
+                result, sample, extract = self.host(22.0, mode="slides", full_frames=10,
+                                                    sample_result=sample_result)
+
+            sample.assert_not_called()
+            self.assertEqual(read_frame.call_count, 10)
+            self.assert_slides_ready(result, extract)
 
     def test_explicit_slides_bypasses_sampling_with_slow_ocr(self):
         result, sample, extract = self.host(5.0, mode="slides")
