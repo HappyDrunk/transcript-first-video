@@ -353,6 +353,62 @@ class ClosingTests(JobCase):
             note = concise_note().replace("\n\n本文略去", "\n\n<!--\n## hidden\n\n本文略去")
             verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
 
+    def test_inline_code_comment_opener_does_not_mask_headings(self):
+        headings = f"{CONCISE_H2}\n\n## 原文依据\n"
+        expected = [(2, CONCISE_H2[3:]), (2, "原文依据")]
+        for opener, visible in (("`<!--`", expected), ("<!--", [])):
+            with self.subTest(opener=opener):
+                parsed = verify_rules.markdown_headings(f"Mention {opener} in the note.\n\n{headings}")
+                self.assertEqual([(level, title) for level, title, _, _ in parsed], visible)
+
+    def test_inline_code_comment_opener_preserves_concise_note(self):
+        prose = "收好种子前，先写清月份，把发潮的信封另放。"
+        prose_with_code = f"{prose} 标签示例是 `<!--`。"
+        closing = "在备注里写下 `<!--`，再标上播种月份。"
+        note = concise_note((f"{closing} ⏱ 00:20",)).replace(prose, prose_with_code, 1)
+
+        with self.subTest(operation="verify"):
+            result = self.verify_without_status(note)
+            self.assertTrue(result["allowed"], result["reasons"])
+        with self.subTest(operation="render"):
+            reading = render_reading_note.render_note(
+                note.encode("utf-8"), keep_frontmatter=False, reading_level="concise"
+            ).decode("utf-8")
+            self.assertIn(prose_with_code, reading)
+            self.assertIn(CONCISE_H2, reading.splitlines())
+            self.assertIn(closing, reading)
+            self.assertNotIn("## 原文依据", reading.splitlines())
+            self.assertNotIn("⏱", reading)
+
+    def test_deeply_nested_link_labels_strip_to_visible_text(self):
+        depth = 1500
+        label = "写清播种月份。"
+        nested = "[![" * (depth // 2) + label + "](https://example.invalid)" * depth
+        self.assertEqual(verify_rules._strip_markdown_links(nested), label)
+
+    def test_deeply_nested_link_labels_in_concise_closing_verify(self):
+        depth = 1500
+        nested = "[" * depth + "写清播种月份。" + "](https://example.invalid)" * depth
+        result = self.verify_without_status(concise_note((f"{nested} ⏱ 00:20",)))
+        self.assertIsInstance(result, dict)
+        self.assertTrue(result["allowed"], result["reasons"])
+
+    def test_plain_closing_rejects_timestamp_hidden_in_link_title(self):
+        note = self.plain_note_with_closing('[写清播种月份。](https://example.invalid "⏱ 00:20")')
+        result = self.verify_without_status(note)
+        self.assertTrue(any(reason.startswith("R13 FAIL:") for reason in result["reasons"]), result)
+
+    def test_plain_closing_ignores_link_title_sentences(self):
+        note = self.plain_note_with_closing('[写清播种月份。](https://example.invalid "One. Two. Three.") ⏱ 00:20')
+        result = self.verify_without_status(note)
+        r13 = next(rule for rule in result["rules"] if rule["id"] == "R13")
+        self.assertTrue(r13["ok"], r13)
+
+    def plain_note_with_closing(self, closing):
+        before, after = NOTE.split(PLAIN_H2, 1)
+        _, omission = after.split("本文略去｜", 1)
+        return f"{before}{PLAIN_H2}\n\n{closing}\n\n本文略去｜{omission}"
+
     def test_closing_heading_pair_rejects_multiline_setext_and_indented_code_break(self):
         cases = (
             ("multiline Setext", "额外前提\n可以怎么用、可以拿去讨论什么\n-----"),
@@ -555,6 +611,27 @@ Label one envelope with its planting month. ⏱ 00:20
                 paragraphs = self.render(note, reading_level=level)
                 self.assertEqual(len(paragraphs), 4, paragraphs)
                 self.assertEqual(paragraphs[3], expected)
+
+    def test_language_inference_ignores_setext_template_headings(self):
+        for level, heading, chinese, english in (
+            ("plain", PLAIN_H2, PLAIN_ZH, "Reading level: Plain — terms and background are explained."),
+            ("concise", CONCISE_H2, CONCISE_ZH,
+             "Reading level: Concise — assumes relevant background; only uncommon terms are explained."),
+        ):
+            note = (
+                f"{FRONTMATTER}\n{FIRST_H2[3:]}\n---\n\n"
+                "Write the planting month on the outside of each envelope before putting it away.\n\n"
+                "这场在谈什么、谁\n---\n\n"
+                "The speaker explains how to store seed packets so that they are easy to find.\n\n"
+                f"{heading[3:]}\n---\n\nLabel one envelope with its planting month. ⏱ 00:20\n\n"
+                "本文略去｜无\n\n## 原文依据\n\n"
+                "> [00:20] Write the planting month on the outside of each envelope before putting it away.\n"
+            )
+            for language, expected in ((None, english), ("中文", chinese)):
+                with self.subTest(reading_level=level, delivery_language=language):
+                    paragraphs = self.render(note, reading_level=level, delivery_language=language)
+                    self.assertEqual(len(paragraphs), 4, paragraphs)
+                    self.assertEqual(paragraphs[3], expected)
 
     def test_latin_majority_bilingual_prose_uses_chinese_fourth_paragraph(self):
         prose = (
