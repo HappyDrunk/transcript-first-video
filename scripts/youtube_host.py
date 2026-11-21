@@ -427,6 +427,29 @@ def fetch_ytdlp_captions(
     }
 
 
+class _DeadlineSocket:
+    def __init__(self, sock, deadline: float) -> None:
+        self._sock = sock
+        self._deadline = deadline
+
+    def _arm(self) -> None:
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("caption request exceeded deadline")
+        self._sock.settimeout(remaining)
+
+    def recv_into(self, buffer, *args, **kwargs):
+        self._arm()
+        return self._sock.recv_into(buffer, *args, **kwargs)
+
+    def recv(self, *args, **kwargs):
+        self._arm()
+        return self._sock.recv(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._sock, name)
+
+
 def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> bytes:
     deadline = time.monotonic() + float(timeout)
     request = urllib.request.Request(
@@ -440,25 +463,30 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
     data = bytearray()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            read_chunk = response.read1 if isinstance(response, http.client.HTTPResponse) else response.read
+            is_http_response = isinstance(response, http.client.HTTPResponse)
+            read_chunk = response.read1 if is_http_response else response.read
             raw = getattr(getattr(response, "fp", None), "raw", None)
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise HostError("caption request exceeded deadline")
-                if raw is not None:
-                    try:
-                        raw._sock.settimeout(remaining)
-                    except (AttributeError, OSError):
-                        pass
-                chunk = read_chunk(min(16_384, limit + 1 - len(data)))
-                data.extend(chunk)
-                if len(data) > limit:
-                    raise HostError("caption response too large")
-                if time.monotonic() > deadline:
-                    raise HostError("caption request exceeded deadline")
-                if not chunk:
-                    break
+            orig_sock = getattr(raw, "_sock", None)
+            try:
+                if orig_sock is not None:
+                    raw._sock = _DeadlineSocket(orig_sock, deadline)
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise HostError("caption request exceeded deadline")
+                    chunk = read_chunk(min(16_384, limit + 1 - len(data)))
+                    data.extend(chunk)
+                    if len(data) > limit:
+                        raise HostError("caption response too large")
+                    if time.monotonic() > deadline:
+                        raise HostError("caption request exceeded deadline")
+                    if not chunk:
+                        if is_http_response and not response.chunked and response.length not in (None, 0):
+                            raise HostError("caption response was truncated before Content-Length")
+                        break
+            finally:
+                if orig_sock is not None:
+                    raw._sock = orig_sock
     except urllib.error.HTTPError as exc:
         raise HostError(f"HTTP {exc.code} for caption request") from exc
     except http.client.InvalidURL as exc:
@@ -490,11 +518,18 @@ def _valid_mirror_base(base: str, *, require_https: bool = False) -> str | None:
             return None
         port = parsed.port
         hostport = parsed.netloc.rsplit("@", 1)[-1]
-        expected = f"[{host}]" if ":" in host else host
-        if port is not None:
-            expected = f"{expected}:{port}"
-        if hostport.casefold() != expected.casefold():
-            return None
+        expected_host = f"[{host}]" if ":" in host else host
+        if port is None:
+            if hostport.casefold() != expected_host.casefold():
+                return None
+        else:
+            if ":" not in hostport:
+                return None
+            raw_host, raw_port = hostport.rsplit(":", 1)
+            if raw_host.casefold() != expected_host.casefold():
+                return None
+            if not (raw_port.isascii() and raw_port.isdigit() and int(raw_port) == port):
+                return None
         try:
             ipaddress.ip_address(host)
         except ValueError:
