@@ -756,6 +756,68 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.assertIn("fallback", notices[0])
         self.assertIn("(estimated unknown)", notices[0])
 
+    def test_auto_calibration_fallback_uses_allowlisted_reason_drops_untrusted_detail_and_keeps_stdout_clean(self):
+        calibration = SimpleNamespace(filesize=30_000_000, decode=0.25, grouping=0.05,
+                                      first_pass=0.5, half_transform=0.05, second_pass=0.5)
+        error = screen_ocr.ScreenError(
+            "FFmpeg calibration clip failed: \x1bc\x1b[38:2:255:0:0m"
+            "   orphaned-continuation-secret\n  more-secret-value"
+        )
+        with (
+            patch.object(screen_ocr, "_calibrate_full_scan", side_effect=error) as calibrate,
+            redirect_stdout(io.StringIO()) as host_stdout,
+            redirect_stderr(io.StringIO()) as host_stderr,
+        ):
+            result, _, _ = self.host(0.2, sample_decode=0.2, calibration=calibration)
+            self.assertEqual(host_stdout.getvalue(), "")
+            youtube_host._emit(result, as_json=True)
+
+        calibrate.assert_called_once()
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        parsed = json.loads(host_stdout.getvalue())
+        self.assertEqual(parsed["screen_ocr"]["sample"], status["screen_ocr"]["sample"])
+        sample = status["screen_ocr"]["sample"]
+        self.assertEqual(sample["calibration_status"], "fallback")
+        reason = sample["calibration_reason"]
+        self.assertEqual(reason, "FFmpeg calibration clip failed")
+        for fragment in ("orphaned-continuation-secret", "more-secret-value", "38:2", "\x1b"):
+            with self.subTest(fragment=fragment):
+                self.assertNotIn(fragment, reason)
+                self.assertNotIn(fragment, host_stderr.getvalue())
+
+    def test_auto_recalculated_zero_calibration_estimate_downgrades_to_fallback(self):
+        # Rescaling from 100 to 125 intervals yields zero, with no sample latency to fall back on.
+        sample_result = {
+            "result": "slides_detected",
+            "duration": 1000,
+            "calibration_status": "calibrated",
+            "calibration": {
+                "estimated_total_seconds": 10.0,
+                "intervals": 100,
+                "download_seconds": 0.0,
+                "extract_seconds_per_interval": 0.0,
+                "group_seconds_per_frame": 0.0,
+                "read_frame_seconds": 0.0,
+            },
+        }
+        with redirect_stderr(io.StringIO()) as stderr:
+            self.host(0.2, sample_result=sample_result)
+
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        sample = status["screen_ocr"]["sample"]
+        self.assertEqual(sample["calibration_status"], "fallback")
+        self.assertEqual(sample["calibration_reason"], "calibration estimate unavailable")
+        self.assertIn("estimated_seconds", sample)
+        self.assertIsNone(sample["estimated_seconds"])
+        notices = [
+            line for line in stderr.getvalue().splitlines()
+            if not line.startswith(("fetching captions with yt-dlp ", "captions acquired via yt-dlp "))
+        ]
+        self.assertEqual(len(notices), 1, notices)
+        self.assertIn("calibration", notices[0])
+        self.assertIn("fallback", notices[0])
+        self.assertIn("(estimated unknown)", notices[0])
+
     def expected_sample_estimate(self, sample):
         seconds_per_interval = (
             sample["mean_frame_ocr_seconds"] * screen_ocr.SLIDE_OCR_PASSES
