@@ -230,17 +230,17 @@ def format_note_text(note: str) -> str:
     if frontmatter is None:
         return note
     prefix = frontmatter[0]
-    lines = note[len(prefix):].splitlines(keepends=True)
-    evidence = None
-    for index, line in enumerate(lines):
-        heading = verify_rules._HEADING.fullmatch(line.rstrip("\r\n"))
-        if heading and heading.groups() == ("##", verify_rules.EVIDENCE_HEADING):
-            evidence = index + 1
-    if evidence is None or any(
-        line.strip() and not line.lstrip().startswith((">", "＞")) for line in lines[evidence:]
+    body = note[len(prefix):]
+    evidence = next((end for level, title, _, end in reversed(verify_rules.markdown_headings(body))
+                     if level == 2 and title == verify_rules.EVIDENCE_HEADING), None)
+    if evidence is None:
+        return note
+    lines = body[evidence:].splitlines(keepends=True)
+    if any(
+        line.strip() and not line.lstrip().startswith((">", "＞")) for line in lines
     ):
         return note
-    return prefix + "".join(lines[:evidence]) + "".join(_format_quote_line(line) for line in lines[evidence:])
+    return prefix + body[:evidence] + "".join(_format_quote_line(line) for line in lines)
 
 
 def _normalized_note_text(content: bytes) -> str:
@@ -374,7 +374,8 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     lines = content.splitlines()
     first = lines[0].decode("utf-8-sig", errors="replace") if lines else ""
     if not first.startswith("<!-- tfv-review:"):
-        if required:
+        status = read_job_status(job)
+        if required or isinstance(status.get("review"), dict):
             raise ValueError("a Task review.md receipt is required before reading delivery")
         return None
     header = re.fullmatch(r"<!-- tfv-review: (.+) -->", first)

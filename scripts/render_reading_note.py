@@ -120,22 +120,19 @@ def render_lines(body: str) -> tuple[str, set[int]]:
 
 @dataclass
 class Section:
-    heading: re.Match[str]
+    level: int
+    title: str
     body: str
     times: set[int]
 
-    @property
-    def level(self) -> int:
-        return len(self.heading[1])
-
 
 def render_body(body: str) -> str:
-    headings = list(rules._HEADING.finditer(body))
-    ends = [heading.start() for heading in headings[1:]] + [len(body)]
+    headings = rules.markdown_headings(body)
+    ends = [start for _, _, start, _ in headings[1:]] + [len(body)]
     sections: list[Section] = []
-    for heading, end in zip(headings, ends):
-        content, times = render_lines(body[heading.end():end])
-        sections.append(Section(heading, content, times | rules.delivery_times(heading[2])))
+    for (level, title, _, heading_end), end in zip(headings, ends):
+        content, times = render_lines(body[heading_end:end])
+        sections.append(Section(level, title, content, times | rules.delivery_times(title)))
 
     kept: list[Section] = []
     for index, section in enumerate(sections):
@@ -145,8 +142,7 @@ def render_body(body: str) -> str:
 
     parts = []
     for index, section in enumerate(kept):
-        heading = section.heading
-        title = remove_times(heading[2])
+        title = remove_times(section.title)
         if section.level == 3:
             times = section.times.copy()
             for child in kept[index + 1:]:
@@ -162,8 +158,7 @@ def render_body(body: str) -> str:
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
-        parts.extend((heading.string[heading.start():heading.start(2)], title,
-                      heading.string[heading.end(2):heading.end()], content))
+        parts.extend((f"{'#' * section.level} {title}", content))
     return "".join(parts).strip("\n")
 
 
@@ -190,13 +185,14 @@ def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = Fals
         raise RenderError("could not read note.md properties")
 
     body = normalize_newlines(text[frontmatter.end():])
-    evidence = next((heading for heading in rules._HEADING.finditer(body)
-                     if heading.groups() == ("##", rules.EVIDENCE_HEADING)), None)
+    evidence = next(((start, end) for level, title, start, end in rules.markdown_headings(body)
+                     if level == 2 and title == rules.EVIDENCE_HEADING), None)
     if evidence is None:
         raise RenderError("note.md is missing the 原文依据 section")
+    evidence_start, evidence_end = evidence
     screen_quote = re.compile(r"^\s*>[ \t]+\[(?:\d+:)?\d{2,}:[0-5]\d\]\[画面\]", re.MULTILINE)
-    has_screen = bool(screen_quote.search(body, evidence.end()))
-    body = body[:evidence.start()]
+    has_screen = bool(screen_quote.search(body, evidence_end))
+    body = body[:evidence_start]
     omission = OMISSION.search(body)
     if omission is None:
         raise RenderError("note.md is missing the 本文略去 line")

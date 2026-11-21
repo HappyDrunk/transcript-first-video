@@ -297,6 +297,7 @@ _SPOKEN_DECIMAL = re.compile(
 )
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", re.MULTILINE)
+_EMPTY_ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+#+)?[ \t]*$")
 _SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _HEADING_MASK = re.compile(rf"{_FENCED_CODE.pattern}|{_HTML_COMMENT.pattern}", _FENCED_CODE.flags)
@@ -377,6 +378,7 @@ class DeliverySection:
     prose: list[str]
     blocks: list[list[str]]
     mixed_list: bool = False
+    has_fence: bool = False
 
 
 def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
@@ -391,9 +393,12 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
         line = raw.removesuffix("\r")
         end = start + len(line)
         stripped = line.strip()
+        empty_atx = _EMPTY_ATX_HEADING.fullmatch(line)
         atx = _HEADING.fullmatch(line)
         underline = _SETEXT_UNDERLINE.fullmatch(line)
-        if atx:
+        if empty_atx:
+            headings.append((len(empty_atx[1]), "", start, end))
+        elif atx:
             headings.append((len(atx[1]), atx[2], start, end))
         elif underline and paragraph is not None:
             title, paragraph_start = paragraph
@@ -414,11 +419,13 @@ def delivery_sections(body: str) -> list[DeliverySection]:
     for index, (level, heading, _, end) in enumerate(headings):
         section_body = body[end : starts[index + 1]]
         list_forms = [] if heading == CONCISE_ACTION_HEADING else None
+        has_fence = False
         if list_forms is not None:
             section_body = _HTML_COMMENT.sub("", section_body)
+            has_fence = bool(_FENCED_CODE.search(section_body))
         prose, blocks = delivery_parts(section_body, list_forms=list_forms)
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
-        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list))
+        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list, has_fence))
     return sections
 
 
@@ -471,9 +478,9 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
             orphan = section.prose[1].splitlines()[0]
             issues.append(f"orphan text after {ACTION_HEADING}: {orphan[:80]}")
         if section.heading == CONCISE_ACTION_HEADING and (
-            not 1 <= len(section.prose) <= 3 or section.blocks or section.mixed_list
+            not 1 <= len(section.prose) <= 3 or section.blocks or section.mixed_list or section.has_fence
         ):
-            issues.append(f"{CONCISE_ACTION_HEADING} needs one to three items in one form, without callouts")
+            issues.append(f"{CONCISE_ACTION_HEADING} needs one to three items in one form, without callouts or fenced code")
     if kind == "大会":
         legacy = _CONFERENCE_MAIN not in middle
         claims = children.count(_CONFERENCE_CLAIMS)
@@ -1117,16 +1124,17 @@ def _cites(fields: dict, transcript: Path, *, job: bool) -> bool:
 
 
 def delivery_evidence(body: str) -> tuple[str, str | None, str | None]:
-    evidence = next((heading for heading in _HEADING.finditer(body)
-                     if heading.groups() == ("##", EVIDENCE_HEADING)), None)
+    evidence = next(((start, end) for level, title, start, end in markdown_headings(body)
+                     if level == 2 and title == EVIDENCE_HEADING), None)
     if evidence is None:
         return body, None, None
-    before = body[:evidence.start()].rstrip()
+    start, end = evidence
+    before = body[:start].rstrip()
     lines = before.splitlines()
     omitted = OMISSION_LINE.fullmatch(lines[-1]) if lines else None
     if omitted and omitted[1]:
-        return "\n".join(lines[:-1]), body[evidence.end():], omitted[1]
-    return before, body[evidence.end():], None
+        return "\n".join(lines[:-1]), body[end:], omitted[1]
+    return before, body[end:], None
 
 
 def caption_structure(note: str) -> tuple[str | None, list[str]]:
@@ -1790,11 +1798,11 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
         if not 1 <= len(section.prose) <= 3:
             return ("R13", False, f"{CONCISE_ACTION_HEADING} needs one to three items")
         for item in section.prose:
-            prose = _strip_markdown_links(item)
-            prose = re.sub(r"[*_`]", "", prose)
+            visible = _strip_markdown_links(item)
+            prose = re.sub(r"[*_`]", "", visible)
             sentences = [sentence for sentence in action_sentences(prose)
                          if any(char.isalnum() for char in sentence)]
-            if not linked_quotes(item, ctx.valid_quotes) or not 1 <= len(sentences) <= 2:
+            if not linked_quotes(visible, ctx.valid_quotes) or not 1 <= len(sentences) <= 2:
                 return ("R13", False, f"{CONCISE_ACTION_HEADING} needs a supporting ⏱ link and one to two sentences per item")
         return ("R13", True, "each closing item is short and links to evidence")
     prose = "\n".join(section.prose)
