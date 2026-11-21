@@ -370,6 +370,9 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     if (not isinstance(receipt, dict) or not isinstance(receipt.get("inputs"), dict)
             or receipt.get("result") not in ("changes", "clear")):
         raise ValueError("invalid tfv-review receipt")
+    reviewer = receipt.get("reviewer", "independent")
+    if reviewer not in ("independent", "self"):
+        raise ValueError("reviewer must be independent or self")
 
     status = read_job_status(job)
     if repair_lock(status, review=True):
@@ -389,9 +392,10 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
             "failures": 0, "initial_repair_rounds": status.get("repair_rounds", 0),
             "c04c": verifier.get("c04c", []),
             "c04c_sha256": receipt.get("c04c_sha256"),
+            "reviewer": reviewer,
         }
     elif (not isinstance(batch, dict) or batch.get("inputs") != receipt["inputs"]
-          or batch.get("result") != receipt["result"]):
+          or batch.get("result") != receipt["result"] or batch.get("reviewer", "independent") != reviewer):
         raise ValueError("only the original review batch may be processed")
 
     baseline = batch["inputs"]

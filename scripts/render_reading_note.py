@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import stat
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -155,7 +156,7 @@ def render_body(body: str) -> str:
     return "".join(parts).strip("\n")
 
 
-def render_note(note: bytes, *, keep_frontmatter: bool) -> bytes:
+def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False) -> bytes:
     text = note.decode("utf-8-sig")
     frontmatter = FRONTMATTER.match(text)
     if frontmatter is None:
@@ -176,10 +177,15 @@ def render_note(note: bytes, *, keep_frontmatter: bool) -> bytes:
     if omission is None:
         raise RenderError("note.md is missing the 本文略去 line")
 
+    intro = [INTRO]
+    if self_review:
+        intro.insert(0, "未经独立复核")
+    if has_screen:
+        intro.append(SCREEN_HINT)
     markdown = "\n\n".join((
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
-        f"{INTRO}\n\n{SCREEN_HINT}" if has_screen else INTRO,
+        "\n\n".join(intro),
         render_body(body[:omission.start()]),
         "---",
         f"没写进来的部分：{omission[1]}",
@@ -230,12 +236,51 @@ def check_finished(job: Path, inputs: dict, verifier: dict, review: bytes | None
             raise RenderError("review processing must finish on the current job files")
 
 
-def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_review: bool = False) -> None:
+def reading_path(directory: Path, job: Path, note: bytes) -> Path:
+    fields = knowledge_note.parse_frontmatter(normalize_newlines(note.decode("utf-8-sig"))) or {}
+
+    def component(value: str) -> str:
+        value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", value)
+        return " ".join(value.split()).strip(" .-—")
+
+    prefix = " ".join(filter(None, (component(fields.get("published", "")), component(fields.get("channel", "")))))
+    title = component(fields.get("title", "")) or component(job.name) or "reading"
+    stem = (f"{prefix} - {title}" if prefix else title).encode("utf-8")[:200].decode("utf-8", "ignore").rstrip(" .-")
+    if re.fullmatch(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", stem, re.IGNORECASE):
+        stem = "_" + stem
+    return directory.resolve() / (stem + ".md")
+
+
+def owns_generated_output(output: Path, source: str) -> bool:
+    try:
+        if not stat.S_ISREG(output.lstat().st_mode):
+            return False
+        raw = output.read_bytes().decode("utf-8")
+    except (UnicodeDecodeError, OSError):
+        return False
+
+    lines = [line[:-1] if line.endswith("\r") else line for line in raw.split("\n")]
+    if raw.startswith(("---\n", "---\r\n")):
+        try:
+            closing = lines.index("---", 1)
+        except ValueError:
+            return False
+        lines = lines[closing + 1:]
+
+    header = [line for line in lines if line.strip(" \t")][:2]
+    return len(header) == 2 and header[0].startswith("# ") and f"[原视频]({source})" in header[1]
+
+
+def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, require_review: bool = False,
+               output_dir: Path | None = None) -> Path:
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
-    output = output.parent.resolve() / output.name
-    check_destination(job, output)
+    if output is not None:
+        output = output.parent.resolve() / output.name
+        check_destination(job, output)
+    elif output_dir is None:
+        raise RenderError("pass an output file or directory")
 
     with verify_note.job_lock(job):
         status = verify_note.read_job_status(job)
@@ -260,14 +305,24 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_revie
         if result.get("c04c") and review is None:
             raise RenderError("C04c warnings require a bound review before reading delivery")
         inputs = verify_note.job_inputs(job)
-        verifier = verify_note.read_job_status(job).get("verifier")
+        status = verify_note.read_job_status(job)
+        verifier = status.get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
         check_finished(job, inputs, verifier, review)
         note = (job / "note.md").read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
-        markdown = render_note(note, keep_frontmatter=keep_frontmatter)
+        self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
+        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review)
+        if output is None:
+            output = reading_path(output_dir, job, note)
+            check_destination(job, output)
+            if output.exists() or output.is_symlink():
+                source = (knowledge_note.parse_frontmatter(normalize_newlines(note.decode("utf-8-sig"))) or {})["source"]
+                if not owns_generated_output(output, source):
+                    raise RenderError(f"cannot verify ownership of generated output: {output}. "
+                                      "Pass --output <路径> to save elsewhere.")
 
         output.parent.mkdir(parents=True, exist_ok=True)
         temp = None
@@ -281,20 +336,31 @@ def render_job(job: Path, output: Path, *, keep_frontmatter: bool, require_revie
         finally:
             if temp is not None:
                 temp.unlink(missing_ok=True)
+        return output
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-dir", type=Path, required=True, help="Job directory containing the evidence note")
-    parser.add_argument("--output", type=Path, required=True, help="Full path for the reading Markdown file")
+    destination = parser.add_mutually_exclusive_group(required=True)
+    destination.add_argument("--output", type=Path, help="Full path for the reading Markdown file")
+    destination.add_argument("--output-dir", type=Path, help="Folder for a filename generated from the note properties")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
-    parser.add_argument("--require-review", action="store_true", help="Require a bound independent Task review receipt")
+    parser.add_argument("--require-review", action="store_true",
+                        help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
     args = parser.parse_args(argv)
     try:
-        render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter, require_review=args.require_review)
+        path = render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter,
+                          require_review=args.require_review, output_dir=args.output_dir)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)
         return 1
+    if args.output_dir is not None:
+        print(path)
     return 0
 
 

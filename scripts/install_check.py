@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # These paths let the check work on a copied source directory that has no .git.
 # In a checkout, git's tracked-file list also catches files added in later releases.
 FALLBACK_FILES = (
+    "pyproject.toml",
     "scripts/c04c_review.py",
     "scripts/claim_ground_check.py",
     "scripts/coverage_check.py",
@@ -63,6 +64,7 @@ def required_files(root: Path) -> list[str]:
         )
         tracked = [name for name in result.stdout.split("\0") if name]
         files = set(tracked)
+        files.add("pyproject.toml")
         files.add("scripts/install_check.py")
         return sorted(files)
     except (OSError, subprocess.SubprocessError):

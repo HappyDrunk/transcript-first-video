@@ -9,10 +9,10 @@
 ```text
 python scripts/verify_note.py --job "<任务目录>" --with-coverage
 〈两道通过后交独立 Task 复核并处理同一批意见〉
-python scripts/render_reading_note.py --require-review --task-dir "<任务目录>" --output "<阅读版路径>"
+python scripts/render_reading_note.py --require-review --task-dir "<任务目录>" --output-dir "<频道目录>"
 ```
 
-`--task-dir` 和 `--output` 都必填，可用绝对路径或相对于当前目录的路径。任务目录沿用现有结构，包含 `note.md`、`transcript.txt`、`selection.md`，以及检查使用的 `status.json` 和已有的 `segments.json`。`--output` 是阅读版 Markdown 的完整文件路径，交付时指定频道文件夹中的独立目标文件。可附加 `--keep-frontmatter`，把证据版开头的 YAML 区块（含分隔线）原样保留在阅读版最前面，随后照常写标题和来源行。频道交付使用默认格式。频道或发布日期缺失时，文件名省略缺失字段，可直接用标题；平台标题也缺失时可用视频 ID。文件名不填「—」占位。
+指定任务目录和频道目录，脚本按日期、频道和标题生成文件名并输出路径。省略缺失元数据。兼容 `--output` 完整文件路径。附加 `--keep-frontmatter` 时原样保留证据稿 YAML。
 
 联合送检和渲染对同一输入运行 verify 与 coverage，一次列出两道 FAIL。一份稿过两道检查后可送复核。C04c 是警告，有警告时等复核裁定后才能正式生成阅读版。渲染核验最终稿、两道检查和绑定回执。
 
@@ -20,7 +20,7 @@ python scripts/render_reading_note.py --require-review --task-dir "<任务目录
 
 - `python scripts/verify_note.py --job "<任务目录>"`，包括附加 `--with-coverage` 的联合检查。
 - `python scripts/coverage_check.py --job "<任务目录>"`。
-- `python scripts/render_reading_note.py --task-dir "<任务目录>" --output "<阅读版路径>"`。
+- `python scripts/render_reading_note.py --task-dir "<任务目录>" --output-dir "<频道目录>"`。
 
 普通稿最多初稿加两份修订。不同稿件计 `edit_rounds`，同稿重试不增稿次。正式检查失败计 `repair_rounds`，联合失败合计一次。WARN 不计失败。第三次失败或提交第四份普通稿时停止，交 `note.md` 和 `issues.md`。用户决定继续时，在联合送检命令加 `--resume`，旧结果保留。单独送检也用此额度。
 
@@ -50,7 +50,7 @@ python scripts/render_reading_note.py --require-review --task-dir "<任务目录
 4. 小节内容只有「不适用（文稿中未出现意见分歧）」或「本节没有补充中间部分之外的情况」这一句时，连同该标题一起删掉。匹配时允许末尾有句号，前一句的括号可全角或半角。该小节另有实质内容时保留。
 5. 删掉 `## 原文依据` 标题及其后整节。结尾加一道 `---` 分隔线，把 `本文略去｜` 改成 `没写进来的部分：`，原样保留后面的各个话题、时间范围或「无」。最后另起一段写「每句话对应的视频原话和时间点，保存在这条视频的证据版里。」
 
-除上述固定文字和格式转换外，逐字保留正文段落和列表项。保持原有顺序，同一输入和同一选项重复执行应生成完全相同的文件。阅读版中无 `⏱`、Obsidian 块标记 `[!` 或「原文依据」节。交付和阅读使用 `--output` 指定的文件。检查时仍用任务目录中的证据版；coverage 的兼容参数 `--delivery` 接受 `note.md`、逐字节副本，或仅经上述引文头部整理后与任务稿逐字节一致的副本。
+除上述固定文字和格式转换外，逐字保留正文段落和列表项。保持原有顺序，同一输入和同一选项重复执行应生成完全相同的文件。阅读版中无 `⏱`、Obsidian 块标记 `[!` 或「原文依据」节。交付脚本输出路径上的文件。检查时仍用任务目录中的证据版；coverage 的兼容参数 `--delivery` 接受 `note.md`、逐字节副本，或仅经上述引文头部整理后与任务稿逐字节一致的副本。
 
 ## 动笔前通读和取舍
 

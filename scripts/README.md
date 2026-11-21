@@ -39,7 +39,7 @@ Evidence JSON and Markdown record repo-relative paths (`scripts/verify_note.py`,
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=KwhgfwOSToQ" --out artifacts
 ```
 
-Captions first via `yt-dlp` (`pip install -r requirements.txt`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. When yt-dlp supplies verified YouTube title, channel and publication date, status.json and the scaffold preserve those fields. The scaffold falls back to the job ID if the title is unavailable. The description stays out of the transcript and scaffold. The host does not analyze the caption. Transcripts from two public runs, with the old template notes removed, are `evals/results/live/youtube_jNQXAC9IVRw/transcript.txt` and `evals/results/live/youtube_KwhgfwOSToQ/transcript.txt`.
+Captions first via `yt-dlp` (`python3 -m pip install --group base`, or `python3 -m yt_dlp` on `PATH`). If YouTube asks for a sign-in and `YTDLP_COOKIES` is unset, the host tries a public caption mirror unless `INVIDIOUS_INSTANCE=off`. The mirror is a third party: it can be wrong, and the quality gate cannot tell a fluent fake from real speech. When yt-dlp supplies verified YouTube title, channel and publication date, status.json and the scaffold preserve those fields. The scaffold falls back to the job ID if the title is unavailable. The description stays out of the transcript and scaffold. The host does not analyze the caption. Transcripts from two public runs, with the old template notes removed, are `evals/results/live/youtube_jNQXAC9IVRw/transcript.txt` and `evals/results/live/youtube_KwhgfwOSToQ/transcript.txt`.
 
 ## Twitter/X video
 
@@ -63,7 +63,7 @@ A public check of `https://x.com/NASA/status/2102748685792596449` kept a transcr
 Write `selection.md` and `note.md` in the job directory. For channel delivery, generate the reading copy.
 
 ```bash
-python3 scripts/render_reading_note.py --task-dir artifacts/youtube_KwhgfwOSToQ --output "channel/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+python3 scripts/render_reading_note.py --require-review --task-dir artifacts/youtube_KwhgfwOSToQ --output-dir channel
 ```
 
 The renderer runs verify and coverage in order. It writes the reading copy when both checks mark the current inputs `finished`. Add `--keep-frontmatter` to retain the opening YAML block. The job directory keeps the evidence note and its inputs. See the [delivery format](../references/delivery-format.md).

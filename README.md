@@ -27,10 +27,10 @@ python3 ~/.agents/skills/transcript-first-video/scripts/install_check.py
 
 The check prints the installed commit (or the `VERSION` for a source copy) and fails with a list of missing files when the installation is incomplete.
 
-Fetch one captioned URL.
+From the installed skill folder, use pip with `--group` support to install dependencies and fetch a captioned URL.
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 ```
 
@@ -79,13 +79,16 @@ Adjust these when the reader asks. Keep the [single-note format and evidence](re
 ## Checks
 
 ```bash
-pip install -r requirements.txt
+python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 # python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
-python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw --output "channel/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
+python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
+# Review the checked note, then run:
+python3 scripts/render_reading_note.py --require-review --task-dir artifacts/youtube_jNQXAC9IVRw --output-dir channel
 ```
 
-The host writes the transcript and a blank scaffold. Write the selection and evidence note, then run the renderer. It runs verify and coverage and writes the reading copy once the current job is `finished`. With `ASR_BACKEND` unset, speech recognition stays off, and no captions means stop. Offline check: `bash scripts/smoke.sh`. More commands are in [scripts/README.md](scripts/README.md).
+Write the selection and evidence note, then follow the review in [SKILL.md](SKILL.md). The renderer checks the final inputs and generates the filename. With `ASR_BACKEND` unset, missing captions stop the run. Offline check: `bash scripts/smoke.sh`.
 
 ## Optional YouTube screen text
 
@@ -96,8 +99,8 @@ Wait for `next_step: write-note` in `status.json`. Missing dependencies, no qual
 ```bash
 export TFV_SCREEN_MODE=slides
 python3 scripts/youtube_host.py "<YouTube URL>" --out artifacts --asr off --json
-# After writing selection.md and note.md:
-python3 scripts/render_reading_note.py --task-dir "artifacts/youtube_<ID>" --output "reading.md"
+# After both checks and review:
+python3 scripts/render_reading_note.py --require-review --task-dir "artifacts/youtube_<ID>" --output-dir reading
 ```
 
 Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame.
@@ -109,7 +112,7 @@ Install Python and yt-dlp as above. On Debian or Ubuntu, install FFmpeg and inst
 ```bash
 sudo apt update
 sudo apt install ffmpeg
-python3 -m pip install rapidocr onnxruntime
+python3 -m pip install --group screen
 ```
 
 If the VM cannot reach the apt mirror, download the official `.deb` packages and any missing dependencies for its distro release and architecture. Compare each downloaded file's SHA-256 with its `SHA256` value from the repository's signed package metadata before installing it. [Ubuntu archive verification](https://documentation.ubuntu.com/security/software-integrity/archive-verification/)
@@ -119,7 +122,7 @@ sha256sum ./package.deb
 sudo dpkg -i ./package.deb
 ```
 
-RapidOCR uses CPU ONNX Runtime and loads models bundled in the installed package. After a Grok Bot VM rebuild, reinstall the tools and Python packages. The probe downloaded 1080p with yt-dlp 2026.08.19 despite a missing Deno warning. If YouTube downloads start failing, first try updating yt-dlp and installing Deno.
+RapidOCR uses CPU ONNX Runtime and loads models bundled in the installed package. If YouTube downloads fail, update yt-dlp and check its JavaScript runtime.
 
 ## Evidence
 
@@ -166,13 +169,17 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 ### 怎么跑
 
 ```bash
-pip install -r requirements.txt
+cd ~/.agents/skills/transcript-first-video
+python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 # python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
-python3 scripts/render_reading_note.py --task-dir artifacts/youtube_jNQXAC9IVRw --output "频道/〈发布日期〉 〈频道〉 - 〈标题〉.md"
+python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
+python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
+# 复核通过后：
+python3 scripts/render_reading_note.py --require-review --task-dir artifacts/youtube_jNQXAC9IVRw --output-dir 频道
 ```
 
-主机写下文稿和空白脚手架。先通读并写取舍，再写证据版。写完后运行阅读版脚本，它先执行 verify 和 coverage，两项通过且当前任务状态为 `finished` 后写入阅读版。没开 `ASR_BACKEND` 时不做语音识别，没有字幕就停。离线自检用 `bash scripts/smoke.sh`。更多命令见 [scripts/README.md](scripts/README.md)。
+通读后写选段和证据版，再按 [SKILL.md](SKILL.md) 送检和复核。阅读版由脚本命名。没开 `ASR_BACKEND` 时，缺字幕就停。离线自检用 `bash scripts/smoke.sh`。
 
 YouTube 默认先保存字幕，再限时 45 秒抽样画面。发现稳定文字才完整扫描。用 `TFV_SCREEN_MODE=slides` 跳过抽样完整扫描，`nameplate` 读取片头三分钟人名条，`off` 只用字幕。画面结果记入 `status.json` 后，等 `next_step` 为 `write-note` 再写稿。缺依赖、没有发现、失败或超时都继续用字幕。送检采用任务状态里的实际模式，改变模式需重跑获取。[画面识别的安装和用法](#optional-youtube-screen-text)
 
