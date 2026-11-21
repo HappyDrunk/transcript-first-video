@@ -89,7 +89,7 @@ def extract_screen(job: Path, start: int, end: int) -> tuple[str, list[str]]:
         )
     if not screen_path.is_file():
         raise ValueError(f"{screen_path}: 找不到 screen.txt")
-    source = _screen_source(screen_path)
+    source = _screen_source(screen_path, status)
     if source is None:
         raise ValueError(f"{screen_path}: screen.txt 与 status.json 的 SHA-256 不一致或无法读取")
     if screen_mode(job) == "off":
@@ -123,7 +123,7 @@ def extract_screen(job: Path, start: int, end: int) -> tuple[str, list[str]]:
         if pending_blank:
             output.append("")
             pending_blank = False
-        output.append(f"> {line.strip()}")
+        output.append(f"> {line}")
 
     warnings = [f"跳过 {skipped_uncertain} 行存疑画面（不能当依据）"] if skipped_uncertain else []
     if not output:
