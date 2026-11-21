@@ -622,8 +622,12 @@ def sample_slides(
             if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:
                 try:
                     status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
-                except Exception:
-                    pass
+                    status["calibration_status"] = "calibrated"
+                except Exception as exc:
+                    kind = failure_result(exc)
+                    status["calibration_status"] = "timeout_fallback" if kind == "timeout" else "fallback"
+                    reason = re.sub(r"\w+://\S+", "<URL>", str(exc))
+                    status["calibration_reason"] = " ".join(reason.split()) or f"calibration {kind}"
     except Exception as exc:
         status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
     if scan.frame_ocr_times:

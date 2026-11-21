@@ -986,6 +986,9 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
         mode = request
         if request == "auto":
             sample = screen_ocr.sample_slides(staged, source, command, _screen_download_options)
+            sample = dict(sample)
+            if sample.get("calibration_reason"):
+                sample["calibration_reason"] = redact(str(sample["calibration_reason"]))
             screen["sample"] = sample
             if sample["result"] != "slides_detected":
                 return _screen_fallback(screen, sample["result"], sample.get("reason", ""))
@@ -1040,6 +1043,9 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 and math.isfinite(latency)
                 and latency > 0
             ):
+                if sample.get("calibration_status") == "calibrated":
+                    sample["calibration_status"] = "fallback"
+                    sample.setdefault("calibration_reason", "calibration estimate unavailable")
                 frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
                 sample_extract = sample.get("mean_sample_extract_seconds")
                 if (
@@ -1050,6 +1056,11 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 ):
                     sample_extract = 0.0
                 estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
+            if estimated is not None and math.isfinite(estimated):
+                sample["estimated_seconds"] = round(estimated, 3)
+            if sample.get("calibration_status") in ("timeout_fallback", "fallback"):
+                est_text = f"{sample['estimated_seconds']:.1f}s" if "estimated_seconds" in sample else "unknown"
+                log(f"screen OCR calibration {sample['calibration_status']} (estimated {est_text}): {sample.get('calibration_reason', '')}")
             if estimated is not None and estimated > safe_budget:
                 screen["timeout_seconds"] = budget
                 screen["safe_budget_seconds"] = round(safe_budget, 3)
