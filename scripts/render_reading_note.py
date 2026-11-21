@@ -250,6 +250,24 @@ def reading_path(directory: Path, job: Path, note: bytes) -> Path:
     return directory.resolve() / (stem + ".md")
 
 
+def owns_generated_output(output: Path, source: str) -> bool:
+    try:
+        raw = output.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return False
+
+    lines = raw.splitlines()
+    if raw.startswith(("---\n", "---\r\n")):
+        try:
+            closing = lines.index("---", 1)
+        except ValueError:
+            return False
+        lines = lines[closing + 1:]
+
+    header = [line for line in lines if line.strip()][:2]
+    return len(header) == 2 and header[0].startswith("# ") and f"[原视频]({source})" in header[1]
+
+
 def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, require_review: bool = False,
                output_dir: Path | None = None) -> Path:
     job = job.resolve(strict=True)
@@ -295,10 +313,11 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if output is None:
             output = reading_path(output_dir, job, note)
             check_destination(job, output)
-            if output.exists():
+            if output.exists() or output.is_symlink():
                 source = (knowledge_note.parse_frontmatter(normalize_newlines(note.decode("utf-8-sig"))) or {})["source"]
-                if f"[原视频]({source})" not in output.read_text(encoding="utf-8"):
-                    raise RenderError(f"generated filename already belongs to another note: {output}")
+                if not owns_generated_output(output, source):
+                    raise RenderError(f"cannot verify ownership of generated output: {output}. "
+                                      "Pass --output <路径> to save elsewhere.")
 
         output.parent.mkdir(parents=True, exist_ok=True)
         temp = None
@@ -322,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
     destination.add_argument("--output", type=Path, help="Full path for the reading Markdown file")
     destination.add_argument("--output-dir", type=Path, help="Folder for a filename generated from the note properties")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
-    parser.add_argument("--require-review", action="store_true", help="Require a bound independent Task review receipt")
+    parser.add_argument("--require-review", action="store_true",
+                        help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
     args = parser.parse_args(argv)
     try:
         path = render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter,
