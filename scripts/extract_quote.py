@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy a timed speech excerpt without changing any task files."""
+"""Extract timed speech and screen quotes without changing any task files."""
 
 from __future__ import annotations
 
@@ -8,7 +8,20 @@ from pathlib import Path
 import sys
 
 from quality_gate import Segment, format_stamp
-from verify_rules import QUOTE_WINDOW, _fold, clock_seconds, transcript_segments
+from verify_rules import (
+    QUOTE_WINDOW,
+    SCREEN_FILE,
+    SCREEN_TAG,
+    SLIDE_MARKER,
+    UNCERTAIN_SCREEN_TAG,
+    _fold,
+    _screen_source,
+    _screen_status,
+    clock_seconds,
+    parse_stamp,
+    screen_mode,
+    transcript_segments,
+)
 
 MAX_CUE_GAP_SECONDS = 5
 
@@ -63,26 +76,92 @@ def extract(job: Path, start: int, end: int) -> tuple[str, str]:
     return f"> {format_stamp(actual_start)} {text}", bounds
 
 
-def main() -> int:
+def extract_screen(job: Path, start: int, end: int) -> tuple[str, list[str]]:
+    screen_path = job / SCREEN_FILE
+    status = _screen_status(job)
+    if status is None:
+        raise ValueError(f"{job / 'status.json'}: 缺少 screen_ocr 状态，不能摘取画面引文")
+    if status.get("mode") == "off":
+        raise ValueError(f"{screen_path}: 画面模式为 off，不能摘取画面引文")
+    if status.get("state") != "ready":
+        raise ValueError(
+            f"{screen_path}: screen_ocr 状态为 {status.get('state')!r}（非 ready），不能摘取画面引文"
+        )
+    if not screen_path.is_file():
+        raise ValueError(f"{screen_path}: 找不到 screen.txt")
+    source = _screen_source(screen_path, status)
+    if source is None:
+        raise ValueError(f"{screen_path}: screen.txt 与 status.json 的 SHA-256 不一致或无法读取")
+    if screen_mode(job) == "off":
+        raise ValueError(f"{screen_path}: 画面模式为 off，不能摘取画面引文")
+
+    lines = source[0]
+    output: list[str] = []
+    pending_blank = False
+    skipped_uncertain = 0
+    for line in lines:
+        if not line.strip():
+            if output:
+                pending_blank = True
+            continue
+        stamp, tagged = parse_stamp(line)
+        if stamp is None:
+            continue
+        if SLIDE_MARKER.fullmatch(tagged):
+            pending_blank = False
+            continue
+        if not (start <= stamp < end):
+            continue
+        if tagged.startswith(UNCERTAIN_SCREEN_TAG):
+            skipped_uncertain += 1
+            continue
+        if not tagged.startswith(SCREEN_TAG):
+            continue
+        text = tagged[len(SCREEN_TAG):].strip()
+        if not text:
+            continue
+        if pending_blank:
+            output.append("")
+            pending_blank = False
+        output.append(f"> {line}")
+
+    warnings = [f"跳过 {skipped_uncertain} 行存疑画面（不能当依据）"] if skipped_uncertain else []
+    if not output:
+        raise ValueError("\n".join([
+            *warnings,
+            f"{screen_path}: {_clock(start)}–{_clock(end)} 没有可信 [画面] 行",
+        ]))
+    return "\n".join(output), warnings
+
+
+def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--screen", action="store_true", help="extract trusted [画面] lines from screen.txt")
     parser.add_argument("task_dir", type=Path)
     parser.add_argument("start", metavar="START", help="inclusive start in mm:ss or hh:mm:ss")
     parser.add_argument("end", metavar="END", help="exclusive end in mm:ss or hh:mm:ss")
-    args = parser.parse_args()
+    args = parser.parse_intermixed_args(argv)
     start, end = clock_seconds(args.start), clock_seconds(args.end)
     if start is None or end is None or start >= end:
         parser.error("use mm:ss or hh:mm:ss with START earlier than END")
     try:
-        line, bounds = extract(args.task_dir, start, end)
+        if args.screen:
+            quote, messages = extract_screen(args.task_dir, start, end)
+        else:
+            quote, bounds = extract(args.task_dir, start, end)
+            messages = [f"Actual subtitles: {bounds}"]
     except (OSError, ValueError) as exc:
         print(exc, file=sys.stderr)
         return 1
-    print(line)
-    print(f"Actual subtitles: {bounds}", file=sys.stderr)
+    print(quote)
+    for message in messages:
+        print(message, file=sys.stderr)
     return 0
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
     raise SystemExit(main())

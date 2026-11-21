@@ -98,6 +98,7 @@ class DocWeightTests(unittest.TestCase):
         self.assertTrue(section.strip())
         self.assertLessEqual(len(section.encode("utf-8")), 5_120)
         self.assertIn("通俗版合成片段", section)
+        self.assertIn("whue9_YquGA", section)
         note = read_text("evals/fixtures/delivery-examples/synthetic-cold-dough/note.md")
         pieces = (
             "## 先记住一句话\n先让面团在冰箱里慢慢发起，取出回温，再检查面团和成品。",
