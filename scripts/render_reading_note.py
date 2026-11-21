@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import knowledge_note
+import user_prefs
 import verify_note
 import verify_rules as rules
 
@@ -173,7 +174,7 @@ def _delivery_language(body: str, requested: str | None) -> str:
         return "zh"
     prose = re.sub(r"(?m)^(?:#{1,6}[ \t]+|[ \t]*>|本文略去[｜|]).*$", "", body)
     cjk, latin = rules._script_counts(prose)
-    return "en" if latin > 0 and cjk * 20 < latin else "zh"
+    return "en" if latin > 0 and cjk < 4 and cjk * 20 < latin else "zh"
 
 
 def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False,
@@ -296,7 +297,7 @@ def owns_generated_output(output: Path, source: str) -> bool:
 
 
 def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, require_review: bool = False,
-               output_dir: Path | None = None) -> Path:
+               output_dir: Path | None = None, delivery_language: str | None = None) -> Path:
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
@@ -315,7 +316,13 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
             raise RenderError(" · ".join([*stopped["reasons"], *(stopped[key] for key in ("draft", "issues") if key in stopped)]))
         reading_level = knowledge_note.read_reading_level(status)
         verify_note.prepare_job_note(job)
-        receipt = verify_note.prepare_review_submission(job, required=require_review)
+        note_path = job / "note.md"
+        try:
+            receipt = verify_note.prepare_review_submission(job, required=require_review)
+            if receipt is None and note_path.is_file():
+                verify_note.check_closing_heading_pair(note_path.read_bytes(), reading_level)
+        except ValueError as exc:
+            raise RenderError(str(exc)) from exc
         review, reviewed_inputs = receipt if receipt is not None else (None, None)
         result = verify_note.check_job_submission(job, with_coverage=True, reviewed_inputs=reviewed_inputs,
                                                   review_content=review)
@@ -335,20 +342,17 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
         check_finished(job, inputs, verifier, review)
-        note = (job / "note.md").read_bytes()
+        note = note_path.read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
         self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
-        text = normalize_newlines(note.decode("utf-8-sig"))
-        frontmatter = FRONTMATTER.match(text)
-        body = text[frontmatter.end():] if frontmatter else text
-        delivery, _, _ = rules.delivery_evidence(body)
-        headings = [heading[2] for heading in rules._HEADING.finditer(delivery) if heading[1] == "##"]
-        expected = knowledge_note.closing_heading_for_level(reading_level)
-        if not headings or headings[-1] != expected:
-            raise RenderError(f"note.md closing H2 must be {expected} for this reading level")
+        try:
+            reading_level = knowledge_note.read_reading_level(status)
+            verify_note.check_closing_heading_pair(note, reading_level)
+        except ValueError as exc:
+            raise RenderError(str(exc)) from exc
         markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review,
-                               reading_level=reading_level)
+                               reading_level=reading_level, delivery_language=delivery_language)
         if output is None:
             output = reading_path(output_dir, job, note)
             check_destination(job, output)
@@ -385,12 +389,15 @@ def main(argv: list[str] | None = None) -> int:
     destination.add_argument("--output", type=Path, help="Full path for the reading Markdown file")
     destination.add_argument("--output-dir", type=Path, help="Folder for a filename generated from the note properties")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
+    parser.add_argument("--language", choices=user_prefs.VALID_LANGUAGES, default=None,
+                        help="Delivery language for reading-level header")
     parser.add_argument("--require-review", action="store_true",
                         help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
     args = parser.parse_args(argv)
     try:
         path = render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter,
-                          require_review=args.require_review, output_dir=args.output_dir)
+                          require_review=args.require_review, output_dir=args.output_dir,
+                          delivery_language=args.language)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)
         return 1

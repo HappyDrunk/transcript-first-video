@@ -355,6 +355,16 @@ def _review_retry(status: dict) -> bool:
     )
 
 
+def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> None:
+    text = _normalized_note_text(note_bytes)
+    body = _FORMAT_FRONTMATTER.sub("", text, count=1)
+    delivery, _, _ = verify_rules.delivery_evidence(body)
+    headings = [heading[2] for heading in verify_rules._HEADING.finditer(delivery) if heading[1] == "##"]
+    expected = knowledge_note.closing_heading_for_level(reading_level)
+    if not headings or headings[-1] != expected:
+        raise ValueError(f"note.md closing H2 must be {expected} for this reading level")
+
+
 def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[bytes, dict] | None:
     """Bind one independent review to its prior two-gate receipt, under the job lock."""
     path = job / "review.md"
@@ -411,6 +421,7 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
 
     if sources(inputs) != sources(baseline):
         raise ValueError("review source evidence changed; the receipt is stale")
+    check_closing_heading_pair((job / "note.md").read_bytes(), knowledge_note.read_reading_level(status))
     original = batch.get("c04c", [])
     if receipt.get("c04c_sha256") != batch.get("c04c_sha256"):
         raise ValueError("only the original C04c warning snapshot may be processed")
