@@ -167,7 +167,13 @@ def _delivery_language(body: str, requested: str | None) -> str:
         return "en"
     if requested in ("中文", "中英文对照", "zh"):
         return "zh"
-    prose = re.sub(r"(?m)^(?:#{1,6}[ \t]+|[ \t]*>|本文略去[｜|]).*$", "", body)
+    parts: list[str] = []
+    offset = 0
+    for _, _, start, end in rules.markdown_headings(body):
+        parts.append(body[offset:start])
+        offset = end
+    parts.append(body[offset:])
+    prose = re.sub(r"(?m)^(?:[ \t]*>|本文略去[｜|]).*$", "", "\n".join(parts))
     cjk, latin = rules._script_counts(prose)
     return "en" if latin > 0 and cjk < 4 and cjk * 20 < latin else "zh"
 

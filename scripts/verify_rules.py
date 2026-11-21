@@ -201,9 +201,10 @@ _INDEFINITE_PERCENT = re.compile(r"百分之几(?![十百千万亿])")
 _MULTIPLIER_SUFFIX = re.compile(r"(?<=\d)[xX×](?![A-Za-z0-9_])")
 _ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re.IGNORECASE)
 _COMPOUND_NAME_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])")
-_INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)[^\n]+?(?<!`)\1(?!`)")
+_INLINE_CODE = re.compile(r"(?<!`)(?P<ticks>`+)(?!`)[^\n]+?(?<!`)(?P=ticks)(?!`)")
 _FENCED_CODE = re.compile(
-    r"^ {0,3}(?P<fence>(?P<marker>`|~)(?P=marker){2,})(?!(?P=marker))[^\n]*"
+    r"^ {0,3}(?P<fence>(?P<marker>`|~)(?P=marker){2,})(?!(?P=marker))"
+    r"(?:(?<=`)[^`\n]*|(?<=~)[^\n]*)(?=\n|\Z)"
     r"(?:\n.*?(?:^ {0,3}(?P=fence)(?P=marker)*[ \t]*\r?$|\Z)|\Z)",
     re.MULTILINE | re.DOTALL,
 )
@@ -299,8 +300,10 @@ _FRONTMATTER = re.compile(r"\A---\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", re.MULTILINE)
 _EMPTY_ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+#+)?[ \t]*$")
 _SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
-_HTML_COMMENT = re.compile(r"<!--(?:.*?-->|.*)", re.DOTALL)
-_HEADING_MASK = re.compile(rf"{_FENCED_CODE.pattern}|{_HTML_COMMENT.pattern}", _FENCED_CODE.flags)
+_MARKDOWN_CODE_OR_COMMENT = re.compile(
+    rf"{_FENCED_CODE.pattern}|{_INLINE_CODE.pattern}|(?P<comment><!--(?:.*?-->|.*))",
+    _FENCED_CODE.flags,
+)
 _LIST_ITEM = re.compile(r"^\s*(?:[-+*][ \t]+(?:\d+[.)][ \t]+)?|\d+[.)][ \t]+)")
 _INLINE_LIST_ITEM = re.compile(r"([：:；;])[ \t]*\d+[.)][ \t]+")
 _DELIVERY_TIME = re.compile(r"⏱\ufe0f?[ \t]+((?:[0-9]+:)?[0-9]{2,}:[0-5][0-9])(?![\d:])")
@@ -383,7 +386,9 @@ class DeliverySection:
 
 def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
     """Return heading levels, text, and source spans excluding the final newline."""
-    masked = _HEADING_MASK.sub(lambda match: re.sub(r"[^\n]", " ", match[0]), body)
+    masked = _MARKDOWN_CODE_OR_COMMENT.sub(
+        lambda match: match[0] if match["ticks"] else re.sub(r"[^\n]", " ", match[0]), body
+    )
     headings: list[tuple[int, str, int, int]] = []
     paragraph: list[str] = []
     paragraph_start = 0
@@ -425,7 +430,9 @@ def delivery_sections(body: str) -> list[DeliverySection]:
         list_forms = [] if heading == CONCISE_ACTION_HEADING else None
         has_fence = False
         if list_forms is not None:
-            section_body = _HTML_COMMENT.sub("", section_body)
+            section_body = _MARKDOWN_CODE_OR_COMMENT.sub(
+                lambda match: "" if match["comment"] else match[0], section_body
+            )
             has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
         prose, blocks = delivery_parts(section_body, list_forms=list_forms)
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
@@ -1774,46 +1781,51 @@ def _strip_markdown_links(text: str) -> str:
         elif token[0] == "]" and openings:
             label_ends[openings.pop()] = token.start()
 
+    link_token = re.compile(r"\\[\s\S]|!?\[")
     parts: list[str] = []
-    start = 0
-    for match in re.finditer(r"\\[\s\S]|!?\[", text):
-        if match.start() < start or match[0].startswith("\\"):
-            continue
-        label_end = label_ends.get(match.end() - 1)
-        if label_end is None or not text.startswith("(", label_end + 1):
-            continue
-        end = whitespace.match(text, label_end + 2).end()
-        if text.startswith("<", end):
-            destination = angle_destination.match(text, end)
-            if destination is None:
+    pending = [(0, len(text))]
+    while pending:
+        start, stop = pending.pop()
+        for match in link_token.finditer(text, start, stop):
+            if match[0].startswith("\\"):
                 continue
-            end = destination.end()
-        else:
-            depth = 0
-            while end < len(text) and not text[end].isspace():
-                char = text[end]
-                if char == "\\":
-                    end += 2
+            label_end = label_ends.get(match.end() - 1)
+            if label_end is None or label_end + 1 >= stop or text[label_end + 1] != "(":
+                continue
+            end = whitespace.match(text, label_end + 2, stop).end()
+            if end < stop and text[end] == "<":
+                destination = angle_destination.match(text, end, stop)
+                if destination is None:
                     continue
-                if char == "(":
-                    depth += 1
-                elif char == ")":
-                    if depth == 0:
-                        break
-                    depth -= 1
-                end += 1
-            if depth or end > len(text):
-                continue
-        after_space = whitespace.match(text, end).end()
-        if after_space > end:
-            quoted_title = title.match(text, after_space)
-            if quoted_title:
-                after_space = whitespace.match(text, quoted_title.end()).end()
-        if text.startswith(")", after_space):
-            label = text[match.end() : label_end]
-            parts.extend((text[start : match.start()], _strip_markdown_links(label) if "[" in label else label))
-            start = after_space + 1
-    parts.append(text[start:])
+                end = destination.end()
+            else:
+                depth = 0
+                while end < stop and not text[end].isspace():
+                    char = text[end]
+                    if char == "\\":
+                        end += 2
+                        continue
+                    if char == "(":
+                        depth += 1
+                    elif char == ")":
+                        if depth == 0:
+                            break
+                        depth -= 1
+                    end += 1
+                if depth or end > stop:
+                    continue
+            after_space = whitespace.match(text, end, stop).end()
+            if after_space > end:
+                quoted_title = title.match(text, after_space, stop)
+                if quoted_title:
+                    after_space = whitespace.match(text, quoted_title.end(), stop).end()
+            if after_space < stop and text[after_space] == ")":
+                parts.append(text[start : match.start()])
+                pending.append((after_space + 1, stop))
+                pending.append((match.end(), label_end))
+                break
+        else:
+            parts.append(text[start:stop])
     return "".join(parts)
 
 
@@ -1835,11 +1847,11 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
             if not linked_quotes(visible, ctx.valid_quotes) or not 1 <= len(sentences) <= 2:
                 return ("R13", False, f"{CONCISE_ACTION_HEADING} needs a supporting ⏱ link and one to two sentences per item")
         return ("R13", True, "each closing item is short and links to evidence")
-    prose = "\n".join(section.prose)
-    evidence = linked_quotes(prose, ctx.valid_quotes)
+    visible = _strip_markdown_links("\n".join(section.prose))
+    evidence = linked_quotes(visible, ctx.valid_quotes)
     if not evidence:
         return ("R13", False, f"{ACTION_HEADING} needs a supporting ⏱ link")
-    sentences = action_sentences(prose)
+    sentences = action_sentences(visible)
     if not sentences or len(sentences) > 2:
         return ("R13", False, f"{ACTION_HEADING} needs one action in at most two sentences")
     action = sentences[0]
