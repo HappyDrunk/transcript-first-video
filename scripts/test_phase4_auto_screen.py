@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 import hashlib
 import io
 import json
@@ -12,6 +12,8 @@ from pathlib import Path
 import struct
 import subprocess
 import tempfile
+import threading
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -176,8 +178,11 @@ class ScreenHostTests(unittest.TestCase):
 
 
 class SampleTests(unittest.TestCase):
-    def trial(self, hits, *, fault=None, requested_downloads=None, forbidden_step=None, steps=None):
+    def trial(self, hits, *, fault=None, requested_downloads=None, forbidden_step=None, steps=None,
+              stream_info=None):
         info = {"duration": 1000, "height": 480, "url": "https://media.example/track"}
+        if stream_info is not None:
+            info.update(stream_info)
         if requested_downloads is not None:
             info.update(requested_downloads[0], requested_downloads=requested_downloads)
         stream = json.dumps(info)
@@ -241,6 +246,43 @@ class SampleTests(unittest.TestCase):
                 with patch.object(screen_ocr, "_measure_download_seconds", return_value=1.0) as measure:
                     result, _, _, _ = self.trial(
                         iter((True,)), requested_downloads=formats,
+                        forbidden_step="FFmpeg calibration clip", steps=steps,
+                    )
+
+                self.assertEqual(result["result"], "slides_detected")
+                self.assertNotIn("calibration", result)
+                measure.assert_not_called()
+                self.assertNotIn("FFmpeg calibration clip", steps)
+
+    def test_sample_rejects_top_level_1080p_without_requested_downloads(self):
+        steps = []
+        result, _, _, _ = self.trial(
+            iter(()),
+            stream_info={"duration": 1000, "height": 1080, "url": "https://media.example/1080.mp4"},
+            forbidden_step="FFmpeg sample frames", steps=steps,
+        )
+
+        self.assertEqual(result["result"], "error")
+        self.assertNotIn("FFmpeg sample frames", steps)
+
+    def test_sample_skips_protocolless_hls_and_low_res_calibration_candidates(self):
+        sample_format = {"url": "https://media.example/480.mp4", "height": 480,
+                         "ext": "mp4", "protocol": "https"}
+        for name, candidate in (
+            ("protocolless_m3u8", {
+                "url": "https://media.example/master.m3u8?token=1",
+                "height": 1080, "filesize": 30_000_000,
+            }),
+            ("lower_res_second_entry", {
+                "url": "https://media.example/360.mp4", "height": 360,
+                "protocol": "https", "filesize": 5_000_000,
+            }),
+        ):
+            with self.subTest(name=name):
+                steps = []
+                with patch.object(screen_ocr, "_measure_download_seconds", return_value=1.0) as measure:
+                    result, _, _, _ = self.trial(
+                        iter((True,)), requested_downloads=[sample_format, candidate],
                         forbidden_step="FFmpeg calibration clip", steps=steps,
                     )
 
@@ -316,6 +358,21 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.assertLessEqual(read_calls, 4)
         self.assertLessEqual(elapsed, 8.0)
         self.assertGreater(est, 0)
+
+    def test_measure_download_seconds_enforces_hard_wall_clock_during_open_and_read(self):
+        def slow_open(*args, **kwargs):
+            threading.Event().wait(0.6)
+            return nullcontext(SimpleNamespace(read=lambda size: b""))
+
+        with patch.object(screen_ocr, "build_opener", return_value=SimpleNamespace(open=slow_open)):
+            started = time.monotonic()
+            est = screen_ocr._measure_download_seconds(
+                "https://media.example/1080.mp4", {}, "", 30_000_000, 0.08,
+            )
+            elapsed = time.monotonic() - started
+
+        self.assertEqual(est, 0.0)
+        self.assertLess(elapsed, 0.35)
 
     @staticmethod
     def gray_png(shade):
