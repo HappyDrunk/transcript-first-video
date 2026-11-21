@@ -395,27 +395,43 @@ def _measure_download_seconds(
         request = Request(url, headers=headers)
         request.add_header("Range", "bytes=0-1048575")
         wall_limit = min(6.0, timeout)
-        deadline = time.monotonic() + wall_limit
-        with opener.open(request, timeout=wall_limit) as response:
-            started = time.monotonic()
-            total = 0
-            while total < 1048576:
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    break
+        future = Future()
+
+        def measure() -> float:
+            deadline = time.monotonic() + wall_limit
+            with opener.open(request, timeout=wall_limit) as response:
+                started = time.monotonic()
+                reader = getattr(response, "read1", response.read)
                 sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
-                if sock is not None and hasattr(sock, "settimeout"):
-                    sock.settimeout(left)
-                chunk = response.read(min(65536, 1048576 - total))
-                if not chunk:
-                    break
-                total += len(chunk)
-            elapsed = time.monotonic() - started
-        if total >= 65536 and elapsed > 0:
-            return float(filesize) / (total / elapsed)
+                total = 0
+                while total < 1048576:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        break
+                    try:
+                        if sock is not None and hasattr(sock, "settimeout"):
+                            sock.settimeout(left)
+                    except Exception:
+                        pass
+                    chunk = reader(min(65536, 1048576 - total))
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                elapsed = time.monotonic() - started
+                if total >= 65536 and elapsed > 0:
+                    return float(filesize) / (total / elapsed)
+            return 0.0
+
+        def worker():
+            try:
+                future.set_result(measure())
+            except Exception as exc:
+                future.set_exception(exc)
+
+        Thread(target=worker, name="tfv-dl-probe", daemon=True).start()
+        return future.result(timeout=wall_limit)
     except Exception:
-        pass
-    return 0.0
+        return 0.0
 
 
 def _calibrate_full_scan(
@@ -493,11 +509,15 @@ def _calibrate_full_scan(
 
 
 def _is_direct_https_format(fmt: dict) -> bool:
+    if not isinstance(fmt, dict):
+        return False
+    url = fmt.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return False
+    path = url.split("?", 1)[0].split("#", 1)[0][len("https://"):].partition("/")[2]
     return (
-        isinstance(fmt, dict)
-        and isinstance(fmt.get("url"), str)
-        and fmt["url"].startswith("https://")
-        and fmt.get("protocol") in (None, "https")
+        fmt.get("protocol") in (None, "https")
+        and not path.lower().endswith((".m3u8", ".mpd"))
     )
 
 
@@ -506,6 +526,18 @@ def _is_sample_format(fmt: dict) -> bool:
         return False
     height = fmt.get("height")
     return isinstance(height, (int, float)) and not isinstance(height, bool) and 0 < height <= 480
+
+
+def _is_full_scan_format(fmt: dict, sample_height: float | int) -> bool:
+    if not _is_direct_https_format(fmt):
+        return False
+    height = fmt.get("height")
+    return (
+        isinstance(height, (int, float))
+        and not isinstance(height, bool)
+        and (isinstance(height, int) or math.isfinite(height))
+        and height >= sample_height
+    )
 
 
 def sample_slides(
@@ -536,15 +568,18 @@ def sample_slides(
             sample_fmt = next((fmt for fmt in requested_downloads if _is_sample_format(fmt)), None)
             if sample_fmt is None:
                 raise ScreenError("sample stream has no usable <=480p HTTPS MP4 video")
-            full_fmt = next(
-                (fmt for fmt in requested_downloads if fmt is not sample_fmt and _is_direct_https_format(fmt)),
-                None,
+            sample_height = int(sample_fmt["height"])
+            full_fmt = max(
+                (fmt for fmt in requested_downloads
+                 if fmt is not sample_fmt and _is_full_scan_format(fmt, sample_height)),
+                key=lambda fmt: fmt["height"],
+                default=None,
             )
         else:
             sample_fmt = info
             full_fmt = None
-        if not _is_direct_https_format(sample_fmt):
-            raise ScreenError("sample stream has no usable HTTPS video or duration")
+            if not _is_sample_format(sample_fmt):
+                raise ScreenError("sample stream has no usable <=480p HTTPS MP4 video")
         media = sample_fmt["url"]
         duration = float(info.get("duration") or sample_fmt.get("duration"))
         height = int(sample_fmt.get("height") or info.get("height"))
