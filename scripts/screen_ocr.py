@@ -22,7 +22,7 @@ from itertools import groupby
 from pathlib import Path
 from statistics import median
 from threading import BoundedSemaphore, Thread, enumerate as live_threads
-from urllib.request import getproxies
+from urllib.request import ProxyHandler, Request, build_opener, getproxies
 
 import quality_gate
 from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREEN_TAG
@@ -39,6 +39,9 @@ NAMEPLATE_SECONDS = 180
 NAMEPLATE_TIMEOUT = 120
 UNKNOWN_DURATION_TIMEOUT = 600
 AUTO_SAMPLE_TIMEOUT = 45
+AUTO_CALIBRATION_TIMEOUT = 30
+AUTO_BUDGET_HEADROOM = 0.70
+AUTO_LIVE_OVERRUN_MIN_FRAMES = 4
 AUTO_SAMPLE_CLEANUP_SECONDS = 0.5
 AUTO_SAMPLE_POSITIONS = (0.10, 0.33, 0.56, 0.80)
 AUTO_MIN_CONFIDENCE = 0.80
@@ -382,6 +385,99 @@ def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> b
     return max(positions) - min(positions) >= height * AUTO_MIN_VERTICAL_SPAN
 
 
+def _measure_download_seconds(
+    url: str, headers: dict, proxy: str, filesize: float | int | None, timeout: float,
+) -> float:
+    try:
+        if not filesize or filesize <= 0 or timeout <= 0:
+            return 0.0
+        opener = build_opener(ProxyHandler({"https": proxy, "http": proxy} if proxy else {}))
+        request = Request(url, headers=headers)
+        request.add_header("Range", "bytes=0-1048575")
+        with opener.open(request, timeout=min(6.0, timeout)) as response:
+            started = time.monotonic()
+            chunk = response.read(1048576)
+            elapsed = time.monotonic() - started
+        if len(chunk) >= 65536 and elapsed > 0:
+            return float(filesize) / (len(chunk) / elapsed)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _calibrate_full_scan(
+    ffmpeg: str, ocr, full_fmt: dict, duration: float, hit_at: int, proxy: str, work: Path,
+) -> dict:
+    cal_scan = Scan("slides", None, budget=AUTO_CALIBRATION_TIMEOUT)
+    full_url = full_fmt["url"]
+    full_headers = full_fmt.get("http_headers") or {}
+    filesize = full_fmt.get("filesize") or full_fmt.get("filesize_approx")
+    download_seconds = _measure_download_seconds(
+        full_url, full_headers, proxy, filesize, cal_scan.remaining(),
+    )
+    if not math.isfinite(download_seconds) or download_seconds < 0:
+        download_seconds = 0.0
+    headers = "".join(f"{name}: {value}\r\n" for name, value in full_headers.items())
+    full_network = (["-http_proxy", proxy] if proxy else []) + (["-headers", headers] if headers else [])
+    ffmpeg_input = [ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
+                    "-rw_timeout", "8000000", *full_network]
+    cal_dir = work / "calibration"
+    cal_dir.mkdir(exist_ok=True)
+    clip = cal_dir / "clip.mkv"
+    cal_scan.run([
+        *ffmpeg_input, "-i", full_url, "-t", str(SLIDE_INTERVAL), "-an", "-c", "copy", str(clip),
+    ], "FFmpeg calibration clip")
+
+    frame_dir = cal_dir / "clip-frames"
+    frame_dir.mkdir()
+    frame_scan = Scan("slides", duration, budget=cal_scan.remaining())
+    started = time.monotonic()
+    _frames(frame_scan, ffmpeg, clip, frame_dir, "slides")
+    decode_seconds = time.monotonic() - started
+
+    last_seek = max(0, int(duration) - 2)
+    alt = min(last_seek, round(duration * 0.33))
+    if abs(alt - hit_at) < SLIDE_INTERVAL:
+        alt = min(last_seek, hit_at + SLIDE_INTERVAL)
+    if alt == hit_at and duration >= 2:
+        alt = 0 if hit_at else min(SLIDE_INTERVAL, duration / 2)
+    if duration < 2:
+        alt = hit_at
+    cal_frames = []
+    for index, pos in enumerate((hit_at, alt)):
+        frame_path = cal_dir / f"cal-{index:02d}.png"
+        cal_scan.run([
+            *ffmpeg_input, "-ss", str(pos), "-i", full_url, "-frames:v", "1", "-an", str(frame_path),
+        ], "FFmpeg calibration frame")
+        cal_frames.append(Frame(frame_path, float(pos)))
+
+    started = time.monotonic()
+    _group_frames(cal_scan, ffmpeg, cal_frames)
+    group_per_frame = (time.monotonic() - started) / len(cal_frames)
+    crop = _crop("slides")
+    read_times = []
+    for frame in cal_frames:
+        started = time.monotonic()
+        _read_frame(cal_scan, ffmpeg, ocr, "slides", crop, frame)
+        read_times.append(time.monotonic() - started)
+    mean_read_frame = sum(read_times) / len(read_times)
+    intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
+    extract_seconds = decode_seconds * intervals
+    group_seconds = group_per_frame * intervals
+    ocr_seconds = mean_read_frame * intervals
+    return {
+        "intervals": intervals,
+        "download_seconds": round(download_seconds, 3),
+        "extract_seconds_per_interval": round(decode_seconds, 6),
+        "extract_seconds": round(extract_seconds, 3),
+        "group_seconds_per_frame": round(group_per_frame, 6),
+        "group_seconds": round(group_seconds, 3),
+        "read_frame_seconds": round(mean_read_frame, 6),
+        "ocr_seconds": round(ocr_seconds, 3),
+        "estimated_total_seconds": round(download_seconds + extract_seconds + group_seconds + ocr_seconds, 3),
+    }
+
+
 def sample_slides(
     staged: Path, source: str, download_command: list[str],
     download_options: Callable[[], list[str]],
@@ -390,6 +486,7 @@ def sample_slides(
     # Leave time to terminate the child and discard its temporary frames.
     scan = Scan("slides", None, budget=AUTO_SAMPLE_TIMEOUT - AUTO_SAMPLE_CLEANUP_SECONDS)
     scan.frame_ocr_times = []
+    sample_extract_times = []
     status = {"groups_checked": 0, "timeout_seconds": AUTO_SAMPLE_TIMEOUT}
     try:
         if not download_command:
@@ -400,15 +497,26 @@ def sample_slides(
         response = scan.run([
             *download_command, *download_options(), "--proxy", proxy, "--no-playlist",
             "--skip-download", "--no-warnings", "--socket-timeout", "8", "--retries", "0",
-            "-f", "bv[height<=480][ext=mp4][protocol=https]", "--dump-single-json", source,
+            "-f", "bv[height<=480][ext=mp4][protocol=https],(bv[height=1080]/bv[height<=1080]/b[height<=1080])",
+            "--dump-single-json", source,
         ], "yt-dlp sample stream")
         info = json.loads(response.stdout)
-        media = info["url"]
-        duration, height = float(info["duration"]), int(info["height"])
+        requested_downloads = info.get("requested_downloads")
+        full_fmt = None
+        if isinstance(requested_downloads, list) and requested_downloads:
+            sample_fmt = requested_downloads[0]
+            if len(requested_downloads) >= 2 and isinstance(requested_downloads[1], dict):
+                full_fmt = requested_downloads[1]
+        else:
+            sample_fmt = info
+        media = sample_fmt["url"]
+        duration = float(info.get("duration") or sample_fmt.get("duration"))
+        height = int(sample_fmt.get("height") or info.get("height"))
+        sample_headers = sample_fmt.get("http_headers") or info.get("http_headers") or {}
         if not media.startswith("https://") or not math.isfinite(duration) or duration <= 0 or height <= 0:
             raise ScreenError("sample stream has no usable HTTPS video or duration")
         status["duration"] = duration
-        headers = "".join(f"{name}: {value}\r\n" for name, value in info.get("http_headers", {}).items())
+        headers = "".join(f"{name}: {value}\r\n" for name, value in sample_headers.items())
         network = (["-http_proxy", proxy] if proxy else []) + (["-headers", headers] if headers else [])
         with tempfile.TemporaryDirectory(prefix="sample-", dir=staged) as temp:
             work = Path(temp)
@@ -417,12 +525,16 @@ def sample_slides(
             for fraction in AUTO_SAMPLE_POSITIONS:
                 at = min(round(duration * fraction), max(0, int(duration) - 2))
                 result_path = work / f"{at:04d}-%02d.jpg"
+                started = time.monotonic()
                 scan.run([
                     ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
                     "-rw_timeout", "8000000", *network, "-ss", str(at), "-i", media,
                     "-t", "2", "-vf", "fps=1", "-an", "-q:v", "3", str(result_path),
                 ], "FFmpeg sample frames")
+                extract_elapsed = time.monotonic() - started
                 paths = sorted(work.glob(f"{at:04d}-*.jpg"))
+                if paths and math.isfinite(extract_elapsed) and extract_elapsed > 0:
+                    sample_extract_times.append(extract_elapsed / len(paths))
                 if len(paths) != 2:
                     raise ScreenError("FFmpeg did not return two sample frames")
                 if ocr is None:
@@ -434,12 +546,28 @@ def sample_slides(
                 status["groups_checked"] += 1
                 if qualifies:
                     status["result"] = "slides_detected"
+                    hit_at = at
                     break
+            full_url = full_fmt.get("url") if full_fmt else None
+            if (
+                status["result"] == "slides_detected"
+                and isinstance(full_url, str)
+                and full_url.startswith("https://")
+                and ocr is not None
+            ):
+                try:
+                    status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
+                except Exception:
+                    pass
     except Exception as exc:
         status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
     if scan.frame_ocr_times:
         status["mean_frame_ocr_seconds"] = round(
             sum(scan.frame_ocr_times) / len(scan.frame_ocr_times), 6
+        )
+    if sample_extract_times:
+        status["mean_sample_extract_seconds"] = round(
+            sum(sample_extract_times) / len(sample_extract_times), 6,
         )
     status["elapsed_seconds"] = round(time.monotonic() - scan.started, 3)
     return status
@@ -678,7 +806,7 @@ def _write_evidence(
 
 def extract(
     staged: Path, mode: str, source: str, download_command: list[str], duration: float | None,
-    download_options: Callable[[], list[str]],
+    download_options: Callable[[], list[str]], abort_on_overrun: bool = False,
 ) -> dict:
     scan = Scan(mode, duration)
     versions: dict[str, str] = {}
@@ -695,7 +823,23 @@ def extract(
             video.unlink()
             groups = _group_frames(scan, ffmpeg, frames) if mode == "slides" else None
             ocr = scan.recognize(_rapidocr, mode)
-            results = [_read_frame(scan, ffmpeg, ocr, mode, crop, frame) for frame in frames]
+            results, read_times = [], []
+            for frame in frames:
+                started = time.monotonic()
+                results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
+                read_times.append(time.monotonic() - started)
+                if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
+                    remaining_frames = len(frames) - len(read_times)
+                    if remaining_frames > 0:
+                        mean_read = sum(read_times) / len(read_times)
+                        remaining_needed = mean_read * remaining_frames
+                        left = scan.remaining()
+                        if remaining_needed > left:
+                            status["overrun_aborted"] = True
+                            raise ScreenTimeout(
+                                f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
+                                f"exceeds remaining budget ({left:.1f}s)."
+                            )
             references = _write_evidence(
                 staged, frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
             )

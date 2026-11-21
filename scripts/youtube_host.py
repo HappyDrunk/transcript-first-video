@@ -966,6 +966,9 @@ def finalize_job(
         return _publish_screen(job_dir, staged, base)
 
 
+SLOW_MACHINE_HINT = "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
+
+
 def _screen_fallback(screen: dict, result: str, reason: str = "") -> dict:
     fallback = {**screen, "state": "fallback", "mode": "off", "result": result}
     if reason:
@@ -1002,8 +1005,19 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                     else None
                 )
             budget = duration / 2 if duration else screen_ocr.UNKNOWN_DURATION_TIMEOUT
+            safe_budget = budget * screen_ocr.AUTO_BUDGET_HEADROOM
+            estimated = None
+            calibration = sample.get("calibration")
+            calibrated = calibration.get("estimated_total_seconds") if isinstance(calibration, dict) else None
             latency = sample.get("mean_frame_ocr_seconds")
             if (
+                isinstance(calibrated, (int, float))
+                and not isinstance(calibrated, bool)
+                and math.isfinite(calibrated)
+                and calibrated > 0
+            ):
+                estimated = float(calibrated)
+            elif (
                 duration is not None
                 and isinstance(latency, (int, float))
                 and not isinstance(latency, bool)
@@ -1011,28 +1025,43 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 and latency > 0
             ):
                 frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
-                estimated = latency * screen_ocr.SLIDE_OCR_PASSES * frames
-                if estimated > budget:
-                    screen["timeout_seconds"] = budget
-                    if math.isfinite(estimated):
-                        screen["estimated_seconds"] = round(estimated, 3)
-                        reason = (
-                            f"Estimated full-scan OCR time ({estimated:.1f}s) "
-                            f"exceeds full-scan budget ({budget:.1f}s)."
-                        )
-                    else:
-                        reason = "Estimated full-scan OCR time exceeds full-scan budget."
-                    fallback = _screen_fallback(screen, "timeout", reason)
-                    fallback["hint"] = (
-                        "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
-                    )
-                    return fallback
+                sample_extract = sample.get("mean_sample_extract_seconds")
+                if (
+                    not isinstance(sample_extract, (int, float))
+                    or isinstance(sample_extract, bool)
+                    or not math.isfinite(sample_extract)
+                    or sample_extract < 0
+                ):
+                    sample_extract = 0.0
+                estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
+            if estimated is not None and estimated > safe_budget:
+                screen["timeout_seconds"] = budget
+                screen["safe_budget_seconds"] = round(safe_budget, 3)
+                if math.isfinite(estimated):
+                    screen["estimated_seconds"] = round(estimated, 3)
+                reason = (
+                    f"Estimated full-scan OCR time ({estimated:.1f}s) "
+                    f"exceeds safe full-scan budget ({safe_budget:.1f}s)."
+                )
+                fallback = _screen_fallback(screen, "timeout", reason)
+                fallback["hint"] = SLOW_MACHINE_HINT
+                return fallback
             mode = "slides"
-        result = screen_ocr.extract(staged, mode, source, command, duration, _screen_download_options)
+        if request == "auto":
+            result = screen_ocr.extract(
+                staged, mode, source, command, duration, _screen_download_options, True,
+            )
+        else:
+            result = screen_ocr.extract(
+                staged, mode, source, command, duration, _screen_download_options,
+            )
         if result.get("state") == "ready":
             return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
         screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
-        return _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
+        fallback = _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
+        if result.get("overrun_aborted"):
+            fallback["hint"] = SLOW_MACHINE_HINT
+        return fallback
     except Exception as exc:
         return _screen_fallback(screen, screen_ocr.failure_result(exc), str(exc))
 
