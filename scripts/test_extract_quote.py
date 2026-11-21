@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -301,6 +302,33 @@ class ScreenQuoteTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(len(quotes), 1)
         self.assertTrue(quotes[0].screen and quotes[0].timed and quotes[0].matches)
+
+    def test_preserves_leading_and_trailing_spaces_on_trusted_screen_lines(self):
+        line = "  [03:12][画面] 材料登记。  "
+        self.write_screen(f"{line}\n")
+
+        result = self.extract()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, f"> {line}\n")
+        quotes, errors = verify_rules._end_quotes(
+            result.stdout, verify_rules.TranscriptIndex([]),
+            verify_rules._screen_index(self.screen),
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(quotes), 1)
+        self.assertTrue(quotes[0].screen and quotes[0].timed and quotes[0].matches)
+
+    def test_passes_already_read_status_into_screen_source(self):
+        import extract_quote
+
+        self.write_screen("[03:12][画面] 材料登记。\n")
+        expected_status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))["screen_ocr"]
+
+        with patch.object(extract_quote, "_screen_source", wraps=verify_rules._screen_source) as source:
+            extract_quote.extract_screen(self.job, 192, 194)
+
+        source.assert_called_once_with(self.screen, expected_status)
 
     def test_rejects_ready_status_when_screen_file_is_missing(self):
         self.write_screen("[03:12][画面] 材料登记。\n")
