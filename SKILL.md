@@ -14,18 +14,13 @@ Those two are the primary platforms. This skill does not promise Bilibili, Douyi
 
 A deliverable needs a usable transcript with reliable timestamps and one evidence note (`note.md`). Read the full transcript and write `selection.md` before drafting. After both mechanical checks pass, an independent Task reviews the meaning. The renderer runs both checks again before generating the reading copy in its channel folder. If the transcript is missing, unusable, untimed, or has nothing worth extracting, report the reason and keep the inputs.
 
-## Language preference
+## Language and reading preference
 
-Ask once, on install or the first run with no saved choice. This is the first user-facing step. It comes before fetch, before note writing, and before any other preference. The choices are `中文`, `英文`, and `中英文对照`.
+Use the current request first, then saved preferences for any missing choice. Languages are 中文, 英文, and 中英文对照. Plain (plain) keeps the existing explanations. Concise (concise) assumes relevant background and trims explanations and setup. Keep original-language evidence under 原文依据 in every mode.
 
-Persist the answer in `language.txt` beside this `SKILL.md` in the installed skill folder, when that folder is writable. One line, exactly one of those three. Do not commit the file. If you cannot write there, keep the same line in the host project and read it before the next delivery. If nothing is saved, or the saved line is not one of the three, ask. Do not assume `中英文对照`. Do not fetch, and do not deliver, until the user has chosen.
+If language is still unknown, ask once together: “Which language, and Plain (terms & background explained) or Concise (assumes background)?” Use “笔记用什么语言写？讲解要通俗（术语和背景都解释），还是精炼（默认你有相关背景，直奔要点）？” in Chinese. Keep any choice already given. If language is known and level is missing, use Plain and mention the Concise option in chat at delivery. Unsure phrasing maps to Plain.
 
-
-- `中文` — Write beginner-clear Chinese prose. Keep proper names where the evidence supports them.
-- `英文` — Write English prose.
-- `中英文对照` — Present the explanation in both languages in the same note.
-
-In every mode, the evidence note preserves Obsidian properties and the original-language evidence under `## 原文依据`. Explain what a method does, how it works, and when to use it in plain words.
+Read preferences through the host with --show-pref. Pass the requested choices with --language and --reading-level. Use --save-pref with both choices only when saving the answer to the combined question. Automation supplies both choices explicitly.
 
 ## What this skill does not do
 
@@ -40,10 +35,10 @@ In every mode, the evidence note preserves Obsidian properties and the original-
 
 ## Run
 
-1. Install with `python3 -m pip install --group base` (`--group screen` adds OCR). Confirm `language.txt`. Run `python3 scripts/youtube_host.py "<YouTube URL>"` or `python3 scripts/x_host.py "<X status URL>"`. Optional YouTube screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
+1. Install with `python3 -m pip install --group base` (`--group screen` adds OCR). Resolve preferences above and run `python3 scripts/youtube_host.py "<YouTube URL>"` with those flags. Screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
 2. When the transcript is ready, read it in full. If it has no reliable clock, keep it and report「缺时间戳，请用带时间戳的转写重跑」.
 3. Write `selection.md` in transcript order, one line per unit, with time range, category, 留 or 略, and a one-sentence reason. Cover the full transcript with adjacent ranges. Keep the main claims, steps and their order, the speaker's lists, supporting numbers, named cases, and essential technical elements. Mark greetings, ads, repetition, and off-topic conversation 略.
-4. Write `note.md` from the retained units. Follow [references/delivery-format.md](references/delivery-format.md) for the Obsidian properties, fixed headings, middle sections by video type, and marked explanations. Start with `## 先记住一句话`. Complete the retained lists and cases, and explain essential terms at first use. Write one grounded action for the reader in at most two sentences.
+4. Write `note.md` from the retained units. Follow [references/delivery-format.md](references/delivery-format.md) for the Obsidian properties, fixed headings, middle sections by video type, and marked explanations. Start with `## 先记住一句话`. Complete the retained lists and cases, and explain essential terms at first use. Close with one grounded action in Plain, or 1–3 linked applications or discussion items in Concise. [Concise example](references/note-examples.md).
 5. Link each middle claim and the action with `⏱ mm:ss`. Write `本文略去` and finish with `## 原文依据`. Copy speech quotes of at least 40 contiguous characters with their timestamps and original spelling. For `screen.txt`, follow the [screen evidence format](references/delivery-format.md#画面引文). Keep steps, conditions, and claims within the cited evidence. Mark terms, analogies, and caption corrections.
 6. Run `python3 scripts/verify_note.py --job "<dir>" --structure-only` (read-only), then `python3 scripts/verify_note.py --job "<dir>" --with-coverage`. If the initial submission and two repairs fail, return `note.md` and `issues.md`. C04c warnings use no repair round. Send matching passes and warnings for review.
 7. A separate Task follows the [review checklist](references/rules.md#independent-semantic-review) and writes the bound `review.md`. If a Task is unavailable, self-review and add `"reviewer":"self"` to the receipt. The reading copy says「未经独立复核」.

@@ -29,6 +29,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from datetime import date
+from functools import partial
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import knowledge_note  # noqa: E402
 import quality_gate  # noqa: E402
 import screen_ocr  # noqa: E402
+import user_prefs  # noqa: E402
 import verify_note  # noqa: E402
 import verify_rules  # noqa: E402
 
@@ -781,6 +783,7 @@ def render_scaffold(
     caption_trust: str | None = None,
     selection_end: str | None = None,
     metadata: dict[str, str] | None = None,
+    reading_level: str | None = None,
 ) -> str:
     """Blank Obsidian scaffold with known YouTube metadata.
 
@@ -799,6 +802,7 @@ def render_scaffold(
         skill_version=skill_version(),
         selection_end=selection_end,
         metadata=metadata,
+        reading_level=reading_level,
     )
 
 
@@ -820,6 +824,7 @@ def finalize_job(
     screen_download: list[str] | None = None,
     media_duration: float | None = None,
     metadata: dict[str, str] | None = None,
+    reading_level: str | None = None,
 ) -> dict:
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
@@ -878,7 +883,7 @@ def finalize_job(
                 "exit_code": 2,
             }
         )
-        _record_failed_attempt(job_dir, base)
+        _record_failed_attempt(job_dir, base, platform=platform, reading_level=reading_level)
         return base
 
     segments = quality_gate.prepare_segments(text)
@@ -893,7 +898,6 @@ def finalize_job(
         staged_transcript = staged / "transcript.txt"
         staged_segments = staged / "segments.json"
         staged_chunks = staged / "chunks"
-        staged_scaffold = staged / "note.scaffold.md"
         staged_transcript.write_text(transcript_body.rstrip() + "\n", encoding="utf-8")
         staged_segments.write_text(
             json.dumps([segment.to_dict() for segment in segments], ensure_ascii=False, indent=2) + "\n",
@@ -909,7 +913,8 @@ def finalize_job(
         del verify
         duration = quality_gate.duration_seconds(segments)
         selection_end = verify_rules.selection_endpoint(segments, duration)
-        scaffold_body = render_scaffold(
+        scaffold = partial(
+            render_scaffold,
             job_id=job_id,
             video_id=video_id,
             source=source,
@@ -922,7 +927,6 @@ def finalize_job(
             selection_end=(quality_gate.format_stamp(selection_end)[1:-1]
                            if selection_end is not None else None),
         )
-        staged_scaffold.write_text(scaffold_body, encoding="utf-8")
         base.update(
             {
                 "status": "transcript_ready",
@@ -948,20 +952,22 @@ def finalize_job(
             }
         )
         if screen_download is None:
-            _publish_transcript(job_dir, staged, base)
+            _publish_transcript(job_dir, staged, base, scaffold, platform=platform, reading_level=reading_level)
             return base
         request = verify_rules.screen_mode() if "TFV_SCREEN_MODE" in os.environ else "auto"
         if request == "off":
             base["screen_ocr"] = {"requested_mode": "off", "mode": "off", "state": "disabled", "result": "disabled"}
-            _publish_transcript(job_dir, staged, base)
+            _publish_transcript(job_dir, staged, base, scaffold, platform=platform, reading_level=reading_level)
             return base
         pending = {
             **base, "status": verify_note.SCREEN_PENDING, "next_step": "wait-for-screen",
             "reason": verify_note.SCREEN_PENDING_MESSAGE,
             "screen_ocr": {"requested_mode": request, "mode": "off", "state": "pending", "attempt": staged.name},
         }
-        _publish_transcript(job_dir, staged, pending)
+        _publish_transcript(job_dir, staged, pending, scaffold, platform=platform, reading_level=reading_level)
         base.update({key: pending[key] for key in ("note", "delivery", "note_stale")})
+        if platform == "youtube":
+            base.update(reading_level=pending["reading_level"], reading_level_source=pending["reading_level_source"])
         base["screen_ocr"] = _screen_result(staged, request, source, screen_download, media_duration)
         return _publish_screen(job_dir, staged, base)
 
@@ -1098,11 +1104,25 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
         return _screen_fallback(screen, screen_ocr.failure_result(exc), str(exc))
 
 
-def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
+def _set_reading_level(payload: dict, platform: str, requested: str | None, previous: dict) -> str | None:
+    if platform == "youtube":
+        level, source = user_prefs.resolve_reading_level(requested, previous)
+        payload.update(reading_level=level, reading_level_source=source)
+        return level
+    payload.pop("reading_level", None)
+    payload.pop("reading_level_source", None)
+    return None
+
+
+def _publish_transcript(
+    job: Path, staged: Path, payload: dict, scaffold: partial, *, platform: str, reading_level: str | None,
+) -> None:
     """Install the staged transcript as a unit and keep old writing traceable."""
     backup = staged / "previous"
     backup.mkdir()
     with verify_note.job_lock(job):
+        level = _set_reading_level(payload, platform, reading_level, verify_note.read_job_status(job))
+        (staged / "note.scaffold.md").write_text(scaffold(reading_level=level), encoding="utf-8", newline="\n")
         replacing = (job / "transcript.txt").is_file()
         old_notes = (job / "note.md", job / "delivery.md")
         payload["note_stale"] = any(path.is_file() for path in old_notes)
@@ -1173,10 +1193,11 @@ def _publish_screen(job: Path, staged: Path, payload: dict) -> dict:
     return payload
 
 
-def _record_failed_attempt(job: Path, payload: dict) -> None:
-    attempt = {key: value for key, value in payload.items() if key != "exit_code"}
+def _record_failed_attempt(job: Path, payload: dict, *, platform: str, reading_level: str | None) -> None:
     with verify_note.job_lock(job):
         previous = verify_note.read_job_status(job)
+        _set_reading_level(payload, platform, reading_level, previous)
+        attempt = {key: value for key, value in payload.items() if key != "exit_code"}
         if previous and (job / "transcript.txt").is_file():
             verify_note.write_job_status(job, {**previous, "last_attempt": attempt})
         else:
@@ -1196,6 +1217,7 @@ def write_refusal(
     next_step: str,
     extra: dict | None = None,
     platform: str = "youtube",
+    reading_level: str | None = None,
 ) -> dict:
     job_id = job_id_for(video_id, platform)
     job_dir = out_dir / job_id
@@ -1225,7 +1247,7 @@ def write_refusal(
     }
     if extra:
         payload.update(extra)
-    _record_failed_attempt(job_dir, payload)
+    _record_failed_attempt(job_dir, payload, platform=platform, reading_level=reading_level)
     payload["exit_code"] = 2
     return payload
 
@@ -1267,7 +1289,15 @@ def run_host(
     asr_choice: str,
     verify: bool,
     settle_text: str | None = None,
+    language: str | None = None,
+    reading_level: str | None = None,
+    save_pref: bool = False,
 ) -> dict:
+    if save_pref:
+        if language is None or reading_level is None:
+            raise HostError("--save-pref requires both --language and --reading-level")
+        reading_level, _ = user_prefs.resolve_reading_level(reading_level, {})
+        user_prefs.save_prefs(language, reading_level)
     if settle_text is not None:
         return finalize_job(
             text=settle_text,
@@ -1277,6 +1307,7 @@ def run_host(
             expected_lang=expected_lang,
             acquisition="settle-transcript",
             verify=verify,
+            reading_level=reading_level,
         )
 
     attempts: list[dict] = []
@@ -1331,6 +1362,7 @@ def run_host(
             caption_language=caption.get("language"),
             caption_kind=caption.get("kind"),
             verify=verify,
+            reading_level=reading_level,
             extra={"attempts": attempts, "mirror_host": caption.get("mirror_host")},
             screen_download=screen_download,
             media_duration=caption.get("media_duration"),
@@ -1348,6 +1380,7 @@ def run_host(
             video_id=video_id,
             source=source,
             out_dir=out_dir,
+            reading_level=reading_level,
             reason=reason,
             next_step="configure-asr-or-retry-captions",
             extra={**metadata, "attempts": attempts, "asr_backend": backend},
@@ -1357,6 +1390,7 @@ def run_host(
             video_id=video_id,
             source=source,
             out_dir=out_dir,
+            reading_level=reading_level,
             reason="not finished: ASR needs yt-dlp to download audio, and yt-dlp is not installed.",
             next_step="configure-asr-or-retry-captions",
             extra={**metadata, "attempts": attempts, "asr_backend": backend},
@@ -1371,6 +1405,7 @@ def run_host(
             video_id=video_id,
             source=source,
             out_dir=out_dir,
+            reading_level=reading_level,
             reason=reason,
             next_step="retry-stronger-asr",
             extra={**metadata, "attempts": attempts, "asr_backend": backend},
@@ -1385,6 +1420,7 @@ def run_host(
         caption_language=quality_gate.normalize_lang(expected_lang),
         caption_kind=None,
         verify=verify,
+        reading_level=reading_level,
         upgrade_attempted=upgraded,
         extra={"attempts": attempts, "asr_backend": backend, "asr_model": model},
         metadata=metadata,
@@ -1438,6 +1474,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--video-id", help="Required with --settle-transcript")
     parser.add_argument("--out", type=Path, default=Path("artifacts"))
     parser.add_argument("--expected-lang", default=None)
+    parser.add_argument("--language", choices=user_prefs.VALID_LANGUAGES, default=None)
+    parser.add_argument("--reading-level", choices=user_prefs.VALID_READING_LEVELS, default=None)
+    parser.add_argument("--save-pref", action="store_true")
+    parser.add_argument("--show-pref", action="store_true")
     parser.add_argument("--asr", choices=["auto", "off", "whisper", "openai"], default="auto")
     parser.add_argument("--json", action="store_true")
     parser.add_argument(
@@ -1450,6 +1490,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+    if args.save_pref and (args.language is None or args.reading_level is None):
+        parser.error("--save-pref requires both --language and --reading-level")
+    if args.show_pref:
+        saved = user_prefs.load_prefs()
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        print(json.dumps(saved, ensure_ascii=False) if args.json or saved else "No saved preferences.")
+        return 0
     try:
         if args.settle_transcript:
             if not args.video_id:
@@ -1466,6 +1514,9 @@ def main(argv: list[str] | None = None) -> int:
                 expected_lang=args.expected_lang,
                 asr_choice="off",
                 verify=args.verify,
+                language=args.language,
+                reading_level=args.reading_level,
+                save_pref=args.save_pref,
                 settle_text=text,
             )
         else:
@@ -1479,8 +1530,11 @@ def main(argv: list[str] | None = None) -> int:
                 expected_lang=args.expected_lang,
                 asr_choice=args.asr,
                 verify=args.verify,
+                language=args.language,
+                reading_level=args.reading_level,
+                save_pref=args.save_pref,
             )
-    except HostError as exc:
+    except (HostError, OSError, ValueError) as exc:
         message = redact(str(exc))
         if args.json:
             json.dump({"status": "not_finished", "finished": False, "reason": message}, sys.stdout)

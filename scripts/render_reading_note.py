@@ -17,8 +17,18 @@ import verify_note
 import verify_rules as rules
 
 
-INTRO = "带竖线的行是 AI 补充的名词解释或比方，不是视频里说的话。"
-SCREEN_HINT = "标明来自画面的内容由机器识别，可能有个别字符误差。"
+INTRO = "竖线行是 AI 补充解释"
+SCREEN_HINT = "标明来自画面的内容由机器识别，可能有误差"
+LEVEL_DESCRIPTIONS = {
+    "zh": {
+        "plain": "讲解方式：通俗版——术语和背景都做了解释。",
+        "concise": "讲解方式：精炼版——默认读者有相关背景，只解释少见的词。",
+    },
+    "en": {
+        "plain": "Reading level: Plain — terms and background are explained.",
+        "concise": "Reading level: Concise — assumes relevant background; only uncommon terms are explained.",
+    },
+}
 OUTRO = "每句话对应的视频原话和时间点，保存在这条视频的证据版里。"
 FRONTMATTER = re.compile(r"\A---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
 TIME_GROUP = re.compile(
@@ -156,7 +166,20 @@ def render_body(body: str) -> str:
     return "".join(parts).strip("\n")
 
 
-def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False) -> bytes:
+def _delivery_language(body: str, requested: str | None) -> str:
+    if requested in ("英文", "en"):
+        return "en"
+    if requested in ("中文", "中英文对照", "zh"):
+        return "zh"
+    prose = re.sub(r"(?m)^(?:#{1,6}[ \t]+|[ \t]*>|本文略去[｜|]).*$", "", body)
+    cjk, latin = rules._script_counts(prose)
+    return "en" if latin > 0 and cjk * 20 < latin else "zh"
+
+
+def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False,
+                reading_level: str | None = None, delivery_language: str | None = None) -> bytes:
+    if reading_level is not None and reading_level not in knowledge_note.READING_LEVELS:
+        raise RenderError(f"invalid reading_level: {reading_level!r}")
     text = note.decode("utf-8-sig")
     frontmatter = FRONTMATTER.match(text)
     if frontmatter is None:
@@ -177,15 +200,16 @@ def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = Fals
     if omission is None:
         raise RenderError("note.md is missing the 本文略去 line")
 
-    intro = [INTRO]
-    if self_review:
-        intro.insert(0, "未经独立复核")
-    if has_screen:
-        intro.append(SCREEN_HINT)
+    intro = ("未经独立复核" if self_review else None, INTRO, SCREEN_HINT if has_screen else None)
+    notices = ["说明：" + "；".join(part for part in intro if part is not None) + "。"]
+    if reading_level is not None:
+        prose = body[:omission.start()]
+        language = _delivery_language(prose, delivery_language)
+        notices.append(LEVEL_DESCRIPTIONS[language][reading_level])
     markdown = "\n\n".join((
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
-        "\n\n".join(intro),
+        *notices,
         render_body(body[:omission.start()]),
         "---",
         f"没写进来的部分：{omission[1]}",
@@ -289,6 +313,7 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if verify_note.repair_lock(status, review=True):
             stopped = verify_note.stopped_result(job, status)
             raise RenderError(" · ".join([*stopped["reasons"], *(stopped[key] for key in ("draft", "issues") if key in stopped)]))
+        reading_level = knowledge_note.read_reading_level(status)
         verify_note.prepare_job_note(job)
         receipt = verify_note.prepare_review_submission(job, required=require_review)
         review, reviewed_inputs = receipt if receipt is not None else (None, None)
@@ -314,7 +339,16 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
         self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
-        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review)
+        text = normalize_newlines(note.decode("utf-8-sig"))
+        frontmatter = FRONTMATTER.match(text)
+        body = text[frontmatter.end():] if frontmatter else text
+        delivery, _, _ = rules.delivery_evidence(body)
+        headings = [heading[2] for heading in rules._HEADING.finditer(delivery) if heading[1] == "##"]
+        expected = knowledge_note.closing_heading_for_level(reading_level)
+        if not headings or headings[-1] != expected:
+            raise RenderError(f"note.md closing H2 must be {expected} for this reading level")
+        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review,
+                               reading_level=reading_level)
         if output is None:
             output = reading_path(output_dir, job, note)
             check_destination(job, output)
@@ -340,9 +374,10 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
 
 
 def main(argv: list[str] | None = None) -> int:
-    for stream in (sys.stdout, sys.stderr):
-        if hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-dir", type=Path, required=True, help="Job directory containing the evidence note")

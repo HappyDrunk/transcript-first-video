@@ -310,7 +310,9 @@ _NAMED_ZH_TERM = re.compile(
     r"(?:名为|名叫|公司|项目|品牌|机构)[ \t]*[“「]([^”」]+)[”」]"
 )
 _C04_START = ("先记住一句话", "这场在谈什么、谁")
-_C04_END = ("可复用做法", "翻车或别用", "今天立刻动手一步")
+ACTION_HEADING = knowledge_note.PLAIN_ACTION_HEADING
+CONCISE_ACTION_HEADING = knowledge_note.CONCISE_ACTION_HEADING
+_C04_END = ("可复用做法", "翻车或别用")
 _C04_MIDDLE = {
     "讲座": ("主线论点",),
     "访谈": ("话题", "意见不一致的地方"),
@@ -331,11 +333,12 @@ def middle_headings(kind: str, sections: list[DeliverySection]) -> tuple[str, ..
 
 
 
-def delivery_parts(body: str) -> tuple[list[str], list[list[str]]]:
+def delivery_parts(body: str, *, list_forms: list[bool] | None = None) -> tuple[list[str], list[list[str]]]:
     """Split Markdown into prose paragraphs/list items and explicit callouts."""
     prose: list[str] = []
     blocks: list[list[str]] = []
     paragraph: list[str] = []
+    in_list = False
     block: list[str] | None = None
     for raw in body.splitlines() + [""]:
         line = raw.strip()
@@ -347,11 +350,15 @@ def delivery_parts(body: str) -> tuple[list[str], list[list[str]]]:
         item = _LIST_ITEM.match(line)
         if (not line or item or is_callout) and paragraph:
             prose.append("\n".join(paragraph))
+            if list_forms is not None:
+                list_forms.append(in_list)
             paragraph = []
         if is_callout:
             block = [line]
             blocks.append(block)
         elif line:
+            if not paragraph:
+                in_list = item is not None
             paragraph.append(line[item.end() :] if item else line)
     return prose, blocks
 
@@ -362,6 +369,7 @@ class DeliverySection:
     heading: str
     prose: list[str]
     blocks: list[list[str]]
+    mixed_list: bool = False
 
 
 def delivery_sections(body: str) -> list[DeliverySection]:
@@ -370,9 +378,18 @@ def delivery_sections(body: str) -> list[DeliverySection]:
     prose, blocks = delivery_parts(body[:starts[0]])
     sections = [DeliverySection(0, "", prose, blocks)]
     for index, heading in enumerate(headings):
-        prose, blocks = delivery_parts(body[heading.end() : starts[index + 1]])
-        sections.append(DeliverySection(len(heading[1]), heading[2], prose, blocks))
+        list_forms = [] if heading[2] == CONCISE_ACTION_HEADING else None
+        prose, blocks = delivery_parts(body[heading.end() : starts[index + 1]], list_forms=list_forms)
+        mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
+        sections.append(DeliverySection(len(heading[1]), heading[2], prose, blocks, mixed_list))
     return sections
+
+
+def closing_heading(sections: list[DeliverySection]) -> str:
+    headings = {section.heading for section in sections if section.level == 2}
+    if CONCISE_ACTION_HEADING in headings and ACTION_HEADING not in headings:
+        return CONCISE_ACTION_HEADING
+    return ACTION_HEADING
 
 
 def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
@@ -383,7 +400,7 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
     if not expected_middle:
         issues.append("frontmatter type must be 讲座, 访谈, 大会 or 演示")
     else:
-        expected = _C04_START + expected_middle + _C04_END
+        expected = _C04_START + expected_middle + _C04_END + (closing_heading(sections),)
         actual = tuple(section.heading for section in sections if section.level == 2)
         if actual != expected:
             issues.append(f"expected H2 sections in order: {' / '.join(expected)}")
@@ -413,9 +430,13 @@ def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
                               if sections[i].level == 2), len(sections))
             if not any(child.prose for child in sections[index:group_end]):
                 issues.append(f"empty section: {section.heading}")
-        if section.heading == _C04_END[-1] and len(section.prose) > 1:
+        if section.heading == ACTION_HEADING and len(section.prose) > 1:
             orphan = section.prose[1].splitlines()[0]
-            issues.append(f"orphan text after {_C04_END[-1]}: {orphan[:80]}")
+            issues.append(f"orphan text after {ACTION_HEADING}: {orphan[:80]}")
+        if section.heading == CONCISE_ACTION_HEADING and (
+            not 1 <= len(section.prose) <= 3 or section.blocks or section.mixed_list
+        ):
+            issues.append(f"{CONCISE_ACTION_HEADING} needs one to three items in one form, without callouts")
     if kind == "大会":
         legacy = _CONFERENCE_MAIN not in middle
         claims = children.count(_CONFERENCE_CLAIMS)
@@ -736,7 +757,6 @@ def _cross_script(prose: str, quote: str) -> bool:
 
 
 EVIDENCE_HEADING = "原文依据"
-ACTION_HEADING = _C04_END[-1]
 SCREEN_TAG = "[画面]"
 UNCERTAIN_SCREEN_TAG = "[画面?]"
 SCREEN_FILE = "screen.txt"
@@ -1211,7 +1231,7 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
     if "gate_passed" in fields and not knowledge_note._truthy(fields["gate_passed"]):
         issues.append("gate_passed must be true when supplied")
     if ctx.omission is None:
-        issues.append(f"expected 本文略去 on its own line after {ACTION_HEADING}, before {EVIDENCE_HEADING}")
+        issues.append(f"expected 本文略去 on its own line after {closing_heading(ctx.sections)}, before {EVIDENCE_HEADING}")
     for parent, section in _with_parents(ctx.sections):
         for claim in section.prose:
             if claim.startswith(">") or any(line.startswith("本文略去") for line in claim.splitlines()):
@@ -1680,14 +1700,7 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     return _result("C04d", issues, "explanations use marked blocks")
 
 
-def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
-    section = next((section for section in ctx.sections if section.heading == ACTION_HEADING), None)
-    if section is None:
-        return ("R13", False, f"missing {ACTION_HEADING}")
-    prose = "\n".join(section.prose)
-    evidence = linked_quotes(prose, ctx.valid_quotes)
-    if not evidence:
-        return ("R13", False, f"{ACTION_HEADING} needs a supporting ⏱ link")
+def action_sentences(prose: str) -> list[str]:
     clean = re.sub(r"[（(]改写讲者做法[）)]", "", prose_without_times(prose))
     def mask_url(match: re.Match[str]) -> str:
         url = match[0].rstrip(".!?;")
@@ -1696,7 +1709,29 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     separators = list(_SENTENCE_SPLIT.finditer(_URL.sub(mask_url, clean)))
     starts = [0, *(match.end() for match in separators)]
     ends = [*(match.start() for match in separators), len(clean)]
-    sentences = [sentence for start, end in zip(starts, ends) if (sentence := clean[start:end].strip())]
+    return [sentence for start, end in zip(starts, ends) if (sentence := clean[start:end].strip())]
+
+
+def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
+    closings = [section for section in ctx.sections if section.level == 2
+                and section.heading in {ACTION_HEADING, CONCISE_ACTION_HEADING}]
+    if len(closings) != 1:
+        message = f"missing {ACTION_HEADING}" if not closings else "expected one closing H2"
+        return ("R13", False, message)
+    section = closings[0]
+    if section.heading == CONCISE_ACTION_HEADING:
+        if not 1 <= len(section.prose) <= 3:
+            return ("R13", False, f"{CONCISE_ACTION_HEADING} needs one to three items")
+        for item in section.prose:
+            sentences = action_sentences(item.replace("**", "").replace("__", ""))
+            if not linked_quotes(item, ctx.valid_quotes) or not 1 <= len(sentences) <= 2:
+                return ("R13", False, f"{CONCISE_ACTION_HEADING} needs a supporting ⏱ link and one to two sentences per item")
+        return ("R13", True, "each closing item is short and links to evidence")
+    prose = "\n".join(section.prose)
+    evidence = linked_quotes(prose, ctx.valid_quotes)
+    if not evidence:
+        return ("R13", False, f"{ACTION_HEADING} needs a supporting ⏱ link")
+    sentences = action_sentences(prose)
     if not sentences or len(sentences) > 2:
         return ("R13", False, f"{ACTION_HEADING} needs one action in at most two sentences")
     action = sentences[0]
