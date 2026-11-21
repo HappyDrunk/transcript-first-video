@@ -687,6 +687,75 @@ class AutoScreenBudgetTests(unittest.TestCase):
             self.assertNotIn(secret, reason)
             self.assertNotIn(secret, notices[0])
 
+    def test_auto_calibration_fallback_redacts_multitoken_credentials_and_control_chars(self):
+        calibration = SimpleNamespace(filesize=30_000_000, decode=0.25, grouping=0.05,
+                                      first_pass=0.5, half_transform=0.05, second_pass=0.5)
+        error = screen_ocr.ScreenError(
+            "FFmpeg calibration clip failed: \x1b[31mCookie: first=example; "
+            "second=sensitive-value\x1b[0m\x07\nAuthorization: Bearer top-secret-token extra-part"
+        )
+        with (
+            patch.object(screen_ocr, "_calibrate_full_scan", side_effect=error) as calibrate,
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(io.StringIO()) as stderr,
+        ):
+            result, _, _ = self.host(0.2, sample_decode=0.2, calibration=calibration)
+
+        calibrate.assert_called_once()
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        sample = status["screen_ocr"]["sample"]
+        with redirect_stdout(io.StringIO()) as json_stdout:
+            youtube_host._emit(result, as_json=True)
+        self.assertEqual(json.loads(json_stdout.getvalue())["screen_ocr"]["sample"], sample)
+        self.assertEqual(sample["calibration_status"], "fallback")
+        reason = sample["calibration_reason"]
+        stderr_text = stderr.getvalue()
+        for fragment in ("first=example", "second=sensitive-value", "top-secret-token",
+                         "extra-part", "\x1b", "\x07", "[31m", "[0m"):
+            with self.subTest(fragment=fragment):
+                self.assertNotIn(fragment, reason)
+                self.assertNotIn(fragment, stderr_text)
+
+        stderr_lines = stderr_text.splitlines()
+        for line in [reason, *stderr_lines]:
+            self.assertFalse(any(ord(ch) < 32 or 127 <= ord(ch) <= 159 for ch in line), repr(line))
+        notices = [
+            line for line in stderr_lines
+            if not line.startswith(("fetching captions with yt-dlp ", "captions acquired via yt-dlp "))
+        ]
+        self.assertEqual(len(notices), 1, notices)
+        self.assertIn("calibration", notices[0])
+        self.assertIn("fallback", notices[0])
+        self.assertIn(f"{sample['estimated_seconds']:.1f}s", notices[0])
+
+    def test_auto_unusable_calibration_without_sample_latency_records_null_estimate_and_fallback(self):
+        sample_result = {
+            "result": "slides_detected",
+            "duration": 1000,
+            "calibration_status": "calibrated",
+            "calibration": {"estimated_total_seconds": 0.0},
+        }
+        with redirect_stderr(io.StringIO()) as stderr:
+            self.host(0.2, sample_result=sample_result)
+
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        sample = status["screen_ocr"]["sample"]
+        self.assertEqual(sample["calibration_status"], "fallback")
+        reason = sample["calibration_reason"]
+        self.assertIsInstance(reason, str)
+        self.assertTrue(reason.strip())
+        self.assertEqual(reason.splitlines(), [reason])
+        self.assertIn("estimated_seconds", sample)
+        self.assertIsNone(sample["estimated_seconds"])
+        notices = [
+            line for line in stderr.getvalue().splitlines()
+            if not line.startswith(("fetching captions with yt-dlp ", "captions acquired via yt-dlp "))
+        ]
+        self.assertEqual(len(notices), 1, notices)
+        self.assertIn("calibration", notices[0])
+        self.assertIn("fallback", notices[0])
+        self.assertIn("(estimated unknown)", notices[0])
+
     def expected_sample_estimate(self, sample):
         seconds_per_interval = (
             sample["mean_frame_ocr_seconds"] * screen_ocr.SLIDE_OCR_PASSES
