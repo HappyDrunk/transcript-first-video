@@ -1029,7 +1029,7 @@ class ExampleTests(unittest.TestCase):
         concise = re.search(r"精炼版((?:(?!通俗版).)*)", guidance)
         checks = {
             "Universal term callouts must be scoped to 通俗版": plain is not None,
-            "精炼版 must limit required explanations to the four categories in rules.md": (
+            "精炼版 must limit required explanations to the four categories in review-guide.md": (
                 concise is not None
                 and re.search(r"只|仅", concise[1]) is not None
                 and re.search(r"(?:陌生|不熟悉|需要解释)[^。；、，]*缩写|缩写[^。；、，]*需要解释",

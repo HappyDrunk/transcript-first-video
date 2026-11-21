@@ -2,3 +2,5 @@
 /evals/fixtures/phase3-c04c/screen.txt -text
 /evals/fixtures/note-examples/** text eol=lf
 *.sh text eol=lf
+/SKILL.md text eol=lf
+/references/*.md text eol=lf

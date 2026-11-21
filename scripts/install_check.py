@@ -36,6 +36,7 @@ FALLBACK_FILES = (
     "scripts/youtube_host.py",
     "scripts/user_prefs.py",
     "references/delivery-format.md",
+    "references/review-guide.md",
     "references/host-delivery.md",
     "references/note-examples.md",
     "references/pitfalls.md",
