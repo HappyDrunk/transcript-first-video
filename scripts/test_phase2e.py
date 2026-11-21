@@ -36,7 +36,7 @@ NOTE = (FIXTURES / "usable_en_note.md").read_text(encoding="utf-8").replace(
     "evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt"
 )
 RULE_IDS = ["R01", "R04", "R05", "R13", "R14", "R15", "C04a", "C04b", "C04c", "C04d"]
-HINT = "标明来自画面的内容由机器识别，可能有个别字符误差"
+HINT = "标明来自画面的内容由机器识别，可能有误差"
 
 
 def write(path: Path, text: str) -> None:

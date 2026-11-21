@@ -352,6 +352,32 @@ Label one envelope with its planting month. ⏱ 00:20
                 self.assertEqual(len(paragraphs), 4, paragraphs)
                 self.assertEqual(paragraphs[3], expected)
 
+    def test_latin_majority_bilingual_prose_uses_chinese_fourth_paragraph(self):
+        prose = (
+            "把播种月份写在信封上。\n"
+            "Write the planting month on the outside of each envelope so that you can "
+            "find the right seeds without opening every packet.\n\n"
+            "按月份整理。\n"
+            "Arrange the envelopes in planting order so the next packet is easy to find. ⏱ 00:20"
+        )
+        self.assertGreater(len(re.findall(r"[A-Za-z]", prose)), len(re.findall(r"[\u4e00-\u9fff]", prose)))
+
+        for level, heading, chinese, english in (
+            ("plain", PLAIN_H2, PLAIN_ZH, "Reading level: Plain — terms and background are explained."),
+            ("concise", CONCISE_H2, CONCISE_ZH,
+             "Reading level: Concise — assumes relevant background; only uncommon terms are explained."),
+        ):
+            takeaway, application = prose.split("\n\n")
+            note = (
+                f"{FRONTMATTER}\n{FIRST_H2}\n\n{takeaway}\n\n{heading}\n\n{application}\n\n"
+                "本文略去｜无\n\n## 原文依据\n\n> [00:20] Arrange the envelopes in planting order.\n"
+            )
+            for language, expected in ((None, chinese), ("英文", english), ("中英文对照", chinese), ("中文", chinese)):
+                with self.subTest(reading_level=level, delivery_language=language):
+                    paragraphs = self.render(note, reading_level=level, delivery_language=language)
+                    self.assertEqual(len(paragraphs), 4, paragraphs)
+                    self.assertEqual(paragraphs[3], expected)
+
     def test_legacy_header_has_three_paragraphs_and_no_system_wording(self):
         reading = render_reading_note.render_note(NOTE.encode(), keep_frontmatter=False, reading_level=None).decode()
         self.assertEqual(len(header_paragraphs(reading)), 3)
