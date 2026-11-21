@@ -1723,7 +1723,9 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
         if not 1 <= len(section.prose) <= 3:
             return ("R13", False, f"{CONCISE_ACTION_HEADING} needs one to three items")
         for item in section.prose:
-            prose = re.sub(r"[*_`]", "", item)
+            prose = re.sub(r"<!--.*?-->", "", item, flags=re.DOTALL)
+            prose = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", prose)
+            prose = re.sub(r"[*_`]", "", prose)
             sentences = [sentence for sentence in action_sentences(prose)
                          if any(char.isalnum() for char in sentence)]
             if not linked_quotes(item, ctx.valid_quotes) or not 1 <= len(sentences) <= 2:

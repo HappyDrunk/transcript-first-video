@@ -361,7 +361,9 @@ def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> 
     delivery, _, _ = verify_rules.delivery_evidence(body)
     headings = [heading[2] for heading in verify_rules._HEADING.finditer(delivery) if heading[1] == "##"]
     expected = knowledge_note.closing_heading_for_level(reading_level)
-    if not headings or headings[-1] != expected:
+    recognized = {knowledge_note.PLAIN_ACTION_HEADING, knowledge_note.CONCISE_ACTION_HEADING}
+    closing_headings = [heading for heading in headings if heading in recognized]
+    if closing_headings != [expected] or headings[-1] != expected:
         raise ValueError(f"note.md closing H2 must be {expected} for this reading level")
 
 
