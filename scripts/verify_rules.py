@@ -202,7 +202,11 @@ _MULTIPLIER_SUFFIX = re.compile(r"(?<=\d)[xX×](?![A-Za-z0-9_])")
 _ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re.IGNORECASE)
 _COMPOUND_NAME_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])")
 _INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)[^\n]+?(?<!`)\1(?!`)")
-_FENCED_CODE = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?^[ \t]*\1[ \t]*$", re.MULTILINE | re.DOTALL)
+_FENCED_CODE = re.compile(
+    r"^ {0,3}(?P<fence>(?P<marker>`|~)(?P=marker){2,})(?!(?P=marker))[^\n]*"
+    r"(?:\n.*?(?:^ {0,3}(?P=fence)(?P=marker)*[ \t]*\r?$|\Z)|\Z)",
+    re.MULTILINE | re.DOTALL,
+)
 _URL = re.compile(r"https?://[^\s`<>。！？、，；）]+", re.IGNORECASE)
 
 
@@ -293,6 +297,9 @@ _SPOKEN_DECIMAL = re.compile(
 )
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", re.MULTILINE)
+_SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_HEADING_MASK = re.compile(rf"{_FENCED_CODE.pattern}|{_HTML_COMMENT.pattern}", _FENCED_CODE.flags)
 _LIST_ITEM = re.compile(r"^\s*(?:[-+*][ \t]+(?:\d+[.)][ \t]+)?|\d+[.)][ \t]+)")
 _INLINE_LIST_ITEM = re.compile(r"([：:；;])[ \t]*\d+[.)][ \t]+")
 _DELIVERY_TIME = re.compile(r"⏱\ufe0f?[ \t]+((?:[0-9]+:)?[0-9]{2,}:[0-5][0-9])(?![\d:])")
@@ -372,16 +379,46 @@ class DeliverySection:
     mixed_list: bool = False
 
 
+def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
+    """Return heading levels, text, and source spans excluding the final newline."""
+    masked = _HEADING_MASK.sub(lambda match: re.sub(r"[^\n]", " ", match[0]), body)
+    headings: list[tuple[int, str, int, int]] = []
+    paragraph = None
+    offset = 0
+    for raw in masked.split("\n"):
+        start = offset
+        offset += len(raw) + 1
+        line = raw.removesuffix("\r")
+        end = start + len(line)
+        stripped = line.strip()
+        atx = _HEADING.fullmatch(line)
+        underline = _SETEXT_UNDERLINE.fullmatch(line)
+        if atx:
+            headings.append((len(atx[1]), atx[2], start, end))
+        elif underline and paragraph is not None:
+            title, paragraph_start = paragraph
+            headings.append((1 if underline[1][0] == "=" else 2, title, paragraph_start, end))
+        elif (stripped and not underline and not _LIST_ITEM.match(line) and not stripped.startswith(">")
+              and not re.fullmatch(r"#{1,6}|[-+*]|(?:[-*_][ \t]*){3,}", stripped)):
+            paragraph = (stripped, start)
+            continue
+        paragraph = None
+    return headings
+
+
 def delivery_sections(body: str) -> list[DeliverySection]:
-    headings = list(_HEADING.finditer(body))
-    starts = [heading.start() for heading in headings] + [len(body)]
+    headings = markdown_headings(body)
+    starts = [start for _, _, start, _ in headings] + [len(body)]
     prose, blocks = delivery_parts(body[:starts[0]])
     sections = [DeliverySection(0, "", prose, blocks)]
-    for index, heading in enumerate(headings):
-        list_forms = [] if heading[2] == CONCISE_ACTION_HEADING else None
-        prose, blocks = delivery_parts(body[heading.end() : starts[index + 1]], list_forms=list_forms)
+    for index, (level, heading, _, end) in enumerate(headings):
+        section_body = body[end : starts[index + 1]]
+        list_forms = [] if heading == CONCISE_ACTION_HEADING else None
+        if list_forms is not None:
+            section_body = _HTML_COMMENT.sub("", section_body)
+        prose, blocks = delivery_parts(section_body, list_forms=list_forms)
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
-        sections.append(DeliverySection(len(heading[1]), heading[2], prose, blocks, mixed_list))
+        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list))
     return sections
 
 
@@ -1712,6 +1749,36 @@ def action_sentences(prose: str) -> list[str]:
     return [sentence for start, end in zip(starts, ends) if (sentence := clean[start:end].strip())]
 
 
+def _strip_markdown_links(text: str) -> str:
+    """Keep the visible label of each link or image with a balanced destination."""
+    parts: list[str] = []
+    start = 0
+    for match in re.finditer(r"!?\[([^\]]*)\]\([ \t]*", text):
+        if match.start() < start:
+            continue
+        end = match.end()
+        in_angle = text.startswith("<", end)
+        depth = 1
+        while end < len(text):
+            char = text[end]
+            end += 1
+            if char == "\\":
+                end += 1
+            elif in_angle:
+                if char == ">":
+                    in_angle = False
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    parts.extend((text[start : match.start()], match[1]))
+                    start = end
+                    break
+    parts.append(text[start:])
+    return "".join(parts)
+
+
 def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     closings = [section for section in ctx.sections if section.level == 2
                 and section.heading in {ACTION_HEADING, CONCISE_ACTION_HEADING}]
@@ -1723,8 +1790,7 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
         if not 1 <= len(section.prose) <= 3:
             return ("R13", False, f"{CONCISE_ACTION_HEADING} needs one to three items")
         for item in section.prose:
-            prose = re.sub(r"<!--.*?-->", "", item, flags=re.DOTALL)
-            prose = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", prose)
+            prose = _strip_markdown_links(item)
             prose = re.sub(r"[*_`]", "", prose)
             sentences = [sentence for sentence in action_sentences(prose)
                          if any(char.isalnum() for char in sentence)]

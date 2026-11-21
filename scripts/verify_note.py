@@ -359,7 +359,7 @@ def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> 
     text = _normalized_note_text(note_bytes)
     body = _FORMAT_FRONTMATTER.sub("", text, count=1)
     delivery, _, _ = verify_rules.delivery_evidence(body)
-    headings = [heading[2] for heading in verify_rules._HEADING.finditer(delivery) if heading[1] == "##"]
+    headings = [heading for level, heading, _, _ in verify_rules.markdown_headings(delivery) if level == 2]
     expected = knowledge_note.closing_heading_for_level(reading_level)
     recognized = {knowledge_note.PLAIN_ACTION_HEADING, knowledge_note.CONCISE_ACTION_HEADING}
     closing_headings = [heading for heading in headings if heading in recognized]
