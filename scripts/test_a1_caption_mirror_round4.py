@@ -97,6 +97,27 @@ class CaptionMirrorRound4Tests(unittest.TestCase):
             "mirror.example:443",
         )
 
+    def test_invalid_url_does_not_chain_original_exception(self):
+        import http.client
+        import traceback
+
+        invalid_url = http.client.InvalidURL(
+            "URL can't contain control characters. '/cap?token=supersecret' (found at least ' ')"
+        )
+        with patch("urllib.request.urlopen", side_effect=invalid_url):
+            with self.assertRaises(youtube_host.HostError) as cm:
+                youtube_host.http_get(
+                    "https://yt.chocolatemoo53.com/api/v1/captions/abc",
+                    limit=4096, timeout=2.0, accept="text/vtt",
+                )
+
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertIs(cm.exception.__suppress_context__, True)
+        formatted = "".join(traceback.format_exception(
+            type(cm.exception), cm.exception, cm.exception.__traceback__,
+        ))
+        self.assertNotIn("supersecret", formatted)
+
 
 if __name__ == "__main__":
     unittest.main()
