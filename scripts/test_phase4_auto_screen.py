@@ -597,6 +597,103 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.assertEqual(transcript.read_bytes(), expected_transcript)
         self.assertFalse((self.job / "screen.txt").exists())
 
+    def test_auto_records_calibrated_status_and_estimate_in_status_json(self):
+        calibration = SimpleNamespace(filesize=30_000_000, decode=0.25, grouping=0.05,
+                                      first_pass=0.5, half_transform=0.05, second_pass=0.5)
+        with (
+            patch.object(screen_ocr, "_measure_download_seconds", return_value=14.0),
+            redirect_stderr(io.StringIO()) as stderr,
+        ):
+            result, _, extract = self.host(0.2, sample_decode=0.2, calibration=calibration)
+
+        self.assert_slides_ready(result, extract)
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        sample = status["screen_ocr"]["sample"]
+        self.assertIn("calibration", sample)
+        self.assertIn("estimated_total_seconds", sample["calibration"])
+        self.assertEqual(sample.get("calibration_status"), "calibrated")
+        self.assertEqual(sample["estimated_seconds"], round(sample["calibration"]["estimated_total_seconds"], 3))
+        self.assertNotIn("calibration", stderr.getvalue().lower())
+
+    def test_auto_records_calibration_timeout_fallback_and_emits_stderr_notice(self):
+        # The mocked decode advances the clock past the clip frame scan's
+        # remaining calibration budget before Scan.run returns.
+        calibration = SimpleNamespace(filesize=30_000_000, decode=31.0, grouping=0.05,
+                                      first_pass=0.5, half_transform=0.05, second_pass=0.5)
+        for seconds_per_call, sample_decode, state in ((0.2, 0.2, "ready"), (0.8, 3.6, "fallback")):
+            with self.subTest(state=state):
+                with (
+                    patch.object(screen_ocr, "_measure_download_seconds", return_value=14.0) as download,
+                    redirect_stderr(io.StringIO()) as stderr,
+                ):
+                    result, _, extract = self.host(
+                        seconds_per_call, sample_decode=sample_decode, calibration=calibration,
+                    )
+
+                download.assert_called_once()
+                if state == "ready":
+                    self.assert_slides_ready(result, extract)
+                else:
+                    extract.assert_not_called()
+                    self.assert_timeout_fallback(result)
+                status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+                screen = status["screen_ocr"]
+                self.assertEqual(screen["state"], state)
+                if state == "fallback":
+                    self.assertEqual(screen["result"], "timeout")
+                sample = screen["sample"]
+                self.assertNotIn("calibration", sample)
+                self.assertEqual(sample.get("calibration_status"), "timeout_fallback")
+                reason = sample["calibration_reason"]
+                self.assertIsInstance(reason, str)
+                self.assertTrue(reason.strip())
+                self.assertEqual(reason.splitlines(), [reason])
+                self.assertRegex(reason, r"(?i)timed?\s*out|timeout")
+                self.assertEqual(sample["estimated_seconds"], self.expected_sample_estimate(sample))
+                notices = [line for line in stderr.getvalue().splitlines() if "calibration" in line.lower()]
+                self.assertEqual(len(notices), 1)
+                self.assertIn("timeout_fallback", notices[0])
+                self.assertIn(f"{sample['estimated_seconds']:.1f}s", notices[0])
+                self.assertIn(reason, notices[0])
+
+    def test_auto_records_calibration_error_fallback_and_redacts_url(self):
+        calibration = SimpleNamespace(filesize=30_000_000, decode=0.25, grouping=0.05,
+                                      first_pass=0.5, half_transform=0.05, second_pass=0.5)
+        error = screen_ocr.ScreenError(
+            "FFmpeg calibration clip failed: https://secret.example/v.mp4?token=abc123\nsecond line"
+        )
+        with (
+            patch.object(screen_ocr, "_calibrate_full_scan", side_effect=error) as calibrate,
+            redirect_stderr(io.StringIO()) as stderr,
+        ):
+            result, _, extract = self.host(0.2, sample_decode=0.2, calibration=calibration)
+
+        calibrate.assert_called_once()
+        self.assert_slides_ready(result, extract)
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        sample = status["screen_ocr"]["sample"]
+        self.assertEqual(sample.get("calibration_status"), "fallback")
+        reason = sample["calibration_reason"]
+        self.assertIsInstance(reason, str)
+        self.assertTrue(reason.strip())
+        self.assertEqual(reason.splitlines(), [reason])
+        self.assertIn("<URL>", reason)
+        self.assertEqual(sample["estimated_seconds"], self.expected_sample_estimate(sample))
+        notices = [line for line in stderr.getvalue().splitlines() if "calibration" in line.lower()]
+        self.assertEqual(len(notices), 1)
+        self.assertIn("fallback", notices[0])
+        self.assertIn(f"{sample['estimated_seconds']:.1f}s", notices[0])
+        for secret in ("secret.example", "abc123"):
+            self.assertNotIn(secret, reason)
+            self.assertNotIn(secret, notices[0])
+
+    def expected_sample_estimate(self, sample):
+        seconds_per_interval = (
+            sample["mean_frame_ocr_seconds"] * screen_ocr.SLIDE_OCR_PASSES
+            + sample["mean_sample_extract_seconds"]
+        )
+        return round(seconds_per_interval * math.ceil(self.DURATION / screen_ocr.SLIDE_INTERVAL), 3)
+
     def test_auto_skips_when_sample_extract_plus_ocr_exceeds_safe_budget(self):
         # (1.8s extraction + 1.6s OCR) * 125 = 425s, above the 350s safe budget.
         result, sample, extract = self.host(0.8, sample_decode=3.6)
