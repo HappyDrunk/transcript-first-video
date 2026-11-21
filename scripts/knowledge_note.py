@@ -99,6 +99,31 @@ def _speech_count(text: str) -> int:
     return sum(1 for char in text if char.isalpha())
 
 
+READING_LEVELS = ("plain", "concise")
+READING_LEVEL_SOURCES = ("request", "saved", "default")
+PLAIN_ACTION_HEADING = "今天立刻动手一步"
+CONCISE_ACTION_HEADING = "可以怎么用、可以拿去讨论什么"
+
+
+def read_reading_level(status: dict) -> str | None:
+    if "reading_level" not in status and "reading_level_source" not in status:
+        return None
+    level, source = status.get("reading_level"), status.get("reading_level_source")
+    if type(level) is not str or level not in READING_LEVELS:
+        raise ValueError("status.json requires a valid reading_level (plain or concise)")
+    if type(source) is not str or source not in READING_LEVEL_SOURCES:
+        raise ValueError("status.json requires a valid reading_level_source (request, saved or default)")
+    return level
+
+
+def closing_heading_for_level(reading_level: str | None) -> str:
+    if reading_level is None or reading_level == "plain":
+        return PLAIN_ACTION_HEADING
+    if reading_level == "concise":
+        return CONCISE_ACTION_HEADING
+    raise ValueError(f"invalid reading_level: {reading_level!r}")
+
+
 def render_scaffold(
     *,
     job_id: str,
@@ -112,6 +137,7 @@ def render_scaffold(
     skill_version: str = "unknown",
     selection_end: str | None = None,
     metadata: dict[str, str] | None = None,
+    reading_level: str | None = None,
 ) -> str:
     """Frontmatter, empty single-note headings, and fill instructions.
 
@@ -151,6 +177,8 @@ def render_scaffold(
     if selection_end is not None:
         lines.extend([f"本任务 selection.md 的语音选段从 00:00 到 {selection_end}。", ""])
     for heading in _SINGLE_NOTE_HEADINGS:
+        if heading == PLAIN_ACTION_HEADING:
+            heading = closing_heading_for_level(reading_level)
         if heading == "原文依据":
             lines.extend(["本文略去｜〈略项和时间范围，或无〉", ""])
         lines.extend([f"## {heading}", ""])

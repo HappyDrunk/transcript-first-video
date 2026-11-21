@@ -383,12 +383,15 @@ class DeliveryContractTests(unittest.TestCase):
 
     def test_delivery_format_examples_pass_c04(self) -> None:
         reference = (ROOT / "references/delivery-format.md").read_text(encoding="utf-8")
-        examples = re.split(r"^## 合成示例[一二三四]：", reference, flags=re.MULTILINE)[1:]
-        names = ("cold-dough", "clinic-reminders", "cold-chain", "kitchen-stock")
-        self.assertEqual(len(examples), len(names))
-        for name, example in zip(names, examples, strict=True):
-            with self.subTest(example=name):
-                job = ROOT / "evals/fixtures/delivery-examples" / f"synthetic-{name}"
+        examples = re.findall(
+            r"^## 合成示例([一二三四])：(.*?)(?=^## (?:合成示例|真实精炼证据版节选)|\Z)",
+            reference, re.MULTILINE | re.DOTALL,
+        )
+        self.assertEqual([number for number, _ in examples], ["一", "四"])
+        fixtures = ROOT / "evals/fixtures/delivery-examples"
+        for name, (_, example) in zip(("cold-dough", "kitchen-stock"), examples, strict=True):
+            with self.subTest(documented_example=name):
+                job = fixtures / f"synthetic-{name}"
                 blocks = re.findall(
                     r"^```(?:markdown|text)\n(.*?)^```$", example, re.MULTILINE | re.DOTALL,
                 )
@@ -396,10 +399,14 @@ class DeliveryContractTests(unittest.TestCase):
                 article, selection = blocks
                 self.assertEqual((job / "note.md").read_text(encoding="utf-8"), article)
                 self.assertEqual((job / "selection.md").read_text(encoding="utf-8"), selection)
-                transcript = (job / "transcript.txt").read_text(encoding="utf-8").splitlines()
                 evidence = re.findall(r"^> (\[\d\d:\d\d\].*)$", article, re.MULTILINE)
                 omitted_cues = re.findall(r"`(\[\d\d:\d\d\] [^`]+)`", example)
-                self.assertEqual(transcript, sorted(set(evidence + omitted_cues)))
+                cues = "\n".join(sorted(set(evidence + omitted_cues))) + "\n"
+                self.assertEqual((job / "transcript.txt").read_text(encoding="utf-8"), cues)
+
+        for name in ("cold-dough", "clinic-reminders", "cold-chain", "kitchen-stock"):
+            with self.subTest(compatibility_fixture=name):
+                job = fixtures / f"synthetic-{name}"
                 verified, covered = _check_note(job), cov.check_job(job)
                 self.assertTrue(verified["allowed"], verified["reasons"])
                 self.assertTrue(covered["ok"], covered["reasons"])

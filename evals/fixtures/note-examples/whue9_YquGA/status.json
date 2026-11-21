@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "job_id": "youtube_whue9_YquGA",
+  "source_url": "https://www.youtube.com/watch?v=whue9_YquGA",
+  "status": "transcript_ready",
+  "finished": false,
+  "expected_lang": "en",
+  "gate_lang": "en",
+  "duration_seconds": 1052.2,
+  "transcript": "transcript.txt",
+  "segments": "segments.json",
+  "chunks": "chunks",
+  "scaffold": "note.scaffold.md",
+  "reading_level": "concise",
+  "reading_level_source": "request",
+  "screen_ocr": {
+    "requested_mode": "slides",
+    "mode": "slides",
+    "state": "ready",
+    "slide_count": 32,
+    "path": "screen.txt",
+    "sha256": "9ea41f4c8ca643b66b34fdb72e0c278de55a39f50f50f43ed08256aa7536d6b0"
+  }
+}

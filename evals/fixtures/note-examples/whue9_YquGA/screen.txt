@@ -1,0 +1,234 @@
+[00:00][幻灯片 1] frame-000001.png
+[00:00][画面] ANGIE JONES, VP OF AGENTIC AI FOUNDATION
+[00:00][画面] Building an
+[00:00][画面] Engineering Org
+[00:00][画面] angiejones.tech
+[00:08][画面] Autonomous
+[00:24][幻灯片 2] frame-000004.png
+[00:24][画面] HOW IT STARTED
+[00:24][画面] Early users of
+[00:24][画面] coding agents.
+[00:48][幻灯片 3] frame-000007.png
+[00:48][画面] THE TURNING POINT
+[00:48][画面] Code is not
+[00:48][画面] t the
+[00:48][画面] bottleneck.
+[00:48][画面] Code is not the
+[01:28][幻灯片 4] frame-000012.png
+[01:28][画面] Where We Are
+[01:28][画面] Experimentation
+[01:28][画面] Adoption
+[01:28][画面] Impact
+[01:28][画面] explore and normalize Al
+[01:28][画面] scale usage through
+[01:28][画面] drive measurable outcomes
+[01:28][画面] usage
+[01:28][画面] structure and consistency
+[01:28][画面] and productivity gains
+[01:28][画面] HERE
+[01:52][幻灯片 5] frame-000015.png
+[01:52][画面] AGENTIC ENGINEER
+[01:52][画面] We need to be
+[01:52][画面] Agentic Engineers.
+[02:48][幻灯片 6] frame-000022.png
+[02:48][画面] AGENTIC ENGINEER
+[02:48][画面] Treat agents as
+[02:48][画面] core collaborators.
+[03:12][幻灯片 7] frame-000025.png
+[03:12][画面] AGENTIC ENGINEER
+[03:12][画面] Al Maturity Model
+[03:12][画面] Stage 3
+[03:12][画面] Stage 0
+[03:12][画面] Stage 1
+[03:12][画面] Stage 2
+[03:12][画面] adapted from Steve Yegge's Gas Town article
+
+[03:12][画面] Stage 4
+[03:12][画面] Stage 5
+[03:36][画面] Unengaged
+[03:36][画面] Assisted
+[03:44][画面] Conversational
+[03:52][画面] Directed
+[04:00][画面] Parallel
+[04:00][画面] Autonomous
+[04:24][幻灯片 8] frame-000034.png
+[04:24][画面] AGENTIC ENGINEER
+[04:24][画面] How can we
+[04:24][画面] level up?
+[04:52][幻灯片 9] frame-000038.png
+[04:52][画面] AGENTIC ENGINEER
+[04:52][画面] 1/9/90 Rule
+
+[04:52][画面] 1%
+[04:52][画面] Power Users
+[04:52][画面] 9%
+[04:52][画面] Tinkerers
+[04:52][画面] Consumers
+[04:52][画面] 90%
+[05:52][幻灯片 10] frame-000046.png
+[05:52][画面] AI CHAMPIONS
+[05:52][画面] The 1%:
+[05:52][画面?] actually -1.43%
+[06:00][画面] actually ~1.43%
+[06:00][画面] Al Champions
+[06:40][幻灯片 11] frame-000052.png
+[06:40][画面] STAGE 1/2
+[06:40][画面] Al Maturity Model
+[06:40][画面] Stage 1
+[06:40][画面] Stage 2
+[06:40][画面] Stage 3
+[06:40][画面] Stage 0
+[06:40][画面] Unengaged
+[06:40][画面] Directed
+[06:40][画面] Assisted
+[06:40][画面] Conversational
+
+[06:40][画面] Stage 4
+[06:40][画面] Stage 5
+[06:40][画面] Parallel
+[06:40][画面] Autonomous
+[07:12][幻灯片 12] frame-000056.png
+[07:12][画面] STAGE 3
+[07:12][画面] Turning repos into
+[07:12][画面] Al-friendly systems.
+[07:44][幻灯片 13] frame-000060.png
+[07:44][画面] STAGE 3
+[07:44][画面] Not all
+[07:44][画面] codebases are
+[07:44][画面] equal.
+[09:04][幻灯片 14] frame-000070.png
+[09:04][画面] STAGE 3
+[09:12][画面] Al Friendly Repo
+[09:20][幻灯片 15] frame-000072.png
+[09:20][画面] STAGE 3
+[09:20][画面] Al Friendly Repo
+[09:20][画面] Agent Context
+[09:20][画面] Agent Rules
+[09:20][画面] 25
+[09:28][幻灯片 16] frame-000073.png
+[09:28][画面] STAGE 3
+[09:28][画面] Al Friendly Repo
+[09:28][画面] Agent Context
+[09:28][画面] Agent Rules
+[09:28][画面] Al Workflows
+[09:28][画面] 25
+[09:36][幻灯片 17] frame-000074.png
+[09:36][画面] STAGE 3
+[09:36][画面] Al Friendly Repo
+[09:36][画面] Agent Context
+[09:36][画面] Agent Rules
+[09:36][画面] Al Workflows
+[09:36][画面] Al Code Review
+[09:36][画面] 25
+[09:44][幻灯片 18] frame-000075.png
+[09:44][画面] Al Maturity Model
+[09:44][画面] Stage 2
+[09:44][画面] Stage 3
+[09:44][画面] Stage 0
+[09:44][画面] Stage 1
+[09:44][画面] Unengaged
+[09:44][画面] Directed
+[09:44][画面] Assisted
+[09:44][画面] Conversational
+
+[09:44][画面] Stage 4
+[09:44][画面] Stage 5
+[09:44][画面] Parallel
+[09:44][画面] Autonomous
+[10:24][幻灯片 19] frame-000080.png
+[10:24][画面] STAGE 3
+[10:24][画面] Delegate from
+[10:24][画面] anywhere.
+[11:28][画面] anglejones.tech
+[12:32][幻灯片 20] frame-000096.png
+[12:32][画面] STAGE 3
+[12:32][画面] ↑37%
+[12:32][画面] ↑69%
+[12:32][画面] Reported time savings
+[12:32][画面] Al-authored code
+
+[12:32][画面] ↑21x
+[12:32][画面] 21x
+[12:32][画面] Automated PRs
+[12:56][幻灯片 21] frame-000099.png
+[12:56][画面] STAGE 4
+[12:56][画面] Parallelism
+[12:56][画面] introduced
+[12:56][画面] challenges.
+[13:12][幻灯片 22] frame-000101.png
+[13:12][画面] STAGE 4
+[13:12][画面] Who is going to
+[13:12][画面] review all of this?
+[13:36][幻灯片 23] frame-000104.png
+[13:36][画面] STAGE 4
+[13:36][画面] Handle Al
+[13:36][画面] overload with
+[13:36][画面] more Al.
+[14:24][幻灯片 24] frame-000110.png
+[14:24][画面] STAGE 4
+[14:24][画面] We've
+[14:24][画面] outgrown the
+[14:24][画面] machines.
+[14:48][幻灯片 25] frame-000113.png
+[14:48][画面] Al Maturity Model
+[14:48][画面] Stage 2
+[14:48][画面] Stage 0
+[14:48][画面] Stage 1
+[14:48][画面] Stage 3
+[14:48][画面] Unengaged
+[14:48][画面] Directed
+[14:48][画面] Conversational
+[14:48][画面] Assisted
+
+[14:48][画面] Stage 4
+[14:48][画面] Stage 5
+[14:48][画面] Parallel
+[14:48][画面] Autonomous
+[15:12][幻灯片 26] frame-000116.png
+[15:12][画面] STAGE S
+[15:12][画面] Providing the
+[15:12][画面] agents with a
+
+[15:12][画面] Stage 4
+[15:12][画面] Stage 5
+[15:12][画面] Parallel
+[15:12][画面] Autonomous
+[15:20][幻灯片 27] frame-000117.png
+[15:20][画面] STAGE 5
+[15:20][画面] Providing the
+[15:20][画面] agents with a
+[15:20][画面] world model.
+[15:28][画面?] STAGE S
+[16:16][幻灯片 28] frame-000124.png
+[16:16][画面?] STAGE S
+[16:16][画面] Al Maturity Model
+[16:16][画面] Stage 0
+[16:16][画面] Stage 1
+[16:16][画面] Stage 3
+[16:16][画面] Stage 2
+[16:16][画面] Unengaged
+[16:16][画面] Assisted
+[16:16][画面] Directed
+[16:16][画面] Conversational
+
+[16:16][画面] Stage 4
+[16:16][画面] Stage 5
+[16:16][画面] Parallel
+[16:16][画面] Autonomous
+[16:48][幻灯片 29] frame-000128.png
+[16:48][画面] CNNBusiness
+[16:48][画面] BUSINESS 3 MIN READ
+[16:48][画面] Block lays off nearly half its staff because of Al.
+[16:48][画面] Its CEO said most companies will do the same
+[16:48][画面] UPDATED FEB 26, 2026
+[16:48][画面] By Ramishah Maruf
+[16:48][画面] CNBusiness
+[16:48][画面] BUSINESS - 3 MIN READ
+[16:48][画面?] D220
+[16:56][画面?] BUSINESS3 MIN READ
+[17:04][画面?] O220
+[17:12][幻灯片 30] frame-000131.png
+[17:12][画面] NEVA
+[17:20][幻灯片 31] frame-000132.png
+[17:20][画面] AHUR
+[17:28][幻灯片 32] frame-000133.png

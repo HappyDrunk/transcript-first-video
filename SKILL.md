@@ -14,18 +14,13 @@ Those two are the primary platforms. This skill does not promise Bilibili, Douyi
 
 A deliverable needs a usable transcript with reliable timestamps and one evidence note (`note.md`). Read the full transcript and write `selection.md` before drafting. After both mechanical checks pass, an independent Task reviews the meaning. The renderer runs both checks again before generating the reading copy in its channel folder. If the transcript is missing, unusable, untimed, or has nothing worth extracting, report the reason and keep the inputs.
 
-## Language preference
+## Language and reading preference
 
-Ask once, on install or the first run with no saved choice. This is the first user-facing step. It comes before fetch, before note writing, and before any other preference. The choices are `中文`, `英文`, and `中英文对照`.
+For YouTube jobs, use the request first, then saved preferences. Languages are 中文, 英文, and 中英文对照. Plain (plain) explains terms and background. Concise (concise) assumes relevant background. Keep original-language evidence under 原文依据.
 
-Persist the answer in `language.txt` beside this `SKILL.md` in the installed skill folder, when that folder is writable. One line, exactly one of those three. Do not commit the file. If you cannot write there, keep the same line in the host project and read it before the next delivery. If nothing is saved, or the saved line is not one of the three, ask. Do not assume `中英文对照`. Do not fetch, and do not deliver, until the user has chosen.
+If language is still unknown, ask once together: “Which language, and Plain (terms & background explained) or Concise (assumes background)?” Use “笔记用什么语言写？讲解要通俗（术语和背景都解释），还是精炼（默认你有相关背景，直奔要点）？” in Chinese. Keep any choice already given. If language is known and level is missing, use Plain and mention the Concise option in chat at delivery. Unsure phrasing maps to Plain.
 
-
-- `中文` — Write beginner-clear Chinese prose. Keep proper names where the evidence supports them.
-- `英文` — Write English prose.
-- `中英文对照` — Present the explanation in both languages in the same note.
-
-In every mode, the evidence note preserves Obsidian properties and the original-language evidence under `## 原文依据`. Explain what a method does, how it works, and when to use it in plain words.
+Use --show-pref to read saved preferences. Pass --language and --reading-level. Use --save-pref with both only to save the answer to the combined question. Automation supplies both explicitly.
 
 ## What this skill does not do
 
@@ -40,15 +35,15 @@ In every mode, the evidence note preserves Obsidian properties and the original-
 
 ## Run
 
-1. Install with `python3 -m pip install --group base` (`--group screen` adds OCR). Confirm `language.txt`. Run `python3 scripts/youtube_host.py "<YouTube URL>"` or `python3 scripts/x_host.py "<X status URL>"`. Optional YouTube screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
+1. Install with `python3 -m pip install --group base` (`--group screen` adds OCR). Resolve preferences above and run `python3 scripts/youtube_host.py "<YouTube URL>"` with those flags. Screen text uses [the same mode throughout the job](README.md#optional-youtube-screen-text).
 2. When the transcript is ready, read it in full. If it has no reliable clock, keep it and report「缺时间戳，请用带时间戳的转写重跑」.
 3. Write `selection.md` in transcript order, one line per unit, with time range, category, 留 or 略, and a one-sentence reason. Cover the full transcript with adjacent ranges. Keep the main claims, steps and their order, the speaker's lists, supporting numbers, named cases, and essential technical elements. Mark greetings, ads, repetition, and off-topic conversation 略.
-4. Write `note.md` from the retained units. Follow [references/delivery-format.md](references/delivery-format.md) for the Obsidian properties, fixed headings, middle sections by video type, and marked explanations. Start with `## 先记住一句话`. Complete the retained lists and cases, and explain essential terms at first use. Write one grounded action for the reader in at most two sentences.
+4. Write `note.md` from retained units using the [delivery format](references/delivery-format.md). Start with `## 先记住一句话`. Complete retained lists and cases, and explain essential terms at first use. YouTube jobs with `reading_level: "concise"` close with 1–3 linked applications or discussion items under `## 可以怎么用、可以拿去讨论什么`. Plain jobs and jobs without `reading_level` keep one grounded action under `## 今天立刻动手一步`. [Concise example](references/note-examples.md).
 5. Link each middle claim and the action with `⏱ mm:ss`. Write `本文略去` and finish with `## 原文依据`. Copy speech quotes of at least 40 contiguous characters with their timestamps and original spelling. For `screen.txt`, follow the [screen evidence format](references/delivery-format.md#画面引文). Keep steps, conditions, and claims within the cited evidence. Mark terms, analogies, and caption corrections.
 6. Run `python3 scripts/verify_note.py --job "<dir>" --structure-only` (read-only), then `python3 scripts/verify_note.py --job "<dir>" --with-coverage`. If the initial submission and two repairs fail, return `note.md` and `issues.md`. C04c warnings use no repair round. Send matching passes and warnings for review.
 7. A separate Task follows the [review checklist](references/rules.md#independent-semantic-review) and writes the bound `review.md`. If a Task is unavailable, self-review and add `"reviewer":"self"` to the receipt. The reading copy says「未经独立复核」.
 8. Process one review batch. Explain rejected suggestions in `review.md`. If the first corrected draft fails the final checks, allow one repair within that batch. On a second failure return the draft and issues.
-9. Run `python3 scripts/render_reading_note.py --require-review --task-dir "<dir>" --output-dir "<channel folder>"`. It reruns both checks and verifies the bound review and warning decisions before delivery.
+9. Run `python3 scripts/render_reading_note.py --require-review --task-dir "<dir>" --output-dir "<channel folder>"` with the chosen `--language`. It reruns both checks and verifies the review and warning decisions.
 10. Deliver the generated reading copy from the channel folder. Keep `note.md`, `review.md`, `selection.md`, the transcript, and the status in the job directory.
 
 Leave source files and drafts available after a stop. See [rules](references/rules.md) and [commands](scripts/README.md). The Task checks whether the evidence supports the meaning.
@@ -95,7 +90,7 @@ Gate fail ⇒ do **not** save as final knowledge. Retry with a stronger model in
 
 The gate reads the transcript text. It does not play the audio. A fluent wrong caption can still pass. CI checks transcript quality, the single-note structure, evidence links, and coverage. CI does not grade whether that analysis is the best reading of the talk. That reading is `evals/results/spotcheck.md`, and CI does not score it.
 
-Read `references/pitfalls.md` before treating a Chinese ASR default as production-ready. `references/delivery-format.md` has templates and four synthetic examples.
+Read `references/pitfalls.md` before treating a Chinese ASR default as production-ready. `references/delivery-format.md` has templates and two synthetic examples and a concise excerpt.
 
 ## CJK ratio and English jargon
 

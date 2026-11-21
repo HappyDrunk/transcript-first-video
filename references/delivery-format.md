@@ -44,7 +44,7 @@ python scripts/render_reading_note.py --require-review --task-dir "<任务目录
 
 脚本按以下规则机械转换证据版。
 
-1. 默认去掉开头的 YAML 区块。用 `title` 值写一级标题 `# 〈标题〉`，下一段写 `〈频道〉 · 〈发布日期〉 · [原视频](〈source〉)`，取 `channel`、`published`、`source` 的值。`channel` 或 `published` 为空时，该位置用 `—`。随后独占一段写「带竖线的行是 AI 补充的名词解释或比方，不是视频里说的话。」证据版有画面引文时，再起一段写「标明来自画面的内容由机器识别，可能有个别字符误差。」
+1. 默认去掉 YAML。首段用 `# 〈标题〉`，次段用 `〈频道〉 · 〈发布日期〉 · [原视频](〈source〉)`。频道或发布日期为空时用 `—`。第三段写「说明：竖线行是 AI 补充解释。」自审时在竖线说明前加「未经独立复核」，有画面引文时末尾加「标明来自画面的内容由机器识别，可能有误差」，各条用全角分号连接。新 YouTube 任务第四段标明讲解方式，按笔记正文语言显示。
 2. 先收集各 `###` 小节的 `⏱` 时间点，范围从该标题行开始，到下一个同级或上级标题前结束。取实际保留的标题、段落和列表项所用时间点，按秒数比较最小和最大值，在该小标题末尾追加 `（01:14–02:20）` 这样的范围。一小时以内用 `mm:ss`，小时级用 `hh:mm:ss`。只有一个时间点时只显示该时间点，例如 `（22:14）`。没有时间点时保留原小标题。随后删去标题和正文中的 `⏱` 时间标记及用于分隔标记的空白，保留正文里的普通时间、列表编号、段落顺序和其余文字。
 3. 删除完整的「字幕更正」块。把术语块改为一行 `> **词**：解释`，保留词条及其别名的原样。把类比块改为一行 `> **打个比方**：……不成立的地方：……`，保留类比和适用限制。去掉块内的补充署名、`（Claude 补充，非视频内容）` 和 `⏱` 时间标记，把同一块的多行内容以空格接成一行，保留内容及顺序。
 4. 小节内容只有「不适用（文稿中未出现意见分歧）」或「本节没有补充中间部分之外的情况」这一句时，连同该标题一起删掉。匹配时允许末尾有句号，前一句的括号可全角或半角。该小节另有实质内容时保留。
@@ -61,7 +61,7 @@ python scripts/render_reading_note.py --require-review --task-dir "<任务目录
 - **短片头片尾并入相邻单元。** 片头或片尾短于 5 秒时，把它并入相邻单元。核对首尾引文的实际覆盖范围，避免把同一条引文切进「略」单元。
 - **正文来自标「留」的单元。** 保留讲者清单的项目和顺序。遇到确实独立的、可按取舍规则略去的列举单元，写清原编号和项目，并在「本文略去」列出时间范围。核心清单、关键步骤和前置条件按「必须留」处理。
 - **具名案例保留可核对的细节。** 交代谁或哪个项目、之前怎样、采取了什么做法、之后怎样。文稿有量化结果时连同比较对象、单位、时间范围和适用条件一并保留。只写文稿给出的信息。
-- **解释留用的技术要素。** 「先记住一句话」和「这场在谈什么、谁」都用白话写，绕不开的术语在同一句用括号加一句白话。正文其余部分中，任何术语首次以技术含义出现时，紧接该段或列表项写术语块，交代它是什么、在这里做什么。专名也作术语时，按文稿该处词义找首次用作术语的位置。其他技术要素首次出现时，用一句白话交代它是什么、在这里做什么。
+- **解释留用的技术要素。** 通俗版（含旧版笔记）的「先记住一句话」和「这场在谈什么、谁」用白话写，绕不开的术语随句括注。正文其余部分的任何术语首次以技术义出现时，紧接该段或列表项加术语块，说明它是什么、在这里做什么。兼作术语的专名按首次用作术语的位置处理。其他技术要素首次出现时用一句白话说明它是什么、在这里做什么。精炼版只解释视频自造的词、冷门专名、首次出现且需要解释的缩写，以及讲者用法与通行定义不一致的词（PR、CTO、LLM、IDE、JVM 等常规工程词可略）。
 - **另外列出画面独有的内容。** 动笔前通读 `screen.txt`，把讲者没念到的表格、清单或图上标注逐项写入 `selection.md`，例如 `04:27 | [画面] 馆藏纸本保存湿度表 | 留 | 能按纸张类型查到湿度范围`。每项标「留」或「略」并写一句理由，标「留」的写进正文。文件带幻灯片分组时，还须照抄每组的编号和起始时间，各写一行，例如 `04:27 | [幻灯片 3] 纸本保存条件 | 略 | 本文只讲数字馆藏`。同组有多项画面内容时可继续用 `[画面]` 行逐项记录。 单独对画面引文标留或略时，可把 `screen.txt` 的完整画面原文写作项目名。S01 优先使用能对应的项目行，再用所属幻灯片的取舍。无对应画面或幻灯片决定时，沿用语音取舍。语音单元继续按时间范围覆盖全文，原覆盖门槛和「本文略去」时间范围照旧。
 
 S01 要求各时间范围按原顺序连续覆盖全文。区间左闭右开，从文稿开头排到可核对的终点，相邻区间首尾相接，每条字幕都能归属一个单元。缺文件、范围有空缺或重叠、覆盖不达标均报 FAIL。标「留」的单元至少九成且不少于三个须命中文末证据，即 `max(3, ceil(0.9 × 标留单元数))`。只有真实时间锚落在相应区间的有效引文才计入。同一个单元只计一次，少于三个留用单元无法通过。长视频还须通过 C02，按完整文稿检查至少三个四分位。
@@ -84,13 +84,17 @@ S01 要求各时间范围按原顺序连续覆盖全文。区间左闭右开，�
 
 开启 YouTube 画面识别且任务产出 `screen.txt` 时，可以通读其文字。文末用 `> [mm:ss][画面] 识别到的文字` 引用整行，保留原字面和标点，时间距来源帧最多 15 秒。画面行可以短于 40 字符。同秒可以列多条画面引文，正文一个完全相同的 `⏱` 会关联这个时间点的所有有效画面引文。没有完全相同的秒数时，沿用唯一最近的一条的规则。三个共有内容词元的检查用于语音引文。
 
-画面引文可以支持数字、专名和字幕更正里的正确写法。更正里的旧写法仍引用原字幕。画面独有的数字可在正文标明「幻灯片上写着」或「画面显示」，同一段标一次。幻灯片标题、规则原文等文字照常写入正文并给出依据。口述和画面的数字或说法相同时，只写一次。两边有差异时，分别写并给出依据，例如「讲者说每次约 2 美元，幻灯片上写着每次 2.11 美元。」人名条可提供访谈里的姓名和职位，发言内容仍看对应的字幕。`[画面?]` 供人工复核，既不能引用，也不能支持正文数字。
+画面引文可以支持数字、专名和字幕更正里的正确写法。旧写法仍引原字幕。画面独有的信息可以用「幻灯片上写着」或「画面显示」交代来源，同一段标一次。幻灯片标题、规则原文等照常写入正文并给依据。口述和画面说法相同只写一次，有差异时分别归属并给依据，例如「讲者说每次约 2 美元，幻灯片上写着每次 2.11 美元。」人名条可支持姓名和职位，发言仍引字幕。核对过程如「与口述一致」「没有单独亮出」只留在证据版的更正块、原文依据或复核回执，阅读版正文只保留必要的来源归属。`[画面?]` 只供人工复核，禁止引用或支撑正文数字。
 
 多组幻灯片输出独立的分组标记，例如 `[04:27][幻灯片 3] frame-000123.png`。编号从 1 依次递增，时间和文件名指向该组首张截图。只有一组时保留原有的画面行格式，由可信状态中的 `slide_count: 1` 指明第 1 组，取首条合法 `[画面]` 或 `[画面?]` 行的时间作为取舍时间。每组在 `selection.md` 中恰好列一行，时间与编号一致，写「留」或「略」并给出理由。分组行是取舍记录，文末引用仍使用完整的 `[画面]` 原行；文字引用的时间保留实际来源帧时间。旧版没有分组标记和 `slide_count` 的文件、人名条和关闭画面的任务沿用原取舍方式。
 
 分组参数固定在 `scripts/screen_ocr.py` 的 `SLIDE_GROUP_LEFT=0.30`、`SLIDE_GROUP_BOTTOM=0.78`、`SLIDE_GROUP_SIZE=(160, 90)`、`SLIDE_GROUP_DIFFERENCE=5.5`。只为比较画面，把截图转成灰度，取横向 30%–100%、纵向 0%–78% 的区域，以面积平均缩放到 160×90。相邻两张的平均绝对像素差达到 5.5 就换组。OCR 仍按原裁切设置识别原尺寸和半尺寸两遍，含数字的行仍须两遍写法一致。
 
 同组内按原有方式去重；不同组可保留相同的正文行。按 `SLIDE_COMMON_RATIO=0.5`，同一文字在至少一半的组里出现时，全片保留一次，优先可信版本，再取最早出现的可信帧。组数用于计算频率，同一组的采样次数不增加频率。只有一组时继续采用原固定位置水印过滤。多组标记及其组首截图保留，供逐组核对。
+
+### 精炼版
+
+精炼版少用术语和类比块，缩短开场铺垫，「先记住一句话」仍用白话。保留「中文（English）」写法和所选内容的事实、条件、原文依据。用「可以怎么用、可以拿去讨论什么」收尾，写 1–3 个应用或讨论项，每项附依据、最多两句，合计约 250 字，应用项写明团队前提。
 
 ## 证据版共用模板
 
@@ -130,7 +134,7 @@ tags: [video-note]
 > [mm:ss] 〈从文稿逐字摘录的连续原话〉
 ```
 
-「本文略去」独占一行，放在行动段之后、原文依据之前。没有略去单元时写 `本文略去｜无`。证据版保留 YAML，`transcript_path` 从原任务目录解析。单稿属性中移除 `note_path`。任务入口仍须核对当前文稿来源及质量门。
+通俗版用 `## 今天立刻动手一步`，精炼版用 `## 可以怎么用、可以拿去讨论什么`。「本文略去」独占一行，放在尾节之后、原文依据之前。没有略去单元时写 `本文略去｜无`。证据版保留 YAML，`transcript_path` 从原任务目录解析。单稿属性中移除 `note_path`。任务入口仍须核对当前文稿来源及质量门。
 
 ### 三种标记块
 
@@ -205,7 +209,7 @@ tags: [video-note]
 〈有独立的预计、计划或未经展示的主张时，在主线最后保留本节，否则省略。〉 ⏱ 00:00
 ```
 
-已有大会稿仍可使用「有证据的 / 只是说法」及其原子标题结构。下面的物流合成示例保留该旧结构，供核对兼容性。
+已有大会稿仍可使用「有证据的 / 只是说法」及其原子标题结构。
 
 ### 产品演示（≤10 分钟）
 
@@ -222,7 +226,7 @@ tags: [video-note]
 - 〈案例前后量化结果和适用条件。〉 ⏱ 00:00
 ```
 
-以下四份合成示例的 Markdown 代码块展示任务目录中的证据版。例中所列的频道路径是脚本生成阅读版的交付位置。
+下面有两份合成示例及一篇真实精炼节选。合成示例中的频道路径是阅读版交付位置。
 
 ## 合成示例一：讲座、烹饪
 
@@ -293,149 +297,6 @@ tags: [video-note]
 
 为展示「略」而在合成文稿新增一行 `[00:00] Good evening, everyone. Thank you for coming.`。文末五条引文沿用原合成文稿。五个留用单元全部命中，按完整的 07:45 计算覆盖四个四分位。
 
-## 合成示例二：访谈、医疗流程
-
-此例保留旧版归属写法供格式兼容参考，正式访谈使用前述角色交代和正文归属方式。
-
-频道拷贝路径为 `石桥门诊/2026-05-03 石桥门诊 - 怎样减少预约爽约.md`。
-
-```markdown
----
-title: 怎样减少预约爽约
-source: https://example.invalid/videos/clinic-reminders
-channel: 石桥门诊
-published: 2026-05-03
-type: 访谈
-caption_kind: auto
-skill_version: abc1234
-transcript_path: transcript.txt
-tags: [video-note]
----
-
-## 先记住一句话
-预约前先提醒并请患者确认，有人取消时就按候补顺序补上空位。
-
-## 这场在谈什么、谁
-石桥门诊的访谈发布于 2026-05-03，适合负责门诊预约和候补联络的工作人员。
-
-## 话题
-
-### 提醒和确认
-对话中提到三步。预约前一天发短信，请患者回复确认。收到取消后，再联系候补名单里的下一位。 ⏱ 01:14
-
-> [!note] 术语：候补名单（waiting list）
-> 记录愿意在有空位时来就诊的人，用来决定接下来联系谁。（Claude 补充，非视频内容）
-
-### 记录确认回复
-对话中提到，收到确认回复后就把预约标为已确认，方便工作人员看到哪些患者已经回复。 ⏱ 02:20
-
-### 用未到人数看变化
-对话中提到石桥门诊（Stonebridge Clinic）过去每四十个预约约有八人没来。开始提前一天提醒并把取消的时段给候补者后，最近一个月每四十个预约约有三人没来。 ⏱ 04:26
-
-## 意见不一致的地方
-不适用（文稿中未出现意见分歧）。
-
-## 可复用做法
-把提醒、确认和空位递补安排到同一份预约流程里。 ⏱ 01:14
-
-## 翻车或别用
-案例只报告了石桥门诊（Stonebridge Clinic）的数据，无法据此预估其他门诊的变化。 ⏱ 04:26
-
-## 今天立刻动手一步
-在现有的预约流程上标出谁发提醒、谁联系候补者。（改写讲者做法） ⏱ 01:14
-
-本文略去｜关于抵达会场的闲聊（00:00–01:14）
-
-## 原文依据
-> [01:14] We use three steps: send a text the day before, ask the patient to confirm, and if someone cancels, call the next person on the waiting list.
-> [02:20] When a confirmation comes in, mark the appointment as confirmed on the schedule so staff can see which patients have replied.
-> [04:26] At Stonebridge Clinic, we used to have about eight no-shows for every forty appointments. After the day-before reminder and filling cancelled slots from the waiting list, last month we had about three for every forty.
-```
-
-任务内 `selection.md` 示意。时间范围连续覆盖 00:00–04:50。
-
-```text
-00:00–01:14 | 闲聊 | 略 | 抵达会场的经历与预约流程无关
-01:14–02:20 | 清单和技术要素 | 留 | 短信确认与候补递补的顺序决定怎样操作
-02:20–04:26 | 流程和技术要素 | 留 | 在预约表上记录确认，让工作人员知道谁已回复
-04:26–04:50 | 具名案例和数字 | 留 | 给出改动前后及最近一个月的比较范围
-```
-
-本例的原合成文稿引文为 `01:14` 和 `04:26`，逐字保留。合成文稿另补两行，用于演示略去闲聊和三个留用单元的覆盖下限。
-
-- **新增略去行** `[00:00] It was hard to find the entrance to this building this morning.`
-- **新增留用行** `[02:20] When a confirmation comes in, mark the appointment as confirmed on the schedule so staff can see which patients have replied.`。正文和文末证据都用到这条新增原话，三个留用单元全部命中。
-
-## 合成示例三：大会演讲、物流
-
-频道拷贝路径为 `沿海冷运会/2026-06-18 沿海冷运会 - 冷藏货物怎样记录温度.md`。
-
-```markdown
----
-title: 冷藏货物怎样记录温度
-source: https://example.invalid/videos/cold-chain
-channel: 沿海冷运会
-published: 2026-06-18
-type: 大会
-caption_kind: manual
-skill_version: abc1234
-transcript_path: transcript.txt
-tags: [video-note]
----
-
-## 先记住一句话
-运输中记录货物周围的温度，超过上限就通知司机。
-
-## 这场在谈什么、谁
-沿海冷运会的大会演讲发布于 2026-06-18，适合负责冷藏运输和处理超温情况的人。
-
-## 发布或主张了什么
-演讲者介绍三步。把温度记录器放在货物旁边，运输中记录温度，超过 5°C 就通知司机。 ⏱ 00:48
-
-> [!note] 术语：温度记录器（temperature logger）
-> 放在货物旁测量并保存温度的小装置，让人能回查运输过程中的读数。（Claude 补充，非视频内容）
-
-## 有证据的 / 只是说法
-
-### 运输中记录温度
-台上的记录器显示 3.8 度，屏幕还显示了这趟行程的两处停靠点。 ⏱ 02:11
-
-### 超温后通知司机
-演讲者报告，海湾冷运（Bayline Cold Freight）过去每两百箱有十二箱超温。加装记录器并在报警时通知司机后，最近一个月每两百箱有四箱超温。 ⏱ 03:02
-
-### 只是口头声称
-演讲者计划下一季把提醒扩展到更多路线。 ⏱ 03:36
-
-## 可复用做法
-先明确温度上限，再约定超温后通知谁。 ⏱ 00:48
-
-## 翻车或别用
-台上只展示了案例的汇总数据。要核对个别路线的情况，还需要看对应的运输记录。 ⏱ 03:02
-
-## 今天立刻动手一步
-在你负责的一类货物的检查单上写明温度上限和超温联系人。（改写讲者做法） ⏱ 00:48
-
-本文略去｜赞助口播（00:00–00:48）
-
-## 原文依据
-> [00:48] Our three steps are: place a temperature logger beside the goods, record the temperature during transport, and call the driver if it goes above five degrees Celsius.
-> [02:11] The logger now reads three point eight degrees. This screen also shows the two stops on this trip.
-> [03:02] Bayline Cold Freight used to have twelve boxes above the limit for every two hundred. After adding the logger and calling the driver on an alert, last month it was four in every two hundred. We are showing the summary, not the full route records.
-> [03:36] We plan to add the alert to more routes next season.
-```
-
-任务内 `selection.md` 示意。时间范围连续覆盖 00:00–03:50。
-
-```text
-00:00–00:48 | 赞助口播 | 略 | 赞助致谢与运输流程无关
-00:48–02:11 | 清单和技术要素 | 留 | 给出记录器、检查顺序与超温门槛
-02:11–03:02 | 演示 | 留 | 有当次读数与停靠点显示
-03:02–03:36 | 具名案例和数字 | 留 | 有改动前后数据及证据范围
-03:36–03:50 | 口头主张 | 留 | 扩展路线是讲者给出的计划
-```
-
-为展示「略」而在合成文稿新增一行 `[00:00] Thanks to our sponsor for supporting today's event.`。文末四条引文沿用原合成文稿，四个留用单元全部命中。
-
 ## 合成示例四：产品演示（≤10 分钟），厨房备料
 
 频道拷贝路径为 `南桥厨房/2026-07-09 南桥厨房 - 怎样先用较早到货的食材.md`。
@@ -505,3 +366,59 @@ tags: [video-note]
 ```
 
 为展示「略」而在合成文稿新增两行 `[00:00] Hello, everyone. Thanks for joining us in the kitchen.` 和 `[05:36] Follow the channel to see our next video.`。文末五条引文沿用原合成文稿。五个留用单元全部命中，按完整的 07:10 计算覆盖三个四分位。
+
+## 真实精炼证据版节选
+
+节选保留开头、一个主线话题和尾节。部分引文截短。[完整可运行的证据版与选段](note-examples.md)可用于核验。
+
+```markdown
+---
+title: "Building an Autonomous Engineering Org - Angie Jones, Agentic AI Foundation"
+source: "https://www.youtube.com/watch?v=whue9_YquGA"
+channel: "AI Engineer"
+published: "2026-06-28"
+type: "大会"
+caption_kind: "auto"
+skill_version: "fda8101ef8223e3e9e3f3fa12bdd8c5f94d316bb"
+transcript_path: "transcript.txt"
+tags: [video-note]
+---
+
+## 先记住一句话
+
+先让一小群工程师把仓库改到智能体能按团队规矩干活，再让同事从平时接需求的地方把任务交给它。 ⏱ 07:12 ⏱ 09:07 ⏱ 10:20
+
+## 这场在谈什么、谁
+
+这场大会演讲于 2026-06-28 在 AI Engineer 频道发布，Agentic AI Foundation 副总裁 Angie Jones 回顾了如何用两年把 Block 约 3500 人的工程组织带向自治，适合关注工程效率和 AI 落地的研发人员与管理者。 ⏱ 00:00 ⏱ 00:02
+
+## 主线讲了什么
+
+### 公司世界模型、第 5 级与裁员追问
+
+工程师当时通常同时运行 4–5 个智能体，一小群工程师开始自研编排器 Builder Bot，其中有多位 AI Champions。 ⏱ 14:49
+
+> [!note] 术语：Builder Bot
+> Block 用来协调多个智能体的编排器，可以把各路探索结果汇成跨仓库的工作计划。（Claude 补充，非视频内容）
+
+团队以全部 25000 个仓库为基础，建立机器可读的公司世界模型，记录服务位置和依赖关系。多个智能体按需取用上下文、并行探索，再由编排器汇总成跨代码库计划，尤其适合涉及多个产品的工作。 ⏱ 15:15
+
+> [!warning] 字幕更正
+> 字幕写作 company world modeled，实为 company world model。 ⏱ 15:15
+
+## 可以怎么用、可以拿去讨论什么
+
+- **试点前提。** 须由工程负责人批准关键仓库代表投入约 30% 工时，并为并行任务配备隔离云工作区，才适合按约 1% 规模试点。 ⏱ 05:52 ⏱ 14:20 ⏱ 04:52
+- **排查交付瓶颈。** 拿近期任务对照 0–5 级并看 PR 审查等待时间，判断该先解代码产出、审查积压还是跨仓依赖。 ⏱ 03:32 ⏱ 12:56 ⏱ 15:15
+- **与管理层对齐角色变化。** 交付提速后省下的时间投向哪里，哪些职责转向拆任务与验收，人事决策还缺哪些数据？ ⏱ 02:32 ⏱ 17:21
+
+本文略去｜无
+
+## 原文依据
+
+> [00:00][画面] ANGIE JONES, VP OF AGENTIC AI FOUNDATION
+> [14:49] So, at this point, the engineers are cooking. They got four or five agents running at any given time, and that number is growing. So, a small group of engineers, including many of the AI champions, started building our own orchestrator to coordinate all of these agents, Builder Bot. And we needed Builder Bot to get us to an autonomous engineering
+> [15:15] We realized that if we're trying to build anything close to an autonomous engineering org, the agents need to understand where everything lives and what depends on what. So, we built a company world modeled based on the entirety of our 25,000 repo code base, right? And this was a machine-readable view of every single service and how they all
+> [05:52] So, I started an AI champions program where I handpicked about 50 engineers across the company who could pioneer what a genetic engineering looks like for their team. Now, this was not a call for volunteers, all right? I needed to be strategic about the selection. I needed engineers who were willing to dedicate at least 30% of their time to
+> [12:56] And with our setup, honestly, moving to stage four was almost free. We were pretty good at delegating work to the agents now. But, this stage introduced several new challenges that we needed to solve. Engineers are now tripling, quadrupling the number of PRs that they're producing, but the PRs are stuck waiting for code reviews, right? So, people
+```

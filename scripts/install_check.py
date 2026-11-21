@@ -34,6 +34,7 @@ FALLBACK_FILES = (
     "scripts/verify_rules.py",
     "scripts/x_host.py",
     "scripts/youtube_host.py",
+    "scripts/user_prefs.py",
     "references/delivery-format.md",
     "references/host-delivery.md",
     "references/note-examples.md",
