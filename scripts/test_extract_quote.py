@@ -286,6 +286,28 @@ class ScreenQuoteTests(unittest.TestCase):
                 self.assertEqual(len(quotes), len(trusted))
                 self.assertTrue(all(quote.screen and quote.timed and quote.matches for quote in quotes))
 
+    def test_preserves_verbatim_spacing_after_screen_tag(self):
+        line = "[03:12][画面]  材料登记。"
+        self.write_screen(f"{line}\n")
+
+        result = self.extract()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, f"> {line}\n")
+        quotes, errors = verify_rules._end_quotes(
+            result.stdout, verify_rules.TranscriptIndex([]),
+            verify_rules._screen_index(self.screen),
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(quotes), 1)
+        self.assertTrue(quotes[0].screen and quotes[0].timed and quotes[0].matches)
+
+    def test_rejects_ready_status_when_screen_file_is_missing(self):
+        self.write_screen("[03:12][画面] 材料登记。\n")
+        self.screen.unlink()
+
+        self.assert_rejected(self.extract())
+
     def test_rejects_screen_content_changed_after_hashing(self):
         self.write_screen("[03:12][画面] 材料登记。\n")
         self.screen.write_text("[03:12][画面] 复核完成。\n", encoding="utf-8")
