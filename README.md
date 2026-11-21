@@ -6,7 +6,7 @@
 [![MIT](https://img.shields.io/github/license/HappyDrunk/transcript-first-video)](LICENSE)
 [![tag](https://img.shields.io/github/v/tag/HappyDrunk/transcript-first-video?label=tag)](https://github.com/HappyDrunk/transcript-first-video/tags)
 
-YouTube and X/Twitter video only, read from the transcript. The scripts fetch and check. You write the note.
+YouTube is the active supported platform, read from the transcript. X/Twitter video support is frozen: maintenance is paused, and its historical CLI remains documented in `scripts/README.md`. The scripts fetch and check. You write the note.
 
 The note waits until the spoken words are written down and pass a quality check. A title, a blurb, or the post beside the link is not a watch. The gate reads the transcript text. It does not listen to the audio.
 
@@ -61,7 +61,7 @@ flowchart LR
 
 Read the full timed transcript, record what to keep or omit in `selection.md`, then write `note.md`. The note starts with `## 先记住一句话`, uses middle sections suited to the video type, and ends with `## 原文依据`. Chinese prose defaults to plain language for beginners.
 
-The format and four synthetic examples are in [references/delivery-format.md](references/delivery-format.md).
+Format templates and short excerpts are in [references/delivery-format.md](references/delivery-format.md); an optional full worked example is in [references/note-examples.md](references/note-examples.md). Files under `evals/fixtures/delivery-examples/` are test fixtures, not writing examples.
 
 ## Read-feel knobs
 
@@ -81,7 +81,6 @@ Adjust these when the reader asks. Keep the [single-note format and evidence](re
 ```bash
 python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
-# python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
 # Review the checked note, then run:
@@ -142,7 +141,7 @@ How to change this repo: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHAN
 
 ## 中文
 
-只抓 YouTube 和 Twitter/X 的视频。脚本负责抓取和核对。笔记由你来写。
+YouTube 是当前主动支持的平台。X/Twitter 视频支持已冻结并暂停维护，历史 CLI 留在 `scripts/README.md`。脚本负责抓取和核对，笔记由你来写。
 
 笔记要等嘴里的话落成文字，并且通过质量检查。标题、简介、链接旁边的帖子，都不算看过。门槛读的是文稿，不听音频。
 
@@ -172,7 +171,6 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 cd ~/.agents/skills/transcript-first-video
 python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
-# python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
 # 复核通过后：
@@ -187,7 +185,7 @@ YouTube 默认先保存字幕，再限时 45 秒抽样画面。发现稳定文�
 
 `selection.md` 按文稿顺序记下每段留或略和理由。`note.md` 从「先记住一句话」开篇，中间按视频类型组织，文末「原文依据」保留逐字引文。中文默认用初学者能懂的白话。
 
-模板和四个示例见 [交付格式](references/delivery-format.md)。
+格式模板和节选见[交付格式](references/delivery-format.md)，可选的完整成例见 [references/note-examples.md](references/note-examples.md)。`evals/fixtures/delivery-examples/` 是测试夹具，不是写作范例。
 
 ### 读感旋钮
 

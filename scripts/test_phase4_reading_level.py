@@ -1029,7 +1029,7 @@ class ExampleTests(unittest.TestCase):
         concise = re.search(r"精炼版((?:(?!通俗版).)*)", guidance)
         checks = {
             "Universal term callouts must be scoped to 通俗版": plain is not None,
-            "精炼版 must limit required explanations to the four categories in rules.md": (
+            "精炼版 must limit required explanations to the four categories in review-guide.md": (
                 concise is not None
                 and re.search(r"只|仅", concise[1]) is not None
                 and re.search(r"(?:陌生|不熟悉|需要解释)[^。；、，]*缩写|缩写[^。；、，]*需要解释",
@@ -1118,7 +1118,9 @@ class LoadPrefsTests(unittest.TestCase):
     def test_load_prefs_returns_empty_with_cleared_environment(self):
         import user_prefs
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            user_prefs.Path, "home", side_effect=RuntimeError("Could not determine home directory.")
+        ):
             self.assertEqual(user_prefs.load_prefs(), {})
 
 

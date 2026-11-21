@@ -1,6 +1,6 @@
 # scripts/
 
-YouTube and Twitter/X video. Same quality gate, same note rule. Other platforms are not fetched here.
+YouTube is actively supported. X/Twitter video support is frozen and its historical CLI below is retained for compatibility; maintenance is paused. Both use the same quality gate and note rule. Other platforms are not fetched here.
 
 
 Run from the repo root. A successful acquisition writes `transcript.txt`, `segments.json`, `chunks/NN.txt`, and `note.scaffold.md`. Caption lines retain their clocks and the sidecar keeps available start and end times. Plain speech has null segment times. The scaffold provides the properties and blank headings for the [single-note format](../references/delivery-format.md).
@@ -43,6 +43,8 @@ Captions first via `yt-dlp` (`python3 -m pip install --group base`, or `python3 
 
 ## Twitter/X video
 
+This is the frozen historical interface. It remains available for existing automation but is not under active maintenance.
+
 ```bash
 python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
 ```
@@ -67,6 +69,18 @@ python3 scripts/render_reading_note.py --require-review --task-dir artifacts/you
 ```
 
 The renderer runs verify and coverage in order. It writes the reading copy when both checks mark the current inputs `finished`. Add `--keep-frontmatter` to retain the opening YAML block. The job directory keeps the evidence note and its inputs. See the [delivery format](../references/delivery-format.md).
+
+External `verify_note.py --job --note` and coverage `--delivery` inputs remain compatibility paths: they must be the task note, a byte-for-byte copy, or differ only by supported quote-header normalization. Standalone `--transcript` plus `--note` is read-only and cannot use task screen evidence. A renderer writes a complete UTF-8 target atomically; check, binding, conversion, or write failure returns nonzero and preserves an existing target.
+
+Renderer conversion is deterministic and idempotent:
+
+1. Remove YAML by default; emit title, channel/date/source, review/screen notice, and reading-level notice.
+2. Derive each H3 time range from retained `⏱` links, append it to the heading, then remove link markers.
+3. Remove correction blocks; flatten term and analogy blocks while preserving their content and order.
+4. Remove empty fixed sections while retaining sections with substantive prose.
+5. Remove `原文依据`, convert `本文略去` to the reading-copy omission line, and append the evidence-location notice.
+
+Text not covered by these conversions is preserved in order. Repeating the same input and options produces identical bytes.
 
 For standalone checks, run these commands in order.
 
@@ -123,7 +137,20 @@ A real Chinese talk packed with English technical terms (API names, model names,
 
 Tune by omitting `--expected-lang` when you know the talk mixes Chinese with English identifiers and you accept losing the script check. Do not omit it just to force a bad transcript through. There is no flag to lower 0.35 for one job. Omit `--expected-lang` when you do not actually know the language. Pass `en`, `ja`, or `ko` only when you do.
 
+## Portable pipeline and extension slots
+
+The portable pipeline is stable identity → captions or cached transcript → optional ASR → text quality gate → agent-written selection/note → mechanical gates → semantic review → renderer. Signed media URLs are refreshed at worker time; a missing usable transcript is explicitly not finished. ASR should run with low concurrency.
+
+Extension slots are fetchers (`URL → source/stable id/captions`), ASR backends, quality gates, sinks, and triggers. Add a platform behind those boundaries rather than forking note or verification logic. Bundled resources include the YouTube host, frozen historical X host, scaffold writer, quote extractor, screen OCR, verifier, coverage checker, reviewer binding, and renderer. CI runs deterministic scripts and fixture checks; eval prompts and human spotchecks are evidence, not an automated quality score.
+
+## Slide grouping maintenance
+
+`screen_ocr.py` compares the grayscale region from horizontal 30%–100% and vertical 0%–78%, resized to `SLIDE_GROUP_SIZE=(160, 90)`. A mean absolute adjacent-frame difference at least `SLIDE_GROUP_DIFFERENCE=5.5` starts a group; the crop constants are `SLIDE_GROUP_LEFT=0.30` and `SLIDE_GROUP_BOTTOM=0.78`.
+
+OCR still runs the configured crops at original and half size, requiring agreement for numeric lines. Deduplicate within each group; across groups retain repeated text once when it occurs in at least `SLIDE_COMMON_RATIO=0.5` of groups, preferring a trusted form and then its earliest trusted frame. Group frequency counts groups, not samples. A one-group result retains the legacy fixed-position watermark filter. Keep group markers and first screenshots for review.
+
 ## Offline
+
 
 Settle does not fetch. It only gates a file you already have.
 

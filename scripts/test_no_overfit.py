@@ -20,6 +20,9 @@ SCRIPTS = ROOT / "scripts"
 BLACKLIST = ROOT / "evals" / "overfit_blacklist.txt"
 INSTRUCTION_FILES = (
     ROOT / "SKILL.md",
+    ROOT / "references" / "rules.md",
+    ROOT / "references" / "delivery-format.md",
+    ROOT / "references" / "review-guide.md",
     ROOT / "references" / "note-examples.md",
 )
 _SKIP_PARTS = {"__pycache__"}

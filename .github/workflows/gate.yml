@@ -62,6 +62,8 @@ jobs:
         run: python3 scripts/test_phase3_review_terminology.py
       - name: Phase 4 reading level, preferences, and examples
         run: python3 scripts/test_phase4_reading_level.py
+      - name: Phase 4 doc weight, role split, and rule index
+        run: python3 scripts/test_phase4_doc_weight.py
       - name: Frozen Phase 3 conference grounding pairs
         run: python3 scripts/test_phase3_c04c.py
       - name: RED-1 accepted note survives successful settle

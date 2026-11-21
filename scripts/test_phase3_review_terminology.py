@@ -39,7 +39,7 @@ def follows_reference(note, receipt, expected_terms, heading=HEADING):
 
 class TerminologyInstructionsTests(unittest.TestCase):
     def test_task_prompt_requires_a_located_section_and_an_explicit_empty_result(self):
-        rules = (ROOT / "references/rules.md").read_text(encoding="utf-8")
+        rules = (ROOT / "references/review-guide.md").read_text(encoding="utf-8")
         review = rules.split("## Independent semantic review", 1)[1]
         for requirement in (HEADING, ROW_FORMAT, EMPTY):
             with self.subTest(requirement=requirement):
@@ -70,7 +70,7 @@ class TerminologyInstructionsTests(unittest.TestCase):
 
 class ConciseTerminologyInstructionsTests(unittest.TestCase):
     def test_task_prompt_names_concise_triggers_and_common_term_exemption(self):
-        rules = (ROOT / "references/rules.md").read_text(encoding="utf-8")
+        rules = (ROOT / "references/review-guide.md").read_text(encoding="utf-8")
         review = rules.split("## Independent semantic review", 1)[1]
         for requirement in (CONCISE_HEADING, "视频自造", "冷门专名", "缩写"):
             with self.subTest(requirement=requirement):
