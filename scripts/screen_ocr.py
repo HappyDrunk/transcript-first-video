@@ -540,16 +540,39 @@ def _is_full_scan_format(fmt: dict, sample_height: float | int) -> bool:
     )
 
 
+_CALIBRATION_TIMEOUT_REASONS = {
+    "FFmpeg calibration clip timed out",
+    "FFmpeg calibration frame timed out",
+    "frame extraction timed out",
+    "slide grouping timed out",
+    "RapidOCR timed out",
+    "screen OCR timed out",
+}
+_CALIBRATION_FIXED_REASONS = _CALIBRATION_TIMEOUT_REASONS | {
+    "calibration estimate unavailable",
+    "calibration timed out",
+    "calibration error",
+    "calibration fallback",
+    "calibration missing_dependencies",
+}
+_CALIBRATION_STEP_FAILURE = re.compile(
+    r"^\s*(FFmpeg calibration (?:clip|frame)|frame extraction|slide grouping|RapidOCR)\s+(failed|unavailable)\b"
+)
+
+
 def _sanitize_calibration_reason(text: str, kind: str) -> str:
-    cleaned = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]", "", text)
-    cleaned = re.sub(
-        r"(?i)\b((?:set-)?cookie|(?:proxy-)?authorization|x-api-key)\s*[:=][^\r\n]*",
-        r"\1: <redacted>",
-        cleaned,
-    )
-    cleaned = re.sub(r"\w+://\S+", "<URL>", cleaned)
-    cleaned = re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", cleaned)
-    return " ".join(cleaned.split()) or f"calibration {kind}"
+    safe_kind = kind if kind in {"timeout", "missing_dependencies", "error", "fallback"} else "fallback"
+    stripped = text.strip()
+    if stripped in _CALIBRATION_FIXED_REASONS:
+        return stripped
+    if safe_kind == "timeout":
+        return "calibration timed out"
+    if match := _CALIBRATION_STEP_FAILURE.match(text):
+        prefix = f"{match.group(1)} {match.group(2)}"
+        if stripped == f"{prefix}: <URL>" or re.search(r"[A-Za-z][A-Za-z0-9+.-]*://\S+", text):
+            return f"{prefix}: <URL>"
+        return prefix
+    return f"calibration {safe_kind}"
 
 
 def sample_slides(

@@ -988,8 +988,9 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             sample = screen_ocr.sample_slides(staged, source, command, _screen_download_options)
             sample = dict(sample)
             if "calibration_reason" in sample:
-                sample["calibration_reason"] = redact(
-                    screen_ocr._sanitize_calibration_reason(str(sample["calibration_reason"]), "fallback")
+                sample["calibration_reason"] = screen_ocr._sanitize_calibration_reason(
+                    str(sample["calibration_reason"]),
+                    "timeout" if sample.get("calibration_status") == "timeout_fallback" else "fallback",
                 )
             screen["sample"] = sample
             if sample["result"] != "slides_detected":
@@ -1037,8 +1038,9 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                         for value in (intervals, download_seconds, extract_per_interval, group_per_frame, read_per_frame)
                     ) and effective_intervals != intervals:
                         seconds_per_interval = float(extract_per_interval) + float(group_per_frame) + float(read_per_frame)
-                        estimated = float(download_seconds) + seconds_per_interval * effective_intervals
-            else:
+                        adjusted = float(download_seconds) + seconds_per_interval * effective_intervals
+                        estimated = adjusted if math.isfinite(adjusted) and adjusted > 0 else None
+            if estimated is None:
                 if sample.get("calibration_status") == "calibrated":
                     sample["calibration_status"] = "fallback"
                     sample.setdefault("calibration_reason", "calibration estimate unavailable")
