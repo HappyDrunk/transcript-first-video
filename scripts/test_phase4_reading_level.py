@@ -1118,7 +1118,9 @@ class LoadPrefsTests(unittest.TestCase):
     def test_load_prefs_returns_empty_with_cleared_environment(self):
         import user_prefs
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            user_prefs.Path, "home", side_effect=RuntimeError("Could not determine home directory.")
+        ):
             self.assertEqual(user_prefs.load_prefs(), {})
 
 
