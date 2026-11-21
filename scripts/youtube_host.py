@@ -16,6 +16,7 @@ Exit 1 usage.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import math
 import os
@@ -426,6 +427,7 @@ def fetch_ytdlp_captions(
 
 
 def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> bytes:
+    deadline = time.monotonic() + float(timeout)
     request = urllib.request.Request(
         url,
         headers={
@@ -434,23 +436,61 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
             "Accept-Encoding": "identity",
         },
     )
+    data = bytearray()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = response.read(limit + 1)
+            raw = getattr(getattr(response, "fp", None), "raw", None)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HostError("caption request exceeded deadline")
+                if raw is not None:
+                    try:
+                        raw._sock.settimeout(remaining)
+                    except (AttributeError, OSError):
+                        pass
+                chunk = response.read(min(16_384, limit + 1 - len(data)))
+                data.extend(chunk)
+                if len(data) > limit:
+                    raise HostError("caption response too large")
+                if time.monotonic() > deadline:
+                    raise HostError("caption request exceeded deadline")
+                if not chunk:
+                    break
     except urllib.error.HTTPError as exc:
         raise HostError(f"HTTP {exc.code} for caption request") from exc
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise HostError(f"caption request failed: {redact(str(exc))}") from exc
-    if len(data) > limit:
-        raise HostError("caption response too large")
-    return data
+    return bytes(data)
 
 
 def _mirror_host(base: str) -> str:
     parsed = urllib.parse.urlparse(base)
     host = parsed.hostname or ""
     port = parsed.port
+    if port is not None and ":" in host:
+        host = f"[{host}]"
     return f"{host}:{port}" if port is not None else host
+
+
+def _valid_mirror_base(base: str, *, require_https: bool = False) -> str | None:
+    if not base or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in base):
+        return None
+    try:
+        parsed = urllib.parse.urlparse(base)
+        host = parsed.hostname
+        schemes = {"https"} if require_https else {"http", "https"}
+        if parsed.scheme not in schemes or parsed.query or parsed.fragment or not host:
+            return None
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            label = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            if not re.fullmatch(rf"{label}(?:\.{label})*\.?", host):
+                return None
+        return _mirror_host(base)
+    except ValueError:
+        return None
 
 
 def _public_invidious_bases(payload: bytes) -> list[str]:
@@ -467,11 +507,8 @@ def _public_invidious_bases(payload: bytes) -> list[str]:
         if meta.get("type") not in (None, "https"):
             continue
         uri = str(meta.get("uri") or "").rstrip("/")
-        try:
-            if uri.startswith("https://") and _mirror_host(uri):
-                bases.append(uri)
-        except ValueError:
-            continue
+        if _valid_mirror_base(uri, require_https=True):
+            bases.append(uri)
         if len(bases) >= 3:
             break
     return bases
@@ -486,7 +523,7 @@ def invidious_bases() -> list[str]:
     try:
         payload = http_get(INSTANCE_LIST, limit=1_000_000, timeout=MIRROR_REQUEST_TIMEOUT, accept="application/json")
         return _public_invidious_bases(payload)
-    except (HostError, ValueError, OSError) as exc:
+    except (HostError, ValueError, OSError, RecursionError) as exc:
         raise HostError(f"could not list public caption mirrors: {redact(str(exc))}") from exc
 
 
@@ -577,7 +614,7 @@ def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
         except BudgetExhausted as exc:
             record(False, str(exc))
             return failure(str(exc))
-        except (HostError, ValueError, OSError) as exc:
+        except (HostError, ValueError, OSError, RecursionError) as exc:
             record(False, f"could not list public caption mirrors: {exc}")
             layer = "seed-fallback"
             bases = SEED_INVIDIOUS_INSTANCES
@@ -587,9 +624,8 @@ def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
         host = "invalid mirror URL"
         try:
             remaining_budget()
-            parsed = urllib.parse.urlparse(base)
-            mirror_host = _mirror_host(base)
-            if parsed.scheme not in {"http", "https"} or not parsed.hostname or not mirror_host:
+            mirror_host = _valid_mirror_base(base)
+            if mirror_host is None:
                 raise HostError("mirror URL must use http or https with a host")
             host = mirror_host
             listing = get(
@@ -607,6 +643,8 @@ def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
                 raise HostError(f"no caption track for {want}")
             target = safe_caption_url(base, picked["url"])
             body = get(target, limit=2_000_000, accept="text/vtt, text/plain, */*")
+            if time.monotonic() > deadline:
+                raise BudgetExhausted("caption mirror budget exhausted")
             if not body:
                 raise HostError("mirror caption track was empty")
             text = body.decode("utf-8", errors="replace")
@@ -626,7 +664,7 @@ def fetch_mirror_captions(video_id: str, expected_lang: str | None) -> dict:
         except BudgetExhausted as exc:
             record(False, str(exc))
             break
-        except (HostError, ValueError, OSError) as exc:
+        except (HostError, ValueError, OSError, RecursionError) as exc:
             record(False, f"{host}: {exc}")
             if time.monotonic() >= deadline:
                 record(False, "caption mirror budget exhausted")
