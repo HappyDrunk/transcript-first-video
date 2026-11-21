@@ -1,0 +1,2157 @@
+[
+  {
+    "start": 2.79,
+    "end": 2.8,
+    "text": "So, I've spent the last couple of years"
+  },
+  {
+    "start": 4.95,
+    "end": 4.96,
+    "text": "transforming Block's 3,500-person"
+  },
+  {
+    "start": 8.03,
+    "end": 8.04,
+    "text": "engineering org into an autonomous one."
+  },
+  {
+    "start": 9.43,
+    "end": 9.44,
+    "text": "And this is a challenge that most tech"
+  },
+  {
+    "start": 11.39,
+    "end": 11.4,
+    "text": "companies are actively trying to solve"
+  },
+  {
+    "start": 14.15,
+    "end": 14.16,
+    "text": "or will be in the very near future. So,"
+  },
+  {
+    "start": 16.75,
+    "end": 16.76,
+    "text": "today I'll share our path to getting"
+  },
+  {
+    "start": 18.27,
+    "end": 18.28,
+    "text": "there."
+  },
+  {
+    "start": 20.51,
+    "end": 20.52,
+    "text": "Our agentic coding journey started very"
+  },
+  {
+    "start": 22.67,
+    "end": 22.68,
+    "text": "early. We were building Goose, our"
+  },
+  {
+    "start": 25.19,
+    "end": 25.2,
+    "text": "internal coding agent, even before the"
+  },
+  {
+    "start": 27.79,
+    "end": 27.8,
+    "text": "LLM supported tool calling. We worked"
+  },
+  {
+    "start": 29.63,
+    "end": 29.64,
+    "text": "with Anthropic as design partners for"
+  },
+  {
+    "start": 32.03,
+    "end": 32.04,
+    "text": "the initial release of MCP, and Goose"
+  },
+  {
+    "start": 33.99,
+    "end": 34.0,
+    "text": "became the reference implementation for"
+  },
+  {
+    "start": 37.83,
+    "end": 37.84,
+    "text": "the MCP client. So, internally, our most"
+  },
+  {
+    "start": 40.39,
+    "end": 40.4,
+    "text": "curious engineers were some of the very"
+  },
+  {
+    "start": 42.83,
+    "end": 42.84,
+    "text": "first in the industry to use these types"
+  },
+  {
+    "start": 44.83,
+    "end": 44.84,
+    "text": "of coding agents."
+  },
+  {
+    "start": 47.31,
+    "end": 47.32,
+    "text": "After a couple of months, about 90% of"
+  },
+  {
+    "start": 49.75,
+    "end": 49.76,
+    "text": "our engineers were now using tools like"
+  },
+  {
+    "start": 52.23,
+    "end": 52.24,
+    "text": "Goose and Claude Code regularly to"
+  },
+  {
+    "start": 54.79,
+    "end": 54.8,
+    "text": "generate code. So, on paper, it looked"
+  },
+  {
+    "start": 57.35,
+    "end": 57.36,
+    "text": "like we were all in on AI."
+  },
+  {
+    "start": 58.79,
+    "end": 58.8,
+    "text": "But our CEO was convinced that"
+  },
+  {
+    "start": 60.63,
+    "end": 60.64,
+    "text": "engineering wasn't using AI at all."
+  },
+  {
+    "start": 62.71,
+    "end": 62.72,
+    "text": "Like, they couldn't be, right? As far as"
+  },
+  {
+    "start": 64.549,
+    "end": 64.559,
+    "text": "he was concerned, because we weren't"
+  },
+  {
+    "start": 67.15,
+    "end": 67.16,
+    "text": "shipping any faster."
+  },
+  {
+    "start": 68.87,
+    "end": 68.88,
+    "text": "Well, I had the numbers, both the"
+  },
+  {
+    "start": 72.07,
+    "end": 72.08,
+    "text": "metrics and the token bills. So, I knew"
+  },
+  {
+    "start": 74.23,
+    "end": 74.24,
+    "text": "that engineering was, in fact, using AI,"
+  },
+  {
+    "start": 76.19,
+    "end": 76.2,
+    "text": "but he was right. Features certainly"
+  },
+  {
+    "start": 78.19,
+    "end": 78.2,
+    "text": "weren't making it to our customers any"
+  },
+  {
+    "start": 80.87,
+    "end": 80.88,
+    "text": "faster. So, I began to dig into this a"
+  },
+  {
+    "start": 82.15,
+    "end": 82.16,
+    "text": "bit."
+  },
+  {
+    "start": 84.67,
+    "end": 84.68,
+    "text": "I think of AI enablements in three"
+  },
+  {
+    "start": 87.47,
+    "end": 87.48,
+    "text": "phases: experimentation, adoption, and"
+  },
+  {
+    "start": 90.15,
+    "end": 90.16,
+    "text": "impact. I'd say that we surpassed the"
+  },
+  {
+    "start": 92.91,
+    "end": 92.92,
+    "text": "experimentation phase as 90% of our"
+  },
+  {
+    "start": 97.03,
+    "end": 97.04,
+    "text": "engineering org was using AI, but they"
+  },
+  {
+    "start": 98.55,
+    "end": 98.56,
+    "text": "still were kind of using it inside of"
+  },
+  {
+    "start": 101.27,
+    "end": 101.28,
+    "text": "their IDE, you know, asking questions or"
+  },
+  {
+    "start": 103.79,
+    "end": 103.8,
+    "text": "writing boilerplate code. And I knew"
+  },
+  {
+    "start": 105.07,
+    "end": 105.08,
+    "text": "that if we really wanted to see"
+  },
+  {
+    "start": 106.91,
+    "end": 106.92,
+    "text": "impactful outcomes, then we needed a way"
+  },
+  {
+    "start": 109.91,
+    "end": 109.92,
+    "text": "to integrate AI into how we built and"
+  },
+  {
+    "start": 111.91,
+    "end": 111.92,
+    "text": "ship."
+  },
+  {
+    "start": 115.35,
+    "end": 115.36,
+    "text": "I spent the first half of 2025 leading"
+  },
+  {
+    "start": 118.07,
+    "end": 118.08,
+    "text": "AI enablement for our entire company."
+  },
+  {
+    "start": 120.67,
+    "end": 120.68,
+    "text": "So, 12,000 employees across every"
+  },
+  {
+    "start": 123.23,
+    "end": 123.24,
+    "text": "function, marketing, design, finance,"
+  },
+  {
+    "start": 124.39,
+    "end": 124.4,
+    "text": "legal."
+  },
+  {
+    "start": 127.31,
+    "end": 127.32,
+    "text": "Now, our CTO tasked me with building an"
+  },
+  {
+    "start": 129.91,
+    "end": 129.92,
+    "text": "agentic engineering org."
+  },
+  {
+    "start": 131.51,
+    "end": 131.52,
+    "text": "Okay, sure."
+  },
+  {
+    "start": 133.19,
+    "end": 133.2,
+    "text": "But, what does that actually mean?"
+  },
+  {
+    "start": 135.11,
+    "end": 135.12,
+    "text": "There's no playbook for any of this"
+  },
+  {
+    "start": 137.15,
+    "end": 137.16,
+    "text": "stuff, right? And I know because I went"
+  },
+  {
+    "start": 139.59,
+    "end": 139.6,
+    "text": "looking at your blogs hoping that you"
+  },
+  {
+    "start": 142.59,
+    "end": 142.6,
+    "text": "all had it all figured out. But, I only"
+  },
+  {
+    "start": 144.91,
+    "end": 144.92,
+    "text": "saw a bunch of posts saying how you all"
+  },
+  {
+    "start": 147.87,
+    "end": 147.88,
+    "text": "were making it up as you went along. So,"
+  },
+  {
+    "start": 150.39,
+    "end": 150.4,
+    "text": "I did the same, right? In the simplest"
+  },
+  {
+    "start": 152.47,
+    "end": 152.48,
+    "text": "of terms, I defined an agentic"
+  },
+  {
+    "start": 155.43,
+    "end": 155.44,
+    "text": "engineering org as one where engineers"
+  },
+  {
+    "start": 157.55,
+    "end": 157.56,
+    "text": "leverage AI agents as their primary"
+  },
+  {
+    "start": 160.71,
+    "end": 160.72,
+    "text": "means of producing engineering outcomes."
+  },
+  {
+    "start": 163.27,
+    "end": 163.28,
+    "text": "So, that meant that our engineers needed"
+  },
+  {
+    "start": 165.83,
+    "end": 165.84,
+    "text": "to treat agents as core members of their"
+  },
+  {
+    "start": 168.11,
+    "end": 168.12,
+    "text": "engineering workflow. Not just using AI"
+  },
+  {
+    "start": 169.79,
+    "end": 169.8,
+    "text": "to help them write code here and there,"
+  },
+  {
+    "start": 173.59,
+    "end": 173.6,
+    "text": "but actually working with agents."
+  },
+  {
+    "start": 176.23,
+    "end": 176.24,
+    "text": "Decomposing problems, delegating work,"
+  },
+  {
+    "start": 179.509,
+    "end": 179.519,
+    "text": "reviewing and verifying what was done."
+  },
+  {
+    "start": 181.87,
+    "end": 181.88,
+    "text": "And we wanted them directing the work as"
+  },
+  {
+    "start": 183.99,
+    "end": 184.0,
+    "text": "their default way of operating. But, of"
+  },
+  {
+    "start": 186.11,
+    "end": 186.12,
+    "text": "course, the vast majority of our"
+  },
+  {
+    "start": 188.79,
+    "end": 188.8,
+    "text": "engineers were not here. So, to see"
+  },
+  {
+    "start": 190.31,
+    "end": 190.32,
+    "text": "where we needed to go, I came up with"
+  },
+  {
+    "start": 192.03,
+    "end": 192.04,
+    "text": "the maturity model."
+  },
+  {
+    "start": 194.11,
+    "end": 194.12,
+    "text": "This model measures the engineer's"
+  },
+  {
+    "start": 196.91,
+    "end": 196.92,
+    "text": "relationship with AI agents. So, how"
+  },
+  {
+    "start": 200.03,
+    "end": 200.04,
+    "text": "they think and delegate and orchestrate."
+  },
+  {
+    "start": 202.39,
+    "end": 202.4,
+    "text": "And while I had some form of this model"
+  },
+  {
+    "start": 205.15,
+    "end": 205.16,
+    "text": "in Q3 of last year, Steve Yegge's"
+  },
+  {
+    "start": 208.229,
+    "end": 208.239,
+    "text": "Gastown article helped me reorganize it"
+  },
+  {
+    "start": 210.35,
+    "end": 210.36,
+    "text": "into a better model."
+  },
+  {
+    "start": 212.87,
+    "end": 212.88,
+    "text": "So, stage zero is where the engineer"
+  },
+  {
+    "start": 214.83,
+    "end": 214.84,
+    "text": "doesn't use AI tools in their workflow"
+  },
+  {
+    "start": 217.67,
+    "end": 217.68,
+    "text": "at all. Stage one,"
+  },
+  {
+    "start": 219.949,
+    "end": 219.959,
+    "text": "they use AI to auto complete, but"
+  },
+  {
+    "start": 222.07,
+    "end": 222.08,
+    "text": "they've never used it in agent mode,"
+  },
+  {
+    "start": 223.19,
+    "end": 223.2,
+    "text": "maybe."
+  },
+  {
+    "start": 224.949,
+    "end": 224.959,
+    "text": "Uh stage two is where engineers are"
+  },
+  {
+    "start": 227.19,
+    "end": 227.2,
+    "text": "chatting with agents, but not using it"
+  },
+  {
+    "start": 229.87,
+    "end": 229.88,
+    "text": "to produce any PRs. Stage three,"
+  },
+  {
+    "start": 232.59,
+    "end": 232.6,
+    "text": "engineers are delegating tasks to agents"
+  },
+  {
+    "start": 235.11,
+    "end": 235.12,
+    "text": "and reviewing the output. Those at stage"
+  },
+  {
+    "start": 236.99,
+    "end": 237.0,
+    "text": "four are running multiple agents in"
+  },
+  {
+    "start": 239.19,
+    "end": 239.2,
+    "text": "parallel. And then stage five is that"
+  },
+  {
+    "start": 241.23,
+    "end": 241.24,
+    "text": "final boss where engineers are"
+  },
+  {
+    "start": 243.99,
+    "end": 244.0,
+    "text": "delegating complete tasks to agents and"
+  },
+  {
+    "start": 245.91,
+    "end": 245.92,
+    "text": "the agent is able to produce shippable"
+  },
+  {
+    "start": 248.15,
+    "end": 248.16,
+    "text": "results without the human necessarily"
+  },
+  {
+    "start": 250.87,
+    "end": 250.88,
+    "text": "needing to guide it. So, I'd say by the"
+  },
+  {
+    "start": 252.99,
+    "end": 253.0,
+    "text": "end of the first half, the bulk of our"
+  },
+  {
+    "start": 254.949,
+    "end": 254.959,
+    "text": "engineers were between stages one and"
+  },
+  {
+    "start": 255.87,
+    "end": 255.88,
+    "text": "two."
+  },
+  {
+    "start": 258.63,
+    "end": 258.64,
+    "text": "And I needed to get them to stage five."
+  },
+  {
+    "start": 261.229,
+    "end": 261.239,
+    "text": "Now, I wasn't quite sure how to get"
+  },
+  {
+    "start": 263.39,
+    "end": 263.4,
+    "text": "3,500 engineers to that level,"
+  },
+  {
+    "start": 266.35,
+    "end": 266.36,
+    "text": "especially when one, this is all highly"
+  },
+  {
+    "start": 268.55,
+    "end": 268.56,
+    "text": "experimental, right? There's no"
+  },
+  {
+    "start": 271.27,
+    "end": 271.28,
+    "text": "playbook, again, for any of this. Um"
+  },
+  {
+    "start": 273.95,
+    "end": 273.96,
+    "text": "two, things were moving so fast"
+  },
+  {
+    "start": 275.99,
+    "end": 276.0,
+    "text": "that what might be a best practice this"
+  },
+  {
+    "start": 278.51,
+    "end": 278.52,
+    "text": "week could be outdated when a new tool"
+  },
+  {
+    "start": 280.59,
+    "end": 280.6,
+    "text": "or a new model drops next week. And"
+  },
+  {
+    "start": 282.67,
+    "end": 282.68,
+    "text": "honestly, this was leading to AI"
+  },
+  {
+    "start": 283.909,
+    "end": 283.919,
+    "text": "fatigue."
+  },
+  {
+    "start": 285.27,
+    "end": 285.28,
+    "text": "And then three,"
+  },
+  {
+    "start": 287.55,
+    "end": 287.56,
+    "text": "people were already feeling turned off"
+  },
+  {
+    "start": 289.79,
+    "end": 289.8,
+    "text": "by the top-down pressure from leadership"
+  },
+  {
+    "start": 292.51,
+    "end": 292.52,
+    "text": "to essentially AI or die."
+  },
+  {
+    "start": 295.99,
+    "end": 296.0,
+    "text": "So, I thought about the 1990 rule where"
+  },
+  {
+    "start": 298.71,
+    "end": 298.72,
+    "text": "in digital communities about 1% create,"
+  },
+  {
+    "start": 302.87,
+    "end": 302.88,
+    "text": "9% interact, and 90% passively consume."
+  },
+  {
+    "start": 304.99,
+    "end": 305.0,
+    "text": "And this maps almost perfectly to how"
+  },
+  {
+    "start": 307.35,
+    "end": 307.36,
+    "text": "engineers adopt AI. So, you'll have a"
+  },
+  {
+    "start": 309.39,
+    "end": 309.4,
+    "text": "small percentage that'll deep dive and"
+  },
+  {
+    "start": 312.03,
+    "end": 312.04,
+    "text": "start creating agentic patterns and"
+  },
+  {
+    "start": 313.79,
+    "end": 313.8,
+    "text": "discovering useful techniques for"
+  },
+  {
+    "start": 316.43,
+    "end": 316.44,
+    "text": "working with agents. You'll have some"
+  },
+  {
+    "start": 318.99,
+    "end": 319.0,
+    "text": "that might tweak the agent's MD file"
+  },
+  {
+    "start": 321.71,
+    "end": 321.72,
+    "text": "here or there. But most people aren't"
+  },
+  {
+    "start": 323.87,
+    "end": 323.88,
+    "text": "going to spend the extra cycles to"
+  },
+  {
+    "start": 327.23,
+    "end": 327.24,
+    "text": "figure this stuff out. So, I realized"
+  },
+  {
+    "start": 329.87,
+    "end": 329.88,
+    "text": "that if my AI strategy depends on every"
+  },
+  {
+    "start": 332.07,
+    "end": 332.08,
+    "text": "individual leveling themselves up, I'm"
+  },
+  {
+    "start": 335.19,
+    "end": 335.2,
+    "text": "never going to see that broad impact."
+  },
+  {
+    "start": 337.99,
+    "end": 338.0,
+    "text": "So, I leaned into this model. And I used"
+  },
+  {
+    "start": 340.63,
+    "end": 340.64,
+    "text": "it to my advantage. Instead of focusing"
+  },
+  {
+    "start": 343.95,
+    "end": 343.96,
+    "text": "on all 3,500 engineers, I decided to"
+  },
+  {
+    "start": 347.15,
+    "end": 347.16,
+    "text": "focus on forming the 1%, the power"
+  },
+  {
+    "start": 350.63,
+    "end": 350.64,
+    "text": "users, from our most critical teams."
+  },
+  {
+    "start": 352.75,
+    "end": 352.76,
+    "text": "So, I started an AI champions program"
+  },
+  {
+    "start": 355.23,
+    "end": 355.24,
+    "text": "where I handpicked about 50 engineers"
+  },
+  {
+    "start": 357.51,
+    "end": 357.52,
+    "text": "across the company who could pioneer"
+  },
+  {
+    "start": 359.03,
+    "end": 359.04,
+    "text": "what a genetic engineering looks like"
+  },
+  {
+    "start": 361.91,
+    "end": 361.92,
+    "text": "for their team. Now, this was not a call"
+  },
+  {
+    "start": 364.15,
+    "end": 364.16,
+    "text": "for volunteers, all right? I needed to"
+  },
+  {
+    "start": 367.43,
+    "end": 367.44,
+    "text": "be strategic about the selection. I"
+  },
+  {
+    "start": 370.07,
+    "end": 370.08,
+    "text": "needed engineers who were willing to"
+  },
+  {
+    "start": 372.63,
+    "end": 372.64,
+    "text": "dedicate at least 30% of their time to"
+  },
+  {
+    "start": 375.03,
+    "end": 375.04,
+    "text": "investing in AI enablement. I needed"
+  },
+  {
+    "start": 377.47,
+    "end": 377.48,
+    "text": "those who wouldn't be discouraged by the"
+  },
+  {
+    "start": 379.909,
+    "end": 379.919,
+    "text": "non-deterministic nature of AI and give"
+  },
+  {
+    "start": 381.909,
+    "end": 381.919,
+    "text": "up on it all when it didn't work out of"
+  },
+  {
+    "start": 384.39,
+    "end": 384.4,
+    "text": "the box, which it often did not, right?"
+  },
+  {
+    "start": 387.11,
+    "end": 387.12,
+    "text": "So, I spent the week talking to tech"
+  },
+  {
+    "start": 389.83,
+    "end": 389.84,
+    "text": "leads and managers to find the 50"
+  },
+  {
+    "start": 391.99,
+    "end": 392.0,
+    "text": "engineers who could represent our most"
+  },
+  {
+    "start": 394.15,
+    "end": 394.16,
+    "text": "critical repositories."
+  },
+  {
+    "start": 396.63,
+    "end": 396.64,
+    "text": "Now, remember at this point, most of our"
+  },
+  {
+    "start": 398.63,
+    "end": 398.64,
+    "text": "engineers were between stages one and"
+  },
+  {
+    "start": 400.909,
+    "end": 400.919,
+    "text": "two where they're chatting with AI but"
+  },
+  {
+    "start": 404.07,
+    "end": 404.08,
+    "text": "not really using it to produce PRs. So,"
+  },
+  {
+    "start": 406.35,
+    "end": 406.36,
+    "text": "I wanted to get the AI champions to"
+  },
+  {
+    "start": 409.909,
+    "end": 409.919,
+    "text": "stage three. This was about June 2025."
+  },
+  {
+    "start": 412.07,
+    "end": 412.08,
+    "text": "So, the models were decent enough to"
+  },
+  {
+    "start": 413.43,
+    "end": 413.44,
+    "text": "write a feature for you, right? But"
+  },
+  {
+    "start": 415.83,
+    "end": 415.84,
+    "text": "chances were pretty high that the code"
+  },
+  {
+    "start": 417.87,
+    "end": 417.88,
+    "text": "wouldn't conform to your team's"
+  },
+  {
+    "start": 419.83,
+    "end": 419.84,
+    "text": "conventions and standards. So,"
+  },
+  {
+    "start": 421.51,
+    "end": 421.52,
+    "text": "developers didn't trust the agents"
+  },
+  {
+    "start": 423.95,
+    "end": 423.96,
+    "text": "enough to delegate work to it yet. So,"
+  },
+  {
+    "start": 426.31,
+    "end": 426.32,
+    "text": "the first area that we focused on was"
+  },
+  {
+    "start": 429.47,
+    "end": 429.48,
+    "text": "making our repos AI ready."
+  },
+  {
+    "start": 432.03,
+    "end": 432.04,
+    "text": "My theory here was if I can get"
+  },
+  {
+    "start": 434.909,
+    "end": 434.919,
+    "text": "engineers to embed AI directly into"
+  },
+  {
+    "start": 437.11,
+    "end": 437.12,
+    "text": "their repos, then not only would the"
+  },
+  {
+    "start": 439.03,
+    "end": 439.04,
+    "text": "agents perform better but the entire"
+  },
+  {
+    "start": 442.67,
+    "end": 442.68,
+    "text": "team would benefit, not just the 1%."
+  },
+  {
+    "start": 445.11,
+    "end": 445.12,
+    "text": "And the repos are a central point of"
+  },
+  {
+    "start": 447.03,
+    "end": 447.04,
+    "text": "reference for every engineer that's"
+  },
+  {
+    "start": 448.99,
+    "end": 449.0,
+    "text": "contributing code."
+  },
+  {
+    "start": 451.75,
+    "end": 451.76,
+    "text": "So, to make their repos AI friendly,"
+  },
+  {
+    "start": 453.83,
+    "end": 453.84,
+    "text": "they added assets like contacts and"
+  },
+  {
+    "start": 455.43,
+    "end": 455.44,
+    "text": "rules files so that agents could"
+  },
+  {
+    "start": 457.99,
+    "end": 458.0,
+    "text": "reliably understand and navigate the"
+  },
+  {
+    "start": 461.95,
+    "end": 461.96,
+    "text": "code base as well as contribute to it."
+  },
+  {
+    "start": 464.19,
+    "end": 464.2,
+    "text": "Now, when building the AI champions, I"
+  },
+  {
+    "start": 466.19,
+    "end": 466.2,
+    "text": "made sure that we have folks from every"
+  },
+  {
+    "start": 468.75,
+    "end": 468.76,
+    "text": "corner of Block engineering: Square,"
+  },
+  {
+    "start": 472.15,
+    "end": 472.16,
+    "text": "Cash App, Afterpay, Tidal, across"
+  },
+  {
+    "start": 474.19,
+    "end": 474.2,
+    "text": "front end, back end, mobile, data,"
+  },
+  {
+    "start": 477.19,
+    "end": 477.2,
+    "text": "infra, right? Um we covered repos of all"
+  },
+  {
+    "start": 479.99,
+    "end": 480.0,
+    "text": "shapes and sizes, the nasty big legacy"
+  },
+  {
+    "start": 482.83,
+    "end": 482.84,
+    "text": "massive mono repos, the smaller"
+  },
+  {
+    "start": 485.83,
+    "end": 485.84,
+    "text": "services, mobile apps, right? And that"
+  },
+  {
+    "start": 488.83,
+    "end": 488.84,
+    "text": "mix let us pressure test patterns across"
+  },
+  {
+    "start": 491.35,
+    "end": 491.36,
+    "text": "very different engineering realities so"
+  },
+  {
+    "start": 493.51,
+    "end": 493.52,
+    "text": "that we could quickly see what actually"
+  },
+  {
+    "start": 494.99,
+    "end": 495.0,
+    "text": "scales."
+  },
+  {
+    "start": 497.27,
+    "end": 497.28,
+    "text": "As expected, mono repos came with their"
+  },
+  {
+    "start": 500.99,
+    "end": 501.0,
+    "text": "own challenges. But my JVM devs were"
+  },
+  {
+    "start": 503.31,
+    "end": 503.32,
+    "text": "already strong in inheritance patterns,"
+  },
+  {
+    "start": 506.43,
+    "end": 506.44,
+    "text": "so we set shared contexts and rules at"
+  },
+  {
+    "start": 508.83,
+    "end": 508.84,
+    "text": "the root, then layered more specific"
+  },
+  {
+    "start": 511.11,
+    "end": 511.12,
+    "text": "ones at the service levels."
+  },
+  {
+    "start": 513.589,
+    "end": 513.599,
+    "text": "We also learned fast that what worked"
+  },
+  {
+    "start": 515.43,
+    "end": 515.44,
+    "text": "for web didn't necessarily work for"
+  },
+  {
+    "start": 518.75,
+    "end": 518.76,
+    "text": "mobile. So Android and iOS even needed"
+  },
+  {
+    "start": 521.43,
+    "end": 521.44,
+    "text": "different approaches at times."
+  },
+  {
+    "start": 522.909,
+    "end": 522.919,
+    "text": "So instead of"
+  },
+  {
+    "start": 524.87,
+    "end": 524.88,
+    "text": "forcing a one-size-fits-all solution,"
+  },
+  {
+    "start": 526.829,
+    "end": 526.839,
+    "text": "each champion figured out what worked"
+  },
+  {
+    "start": 529.11,
+    "end": 529.12,
+    "text": "for their repo, and then teams with"
+  },
+  {
+    "start": 531.91,
+    "end": 531.92,
+    "text": "similar shapes and sizes naturally"
+  },
+  {
+    "start": 534.47,
+    "end": 534.48,
+    "text": "converged on the same tools and"
+  },
+  {
+    "start": 537.71,
+    "end": 537.72,
+    "text": "patterns. And honestly, engineers loved"
+  },
+  {
+    "start": 540.07,
+    "end": 540.08,
+    "text": "this, right? We let them choose what"
+  },
+  {
+    "start": 541.87,
+    "end": 541.88,
+    "text": "made sense for their repo instead of"
+  },
+  {
+    "start": 545.27,
+    "end": 545.28,
+    "text": "pushing a top-down mandate on them."
+  },
+  {
+    "start": 547.39,
+    "end": 547.4,
+    "text": "So we ended up with a standard set of"
+  },
+  {
+    "start": 549.55,
+    "end": 549.56,
+    "text": "components that would make a repo AI"
+  },
+  {
+    "start": 552.23,
+    "end": 552.24,
+    "text": "friendly, but again, customized for each"
+  },
+  {
+    "start": 554.71,
+    "end": 554.72,
+    "text": "team's needs. Some context files like"
+  },
+  {
+    "start": 557.63,
+    "end": 557.64,
+    "text": "agents.md or claude.md to provide the"
+  },
+  {
+    "start": 561.23,
+    "end": 561.24,
+    "text": "agent with repo guidance, rules files to"
+  },
+  {
+    "start": 563.67,
+    "end": 563.68,
+    "text": "provide the agent with some guardrails,"
+  },
+  {
+    "start": 566.27,
+    "end": 566.28,
+    "text": "repeatable workflows like slash commands"
+  },
+  {
+    "start": 568.75,
+    "end": 568.76,
+    "text": "and later agent skills,"
+  },
+  {
+    "start": 571.03,
+    "end": 571.04,
+    "text": "um an enabled AI code reviewer,"
+  },
+  {
+    "start": 572.99,
+    "end": 573.0,
+    "text": "preferably with some instructions on"
+  },
+  {
+    "start": 575.829,
+    "end": 575.839,
+    "text": "what matters and what it should review."
+  },
+  {
+    "start": 579.71,
+    "end": 579.72,
+    "text": "And then AI attribution on PRs."
+  },
+  {
+    "start": 582.15,
+    "end": 582.16,
+    "text": "So at this point, we've done a lot of"
+  },
+  {
+    "start": 584.35,
+    "end": 584.36,
+    "text": "great work and technically, we do have"
+  },
+  {
+    "start": 586.43,
+    "end": 586.44,
+    "text": "the agents writing PRs, but I had a"
+  },
+  {
+    "start": 588.95,
+    "end": 588.96,
+    "text": "couple of concerns, right? Not many"
+  },
+  {
+    "start": 590.99,
+    "end": 591.0,
+    "text": "outside of the AI champions had gotten"
+  },
+  {
+    "start": 592.95,
+    "end": 592.96,
+    "text": "to this level where they were delegating"
+  },
+  {
+    "start": 595.87,
+    "end": 595.88,
+    "text": "work to agents. And the idea is to have"
+  },
+  {
+    "start": 599.67,
+    "end": 599.68,
+    "text": "the work of the 1% lift everyone up. So,"
+  },
+  {
+    "start": 601.51,
+    "end": 601.52,
+    "text": "we weren't there yet."
+  },
+  {
+    "start": 603.59,
+    "end": 603.6,
+    "text": "And then even with the champions, they"
+  },
+  {
+    "start": 605.59,
+    "end": 605.6,
+    "text": "were delegating, but they were still"
+  },
+  {
+    "start": 608.11,
+    "end": 608.12,
+    "text": "kind of babysitting the process. So, I"
+  },
+  {
+    "start": 610.31,
+    "end": 610.32,
+    "text": "wanted to explore if we could delegate"
+  },
+  {
+    "start": 612.83,
+    "end": 612.84,
+    "text": "work to the agents in a more hands-off"
+  },
+  {
+    "start": 615.27,
+    "end": 615.28,
+    "text": "approach and make it easier for others"
+  },
+  {
+    "start": 617.39,
+    "end": 617.4,
+    "text": "outside of the champions program to do"
+  },
+  {
+    "start": 619.07,
+    "end": 619.08,
+    "text": "so as well."
+  },
+  {
+    "start": 620.79,
+    "end": 620.8,
+    "text": "So, there's three common places where"
+  },
+  {
+    "start": 623.39,
+    "end": 623.4,
+    "text": "engineers receive requirements for work."
+  },
+  {
+    "start": 626.03,
+    "end": 626.04,
+    "text": "Issue trackers like Jira or Linear,"
+  },
+  {
+    "start": 629.15,
+    "end": 629.16,
+    "text": "GitHub issues, and informally in Slack."
+  },
+  {
+    "start": 631.19,
+    "end": 631.2,
+    "text": "I wanted to be able to delegate work to"
+  },
+  {
+    "start": 633.51,
+    "end": 633.52,
+    "text": "the agents from any of these places. And"
+  },
+  {
+    "start": 636.19,
+    "end": 636.2,
+    "text": "the champions implemented all three."
+  },
+  {
+    "start": 638.51,
+    "end": 638.52,
+    "text": "So, true story."
+  },
+  {
+    "start": 640.51,
+    "end": 640.52,
+    "text": "We were in Slack one day, an engineer"
+  },
+  {
+    "start": 642.55,
+    "end": 642.56,
+    "text": "saw a bug with the product and wrote,"
+  },
+  {
+    "start": 644.19,
+    "end": 644.2,
+    "text": "you know, like, \"Hey, I saw this bug."
+  },
+  {
+    "start": 646.829,
+    "end": 646.839,
+    "text": "Anybody else seen it?\" So, engineer two"
+  },
+  {
+    "start": 650.19,
+    "end": 650.2,
+    "text": "responds to that and goes, \"Mhm, no, I"
+  },
+  {
+    "start": 652.99,
+    "end": 653.0,
+    "text": "hadn't seen that one.\" Engineer three"
+  },
+  {
+    "start": 655.59,
+    "end": 655.6,
+    "text": "@goose right there in Slack and says,"
+  },
+  {
+    "start": 658.23,
+    "end": 658.24,
+    "text": "\"Hey goose, have you seen this bug"
+  },
+  {
+    "start": 659.67,
+    "end": 659.68,
+    "text": "before? Like, can you can you go and"
+  },
+  {
+    "start": 662.31,
+    "end": 662.32,
+    "text": "check if this is a bug?\" So, goose goes"
+  },
+  {
+    "start": 664.43,
+    "end": 664.44,
+    "text": "to the repo, it like pulls the files"
+  },
+  {
+    "start": 666.15,
+    "end": 666.16,
+    "text": "down, and says, \"Yeah, this is a bug."
+  },
+  {
+    "start": 669.03,
+    "end": 669.04,
+    "text": "Here it is right here. But, here's also"
+  },
+  {
+    "start": 671.87,
+    "end": 671.88,
+    "text": "three options of how you might implement"
+  },
+  {
+    "start": 673.99,
+    "end": 674.0,
+    "text": "a solution, right?\""
+  },
+  {
+    "start": 675.87,
+    "end": 675.88,
+    "text": "Right there in Slack, code snippets. And"
+  },
+  {
+    "start": 678.19,
+    "end": 678.2,
+    "text": "so, engineer one goes, \"I like option"
+  },
+  {
+    "start": 680.11,
+    "end": 680.12,
+    "text": "one.\" Engineer two goes, \"Yeah, yeah, me"
+  },
+  {
+    "start": 681.87,
+    "end": 681.88,
+    "text": "too.\" So, engineer three says, \"Hey"
+  },
+  {
+    "start": 684.35,
+    "end": 684.36,
+    "text": "goose, go implement option one.\" Goose"
+  },
+  {
+    "start": 687.829,
+    "end": 687.839,
+    "text": "does so, returns with a link to the PR,"
+  },
+  {
+    "start": 689.79,
+    "end": 689.8,
+    "text": "right? So, the entire cycle from"
+  },
+  {
+    "start": 692.51,
+    "end": 692.52,
+    "text": "discussion, diagnosis, issue creation,"
+  },
+  {
+    "start": 695.27,
+    "end": 695.28,
+    "text": "alignment, and the fix took like 5"
+  },
+  {
+    "start": 697.63,
+    "end": 697.64,
+    "text": "minutes all right there in Slack. Very"
+  },
+  {
+    "start": 699.55,
+    "end": 699.56,
+    "text": "cool party trick, by the way."
+  },
+  {
+    "start": 702.11,
+    "end": 702.12,
+    "text": "Um engineers were also able to assign"
+  },
+  {
+    "start": 704.07,
+    "end": 704.08,
+    "text": "linear and Jira tickets, as well as"
+  },
+  {
+    "start": 706.87,
+    "end": 706.88,
+    "text": "GitHub issues to an agent, and have the"
+  },
+  {
+    "start": 709.47,
+    "end": 709.48,
+    "text": "agent implement the work end to end. So,"
+  },
+  {
+    "start": 711.83,
+    "end": 711.84,
+    "text": "now the agents have become a part of the"
+  },
+  {
+    "start": 714.87,
+    "end": 714.88,
+    "text": "sprint. This blew everyone's minds. The"
+  },
+  {
+    "start": 717.31,
+    "end": 717.32,
+    "text": "first time we did this, the team ran out"
+  },
+  {
+    "start": 719.75,
+    "end": 719.76,
+    "text": "of work and had to pull in more tickets"
+  },
+  {
+    "start": 722.07,
+    "end": 722.08,
+    "text": "like twice, right? So, of course,"
+  },
+  {
+    "start": 724.23,
+    "end": 724.24,
+    "text": "engineering managers, product teams,"
+  },
+  {
+    "start": 726.95,
+    "end": 726.96,
+    "text": "they love this flow. And the beauty"
+  },
+  {
+    "start": 729.15,
+    "end": 729.16,
+    "text": "about these flows is that"
+  },
+  {
+    "start": 730.99,
+    "end": 731.0,
+    "text": "all engineers didn't necessarily have to"
+  },
+  {
+    "start": 733.19,
+    "end": 733.2,
+    "text": "learn a new skill. The champions had"
+  },
+  {
+    "start": 735.27,
+    "end": 735.28,
+    "text": "already laid the foundation so that"
+  },
+  {
+    "start": 737.43,
+    "end": 737.44,
+    "text": "agents were able to work well within"
+  },
+  {
+    "start": 740.35,
+    "end": 740.36,
+    "text": "these repos, and they worked well all of"
+  },
+  {
+    "start": 741.95,
+    "end": 741.96,
+    "text": "this worked well because it made"
+  },
+  {
+    "start": 744.91,
+    "end": 744.92,
+    "text": "delegation feel native to how people"
+  },
+  {
+    "start": 747.03,
+    "end": 747.04,
+    "text": "already work."
+  },
+  {
+    "start": 749.75,
+    "end": 749.76,
+    "text": "So, now I felt comfortable claiming that"
+  },
+  {
+    "start": 751.43,
+    "end": 751.44,
+    "text": "we were truly delegating work to the"
+  },
+  {
+    "start": 752.55,
+    "end": 752.56,
+    "text": "agents."
+  },
+  {
+    "start": 755.71,
+    "end": 755.72,
+    "text": "At this point, it had been 3 months"
+  },
+  {
+    "start": 757.47,
+    "end": 757.48,
+    "text": "since launching the champions program,"
+  },
+  {
+    "start": 759.51,
+    "end": 759.52,
+    "text": "and we were seeing great results."
+  },
+  {
+    "start": 763.11,
+    "end": 763.12,
+    "text": "AI-authored code was up by 69% reported"
+  },
+  {
+    "start": 765.75,
+    "end": 765.76,
+    "text": "time savings increased 37%, and"
+  },
+  {
+    "start": 769.51,
+    "end": 769.52,
+    "text": "automated PRs increased 21 times."
+  },
+  {
+    "start": 771.91,
+    "end": 771.92,
+    "text": "We were ready to pursue stage four,"
+  },
+  {
+    "start": 774.39,
+    "end": 774.4,
+    "text": "multi-agent parallelism."
+  },
+  {
+    "start": 776.31,
+    "end": 776.32,
+    "text": "And with our setup, honestly, moving to"
+  },
+  {
+    "start": 778.87,
+    "end": 778.88,
+    "text": "stage four was almost free. We were"
+  },
+  {
+    "start": 781.07,
+    "end": 781.08,
+    "text": "pretty good at delegating work to the"
+  },
+  {
+    "start": 784.07,
+    "end": 784.08,
+    "text": "agents now. But, this stage introduced"
+  },
+  {
+    "start": 786.15,
+    "end": 786.16,
+    "text": "several new challenges that we needed to"
+  },
+  {
+    "start": 788.87,
+    "end": 788.88,
+    "text": "solve. Engineers are now tripling,"
+  },
+  {
+    "start": 790.79,
+    "end": 790.8,
+    "text": "quadrupling the number of PRs that"
+  },
+  {
+    "start": 792.47,
+    "end": 792.48,
+    "text": "they're producing, but"
+  },
+  {
+    "start": 794.15,
+    "end": 794.16,
+    "text": "the PRs are stuck waiting for code"
+  },
+  {
+    "start": 796.87,
+    "end": 796.88,
+    "text": "reviews, right? So,"
+  },
+  {
+    "start": 798.59,
+    "end": 798.6,
+    "text": "people struggled to stay on top of code"
+  },
+  {
+    "start": 800.829,
+    "end": 800.839,
+    "text": "reviews even before we added AI to the"
+  },
+  {
+    "start": 803.829,
+    "end": 803.839,
+    "text": "mix, so you know that it's bad now. And"
+  },
+  {
+    "start": 805.63,
+    "end": 805.64,
+    "text": "I'll be honest, this isn't a totally"
+  },
+  {
+    "start": 808.35,
+    "end": 808.36,
+    "text": "solved problem, but I'll share how we"
+  },
+  {
+    "start": 810.91,
+    "end": 810.92,
+    "text": "did stop the bleeding a bit."
+  },
+  {
+    "start": 812.95,
+    "end": 812.96,
+    "text": "We absolutely had to get the bots to"
+  },
+  {
+    "start": 815.59,
+    "end": 815.6,
+    "text": "help us review PRs. So, earlier in the"
+  },
+  {
+    "start": 817.47,
+    "end": 817.48,
+    "text": "process, this was optional. Mostly"
+  },
+  {
+    "start": 819.51,
+    "end": 819.52,
+    "text": "because the AI code reviewers sucked so"
+  },
+  {
+    "start": 821.75,
+    "end": 821.76,
+    "text": "badly, and we were just pissing the"
+  },
+  {
+    "start": 824.51,
+    "end": 824.52,
+    "text": "engineers off by having them use them."
+  },
+  {
+    "start": 826.99,
+    "end": 827.0,
+    "text": "But now, with the repo readiness work"
+  },
+  {
+    "start": 828.83,
+    "end": 828.84,
+    "text": "that the champions had done, coupled"
+  },
+  {
+    "start": 831.79,
+    "end": 831.8,
+    "text": "with better models and tools, shout out"
+  },
+  {
+    "start": 834.95,
+    "end": 834.96,
+    "text": "to Codex, uh we were getting much better"
+  },
+  {
+    "start": 838.03,
+    "end": 838.04,
+    "text": "results here. So, we enabled Codex on"
+  },
+  {
+    "start": 840.67,
+    "end": 840.68,
+    "text": "all the repos, and we also created an"
+  },
+  {
+    "start": 843.43,
+    "end": 843.44,
+    "text": "auto-fix loop where if Codex identified"
+  },
+  {
+    "start": 845.31,
+    "end": 845.32,
+    "text": "issues, another agent will automatically"
+  },
+  {
+    "start": 847.07,
+    "end": 847.08,
+    "text": "fix those issues and commit them to the"
+  },
+  {
+    "start": 849.91,
+    "end": 849.92,
+    "text": "PR. So, now, at least people would no"
+  },
+  {
+    "start": 851.51,
+    "end": 851.52,
+    "text": "longer complain about not wanting to"
+  },
+  {
+    "start": 853.79,
+    "end": 853.8,
+    "text": "review sloppy PRs from bots, right? By"
+  },
+  {
+    "start": 856.27,
+    "end": 856.28,
+    "text": "time they got to them, they were in"
+  },
+  {
+    "start": 858.11,
+    "end": 858.12,
+    "text": "pretty good shape."
+  },
+  {
+    "start": 860.27,
+    "end": 860.28,
+    "text": "Another issue, specifically when running"
+  },
+  {
+    "start": 862.59,
+    "end": 862.6,
+    "text": "multiple agents in parallel, was that"
+  },
+  {
+    "start": 864.43,
+    "end": 864.44,
+    "text": "the agents were bumping into each other"
+  },
+  {
+    "start": 866.99,
+    "end": 867.0,
+    "text": "as they were trying to work. And"
+  },
+  {
+    "start": 868.95,
+    "end": 868.96,
+    "text": "more importantly, our machines couldn't"
+  },
+  {
+    "start": 870.27,
+    "end": 870.28,
+    "text": "handle the load anymore. Like,"
+  },
+  {
+    "start": 872.07,
+    "end": 872.08,
+    "text": "engineers' laptops were running out of"
+  },
+  {
+    "start": 873.11,
+    "end": 873.12,
+    "text": "memory."
+  },
+  {
+    "start": 875.47,
+    "end": 875.48,
+    "text": "CPU was choking, you know? So, we"
+  },
+  {
+    "start": 878.03,
+    "end": 878.04,
+    "text": "invested in dedicated cloud workspaces"
+  },
+  {
+    "start": 881.07,
+    "end": 881.08,
+    "text": "where each agent ran in its own isolated"
+  },
+  {
+    "start": 883.03,
+    "end": 883.04,
+    "text": "environment. And this allowed us to"
+  },
+  {
+    "start": 886.31,
+    "end": 886.32,
+    "text": "easily run them in parallel and from"
+  },
+  {
+    "start": 887.55,
+    "end": 887.56,
+    "text": "anywhere."
+  },
+  {
+    "start": 889.59,
+    "end": 889.6,
+    "text": "So, at this point, the engineers are"
+  },
+  {
+    "start": 892.15,
+    "end": 892.16,
+    "text": "cooking. They got four or five agents"
+  },
+  {
+    "start": 893.99,
+    "end": 894.0,
+    "text": "running at any given time, and that"
+  },
+  {
+    "start": 897.59,
+    "end": 897.6,
+    "text": "number is growing. So, a small group of"
+  },
+  {
+    "start": 899.07,
+    "end": 899.08,
+    "text": "engineers, including many of the AI"
+  },
+  {
+    "start": 901.51,
+    "end": 901.52,
+    "text": "champions, started building our own"
+  },
+  {
+    "start": 904.51,
+    "end": 904.52,
+    "text": "orchestrator to coordinate all of these"
+  },
+  {
+    "start": 907.11,
+    "end": 907.12,
+    "text": "agents, Builder Bot."
+  },
+  {
+    "start": 909.79,
+    "end": 909.8,
+    "text": "And we needed Builder Bot to get us to"
+  },
+  {
+    "start": 913.11,
+    "end": 913.12,
+    "text": "an autonomous engineering org."
+  },
+  {
+    "start": 915.11,
+    "end": 915.12,
+    "text": "We realized that if we're trying to"
+  },
+  {
+    "start": 917.31,
+    "end": 917.32,
+    "text": "build anything close to an autonomous"
+  },
+  {
+    "start": 919.15,
+    "end": 919.16,
+    "text": "engineering org, the agents need to"
+  },
+  {
+    "start": 921.59,
+    "end": 921.6,
+    "text": "understand where everything lives and"
+  },
+  {
+    "start": 924.39,
+    "end": 924.4,
+    "text": "what depends on what. So, we built a"
+  },
+  {
+    "start": 927.19,
+    "end": 927.2,
+    "text": "company world modeled based on the"
+  },
+  {
+    "start": 929.31,
+    "end": 929.32,
+    "text": "entirety of our"
+  },
+  {
+    "start": 931.59,
+    "end": 931.6,
+    "text": "25,000"
+  },
+  {
+    "start": 934.39,
+    "end": 934.4,
+    "text": "repo code base, right? And this was a"
+  },
+  {
+    "start": 936.91,
+    "end": 936.92,
+    "text": "machine-readable view of every single"
+  },
+  {
+    "start": 940.19,
+    "end": 940.2,
+    "text": "service and how they all connect."
+  },
+  {
+    "start": 942.31,
+    "end": 942.32,
+    "text": "And this allowed orchestrators and the"
+  },
+  {
+    "start": 944.67,
+    "end": 944.68,
+    "text": "agents that they delegated to to pull"
+  },
+  {
+    "start": 947.47,
+    "end": 947.48,
+    "text": "context in as needed and understand the"
+  },
+  {
+    "start": 949.99,
+    "end": 950.0,
+    "text": "landscape as they implement."
+  },
+  {
+    "start": 952.11,
+    "end": 952.12,
+    "text": "And this enabled multiple agents to"
+  },
+  {
+    "start": 953.95,
+    "end": 953.96,
+    "text": "explore different parts of the system in"
+  },
+  {
+    "start": 956.27,
+    "end": 956.28,
+    "text": "parallel, each building their own"
+  },
+  {
+    "start": 958.15,
+    "end": 958.16,
+    "text": "understanding and then come back"
+  },
+  {
+    "start": 960.11,
+    "end": 960.12,
+    "text": "together and have the orchestrator put"
+  },
+  {
+    "start": 962.31,
+    "end": 962.32,
+    "text": "all of this together, right? Put in a"
+  },
+  {
+    "start": 964.87,
+    "end": 964.88,
+    "text": "plan that spans across multiple code"
+  },
+  {
+    "start": 967.23,
+    "end": 967.24,
+    "text": "bases, which was especially useful for"
+  },
+  {
+    "start": 969.75,
+    "end": 969.76,
+    "text": "us as we were building offerings that"
+  },
+  {
+    "start": 972.43,
+    "end": 972.44,
+    "text": "spanned multiple products."
+  },
+  {
+    "start": 974.51,
+    "end": 974.52,
+    "text": "Now, with this, we had successfully"
+  },
+  {
+    "start": 976.51,
+    "end": 976.52,
+    "text": "reached stage five, where engineers are"
+  },
+  {
+    "start": 979.27,
+    "end": 979.28,
+    "text": "delegating complete tasks to agents. The"
+  },
+  {
+    "start": 980.95,
+    "end": 980.96,
+    "text": "agents are able to produce shippable"
+  },
+  {
+    "start": 983.75,
+    "end": 983.76,
+    "text": "results without human hand-holding. In"
+  },
+  {
+    "start": 985.71,
+    "end": 985.72,
+    "text": "fact, this wasn't even limited to"
+  },
+  {
+    "start": 989.19,
+    "end": 989.2,
+    "text": "engineers anymore. Anyone at the company"
+  },
+  {
+    "start": 991.99,
+    "end": 992.0,
+    "text": "could act Build-A-Bot in Slack and have"
+  },
+  {
+    "start": 996.11,
+    "end": 996.12,
+    "text": "it fix a bug or implement a new feature."
+  },
+  {
+    "start": 998.71,
+    "end": 998.72,
+    "text": "They didn't even need GitHub."
+  },
+  {
+    "start": 1009.19,
+    "end": 1009.2,
+    "text": "You know, of course, all layoffs are"
+  },
+  {
+    "start": 1012.31,
+    "end": 1012.32,
+    "text": "tough, but this one felt different."
+  },
+  {
+    "start": 1014.43,
+    "end": 1014.44,
+    "text": "I had so many questions."
+  },
+  {
+    "start": 1016.829,
+    "end": 1016.839,
+    "text": "Was this my fault?"
+  },
+  {
+    "start": 1019.23,
+    "end": 1019.24,
+    "text": "Did enabling employees to do the most"
+  },
+  {
+    "start": 1021.55,
+    "end": 1021.56,
+    "text": "incredible work of their careers"
+  },
+  {
+    "start": 1029.67,
+    "end": 1029.68,
+    "text": "Just the day before I had felt so proud."
+  },
+  {
+    "start": 1032.27,
+    "end": 1032.28,
+    "text": "I was in awe of the way we were working,"
+  },
+  {
+    "start": 1034.27,
+    "end": 1034.28,
+    "text": "feeling quite accomplished that I"
+  },
+  {
+    "start": 1036.069,
+    "end": 1036.079,
+    "text": "successfully built an autonomous"
+  },
+  {
+    "start": 1041.67,
+    "end": 1041.68,
+    "text": "But to what end?"
+  },
+  {
+    "start": 1043.35,
+    "end": 1043.36,
+    "text": "I guess I'll leave you all with a few"
+  },
+  {
+    "start": 1045.47,
+    "end": 1045.48,
+    "text": "questions."
+  },
+  {
+    "start": 1047.55,
+    "end": 1047.56,
+    "text": "What are we doing?"
+  },
+  {
+    "start": 1050.35,
+    "end": 1050.36,
+    "text": "Where are we heading?"
+  },
+  {
+    "start": 1052.19,
+    "end": 1052.2,
+    "text": "You know, we sure"
+  }
+]
