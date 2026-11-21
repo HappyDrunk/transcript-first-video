@@ -21,10 +21,16 @@ class OnboardingTests(unittest.TestCase):
         write_job(self.job)
         self.output = self.root / "reading"
 
-    def run_cli(self, script, *args):
+    def run_cli(self, script, *args, ascii_streams=False):
+        env = dict(os.environ, TFV_SCREEN_MODE="off")
+        python_args = ["-X", "utf8"]
+        if ascii_streams:
+            env["PYTHONIOENCODING"] = "ascii"
+            env.pop("PYTHONUTF8", None)
+            python_args = []
         return subprocess.run(
-            [sys.executable, "-X", "utf8", str(ROOT / "scripts" / script), *args],
-            cwd=ROOT, env=dict(os.environ, TFV_SCREEN_MODE="off"), capture_output=True, encoding="utf-8",
+            [sys.executable, *python_args, str(ROOT / "scripts" / script), *args],
+            cwd=ROOT, env=env, capture_output=True, encoding="utf-8",
             timeout=25,
         )
 
@@ -38,9 +44,10 @@ class OnboardingTests(unittest.TestCase):
             f"<!-- tfv-review: {json.dumps(header)} -->\n\n## C04c 告警裁定\n无\n", encoding="utf-8",
         )
 
-    def render(self, *extra_args):
+    def render(self, *extra_args, ascii_streams=False):
         return self.run_cli("render_reading_note.py", "--task-dir", str(self.job),
-                            "--require-review", "--output-dir", str(self.output), *extra_args)
+                            "--require-review", "--output-dir", str(self.output), *extra_args,
+                            ascii_streams=ascii_streams)
 
     def test_generates_filename_and_marks_self_review(self):
         self.receipt("self")
@@ -49,7 +56,31 @@ class OnboardingTests(unittest.TestCase):
         path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
         self.assertTrue(path.is_file(), finished.stdout)
         self.assertIn("未经独立复核", path.read_text(encoding="utf-8"))
-        self.assertIn(str(path), finished.stdout)
+        self.assertIn(str(path.resolve()), finished.stdout)
+
+    def test_prints_generated_path_with_ascii_streams(self):
+        self.receipt("self")
+        result = self.render(ascii_streams=True)
+
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        self.assertTrue(path.is_file(), result.stdout)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(path.resolve()), result.stdout)
+        self.assertNotIn("UnicodeEncodeError", result.stderr)
+
+    def test_prints_render_error_with_ascii_streams(self):
+        self.receipt("self")
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("# Unrelated note\n", encoding="utf-8")
+
+        result = self.render(ascii_streams=True)
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("Reading note not written:", result.stderr)
+        self.assertIn(str(path.resolve()), result.stderr)
+        self.assertNotIn("UnicodeEncodeError", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_independent_review_and_missing_metadata(self):
         note = self.job / "note.md"
