@@ -192,6 +192,29 @@ class ReadingLevelStateTests(JobCase):
     def test_clear_receipt_refuses_level_change_with_matching_new_closing(self):
         self.assert_clear_receipt_refuses_level_change(update_note=True)
 
+    def test_removing_receipt_header_after_stored_batch_blocks_default_render(self):
+        self.set_status(reading_level="plain", reading_level_source="request")
+        inputs = self.bind_review(result="clear")
+        first = self.render(require_review=True)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        batch = self.status()["review"]
+        self.assertEqual(batch["result"], "clear")
+        self.assertEqual(batch["final_inputs"], inputs)
+        previous = self.output.read_bytes()
+
+        self.set_status(reading_level="concise")
+        self.write_note(concise_note())
+        review = self.job / "review.md"
+        header, body = review.read_text(encoding="utf-8").split("\n\n", 1)
+        self.assertTrue(header.startswith("<!-- tfv-review: "), header)
+        review.write_text(body, encoding="utf-8", newline="\n")
+
+        refused = self.render(require_review=False)
+        with self.subTest(check="exit status"):
+            self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
+        with self.subTest(check="previous reading copy"):
+            self.assertEqual(self.output.read_bytes(), previous)
+
     def test_first_review_submission_refuses_level_change(self):
         self.set_status(reading_level="plain", reading_level_source="request")
         self.bind_review()
@@ -259,7 +282,13 @@ class ClosingTests(JobCase):
                 "\n\n本文略去", f"\n\n{PLAIN_H2}\n\n{APPLICATIONS[0]}\n\n本文略去"), "C04a"),
             ("setext h2 after concise closing", concise_note(APPLICATIONS[:1], bullets=False).replace(
                 "\n\n本文略去", "\n\n补充讨论 ⏱ 00:20\n-----\n\n本文略去"), "C04a"),
+            ("bare empty h2 after concise closing", concise_note().replace(
+                "\n\n本文略去", "\n\n##\n\n本文略去"), "C04a"),
+            ("fenced code item", concise_note(
+                ("```text\n给信封标上播种月份。 ⏱ 00:20\n```",), bullets=False), "C04a"),
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
+            ("timestamp hidden in link title", concise_note((
+                '[查看示例](https://example.test "⏱ 00:20")。',)), "R13"),
             ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
             ("hidden link destination only", concise_note((APPLICATIONS[0], "[...](https://example.com) ⏱ 00:20")), "R13"),
             ("html comment only", concise_note((APPLICATIONS[0], "<!-- hidden text --> ⏱ 00:20")), "R13"),
@@ -291,6 +320,30 @@ class ClosingTests(JobCase):
                 note = NOTE.replace(PLAIN_H2, wrapper.format(PLAIN_H2), 1)
                 with self.assertRaises(ValueError):
                     verify_note.check_closing_heading_pair(note.encode("utf-8"), "plain")
+
+    def test_closing_heading_pair_rejects_bare_empty_h2(self):
+        note = concise_note().replace("\n\n本文略去", "\n\n##\n\n本文略去")
+        with self.assertRaises(ValueError):
+            verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
+
+    def test_concise_closing_accepts_timestamp_in_link_label(self):
+        note = concise_note(("[给信封标上播种月份 ⏱ 00:20](https://example.test)。",))
+        result = self.verify_without_status(note)
+        self.assertIs(result["allowed"], True, result["reasons"])
+
+    def test_renderer_preserves_setext_opening_and_body_after_masked_evidence_heading(self):
+        self.set_status(reading_level="concise", reading_level_source="request")
+        note = concise_note().replace(FIRST_H2, "先记住一句话\n------", 1)
+        note = note.replace(f"\n\n{CONCISE_H2}", f" <!-- ## 原文依据 -->\n\n{CONCISE_H2}", 1)
+        self.write_note(note)
+
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        reading = self.output.read_text(encoding="utf-8")
+        self.assertIn(FIRST_H2, reading.splitlines())
+        self.assertIn("收好种子前，先写清月份，把发潮的信封另放。", reading)
+        self.assertIn(CONCISE_H2, reading.splitlines())
+        self.assertIn("给信封标上播种月份，方便按时间查找。", reading)
 
     def test_renderer_requires_matching_level_and_heading(self):
         baseline = self.status()
