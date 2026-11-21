@@ -338,6 +338,10 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-dir", type=Path, required=True, help="Job directory containing the evidence note")
     destination = parser.add_mutually_exclusive_group(required=True)

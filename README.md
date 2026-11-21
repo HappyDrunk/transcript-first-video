@@ -167,6 +167,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 ### 怎么跑
 
 ```bash
+cd ~/.agents/skills/transcript-first-video
 python3 -m pip install --group base
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 # python3 scripts/x_host.py "https://x.com/USER/status/STATUS_ID" --out artifacts
