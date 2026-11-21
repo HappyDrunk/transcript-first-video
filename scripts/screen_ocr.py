@@ -394,12 +394,25 @@ def _measure_download_seconds(
         opener = build_opener(ProxyHandler({"https": proxy, "http": proxy} if proxy else {}))
         request = Request(url, headers=headers)
         request.add_header("Range", "bytes=0-1048575")
-        with opener.open(request, timeout=min(6.0, timeout)) as response:
+        wall_limit = min(6.0, timeout)
+        deadline = time.monotonic() + wall_limit
+        with opener.open(request, timeout=wall_limit) as response:
             started = time.monotonic()
-            chunk = response.read(1048576)
+            total = 0
+            while total < 1048576:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    break
+                sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+                if sock is not None and hasattr(sock, "settimeout"):
+                    sock.settimeout(left)
+                chunk = response.read(min(65536, 1048576 - total))
+                if not chunk:
+                    break
+                total += len(chunk)
             elapsed = time.monotonic() - started
-        if len(chunk) >= 65536 and elapsed > 0:
-            return float(filesize) / (len(chunk) / elapsed)
+        if total >= 65536 and elapsed > 0:
+            return float(filesize) / (total / elapsed)
     except Exception:
         pass
     return 0.0
@@ -468,6 +481,7 @@ def _calibrate_full_scan(
     return {
         "intervals": intervals,
         "download_seconds": round(download_seconds, 3),
+        "download_measured": download_seconds > 0,
         "extract_seconds_per_interval": round(decode_seconds, 6),
         "extract_seconds": round(extract_seconds, 3),
         "group_seconds_per_frame": round(group_per_frame, 6),
@@ -476,6 +490,22 @@ def _calibrate_full_scan(
         "ocr_seconds": round(ocr_seconds, 3),
         "estimated_total_seconds": round(download_seconds + extract_seconds + group_seconds + ocr_seconds, 3),
     }
+
+
+def _is_direct_https_format(fmt: dict) -> bool:
+    return (
+        isinstance(fmt, dict)
+        and isinstance(fmt.get("url"), str)
+        and fmt["url"].startswith("https://")
+        and fmt.get("protocol") in (None, "https")
+    )
+
+
+def _is_sample_format(fmt: dict) -> bool:
+    if not _is_direct_https_format(fmt) or fmt.get("ext") not in (None, "mp4"):
+        return False
+    height = fmt.get("height")
+    return isinstance(height, (int, float)) and not isinstance(height, bool) and 0 < height <= 480
 
 
 def sample_slides(
@@ -502,18 +532,24 @@ def sample_slides(
         ], "yt-dlp sample stream")
         info = json.loads(response.stdout)
         requested_downloads = info.get("requested_downloads")
-        full_fmt = None
         if isinstance(requested_downloads, list) and requested_downloads:
-            sample_fmt = requested_downloads[0]
-            if len(requested_downloads) >= 2 and isinstance(requested_downloads[1], dict):
-                full_fmt = requested_downloads[1]
+            sample_fmt = next((fmt for fmt in requested_downloads if _is_sample_format(fmt)), None)
+            if sample_fmt is None:
+                raise ScreenError("sample stream has no usable <=480p HTTPS MP4 video")
+            full_fmt = next(
+                (fmt for fmt in requested_downloads if fmt is not sample_fmt and _is_direct_https_format(fmt)),
+                None,
+            )
         else:
             sample_fmt = info
+            full_fmt = None
+        if not _is_direct_https_format(sample_fmt):
+            raise ScreenError("sample stream has no usable HTTPS video or duration")
         media = sample_fmt["url"]
         duration = float(info.get("duration") or sample_fmt.get("duration"))
         height = int(sample_fmt.get("height") or info.get("height"))
         sample_headers = sample_fmt.get("http_headers") or info.get("http_headers") or {}
-        if not media.startswith("https://") or not math.isfinite(duration) or duration <= 0 or height <= 0:
+        if not math.isfinite(duration) or duration <= 0 or height <= 0:
             raise ScreenError("sample stream has no usable HTTPS video or duration")
         status["duration"] = duration
         headers = "".join(f"{name}: {value}\r\n" for name, value in sample_headers.items())
@@ -548,13 +584,7 @@ def sample_slides(
                     status["result"] = "slides_detected"
                     hit_at = at
                     break
-            full_url = full_fmt.get("url") if full_fmt else None
-            if (
-                status["result"] == "slides_detected"
-                and isinstance(full_url, str)
-                and full_url.startswith("https://")
-                and ocr is not None
-            ):
+            if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:
                 try:
                     status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
                 except Exception:

@@ -1017,6 +1017,22 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 and calibrated > 0
             ):
                 estimated = float(calibrated)
+                if duration is not None:
+                    intervals = calibration.get("intervals")
+                    download_seconds = calibration.get("download_seconds")
+                    extract_per_interval = calibration.get("extract_seconds_per_interval")
+                    group_per_frame = calibration.get("group_seconds_per_frame")
+                    read_per_frame = calibration.get("read_frame_seconds")
+                    effective_intervals = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
+                    if all(
+                        isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(value)
+                        and value >= 0
+                        for value in (intervals, download_seconds, extract_per_interval, group_per_frame, read_per_frame)
+                    ) and effective_intervals != intervals:
+                        seconds_per_interval = float(extract_per_interval) + float(group_per_frame) + float(read_per_frame)
+                        estimated = float(download_seconds) + seconds_per_interval * effective_intervals
             elif (
                 duration is not None
                 and isinstance(latency, (int, float))
@@ -1040,7 +1056,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 if math.isfinite(estimated):
                     screen["estimated_seconds"] = round(estimated, 3)
                 reason = (
-                    f"Estimated full-scan OCR time ({estimated:.1f}s) "
+                    f"Estimated full-scan screen time ({estimated:.1f}s) "
                     f"exceeds safe full-scan budget ({safe_budget:.1f}s)."
                 )
                 fallback = _screen_fallback(screen, "timeout", reason)
