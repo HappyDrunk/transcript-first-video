@@ -540,6 +540,18 @@ def _is_full_scan_format(fmt: dict, sample_height: float | int) -> bool:
     )
 
 
+def _sanitize_calibration_reason(text: str, kind: str) -> str:
+    cleaned = re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]", "", text)
+    cleaned = re.sub(
+        r"(?i)\b((?:set-)?cookie|(?:proxy-)?authorization|x-api-key)\s*[:=][^\r\n]*",
+        r"\1: <redacted>",
+        cleaned,
+    )
+    cleaned = re.sub(r"\w+://\S+", "<URL>", cleaned)
+    cleaned = re.sub(r"[\x00-\x1f\x7f-\x9f]+", " ", cleaned)
+    return " ".join(cleaned.split()) or f"calibration {kind}"
+
+
 def sample_slides(
     staged: Path, source: str, download_command: list[str],
     download_options: Callable[[], list[str]],
@@ -626,8 +638,7 @@ def sample_slides(
                 except Exception as exc:
                     kind = failure_result(exc)
                     status["calibration_status"] = "timeout_fallback" if kind == "timeout" else "fallback"
-                    reason = re.sub(r"\w+://\S+", "<URL>", str(exc))
-                    status["calibration_reason"] = " ".join(reason.split()) or f"calibration {kind}"
+                    status["calibration_reason"] = _sanitize_calibration_reason(str(exc), kind)
     except Exception as exc:
         status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
     if scan.frame_ocr_times:

@@ -987,8 +987,10 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
         if request == "auto":
             sample = screen_ocr.sample_slides(staged, source, command, _screen_download_options)
             sample = dict(sample)
-            if sample.get("calibration_reason"):
-                sample["calibration_reason"] = redact(str(sample["calibration_reason"]))
+            if "calibration_reason" in sample:
+                sample["calibration_reason"] = redact(
+                    screen_ocr._sanitize_calibration_reason(str(sample["calibration_reason"]), "fallback")
+                )
             screen["sample"] = sample
             if sample["result"] != "slides_detected":
                 return _screen_fallback(screen, sample["result"], sample.get("reason", ""))
@@ -1036,30 +1038,31 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                     ) and effective_intervals != intervals:
                         seconds_per_interval = float(extract_per_interval) + float(group_per_frame) + float(read_per_frame)
                         estimated = float(download_seconds) + seconds_per_interval * effective_intervals
-            elif (
-                duration is not None
-                and isinstance(latency, (int, float))
-                and not isinstance(latency, bool)
-                and math.isfinite(latency)
-                and latency > 0
-            ):
+            else:
                 if sample.get("calibration_status") == "calibrated":
                     sample["calibration_status"] = "fallback"
                     sample.setdefault("calibration_reason", "calibration estimate unavailable")
-                frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
-                sample_extract = sample.get("mean_sample_extract_seconds")
                 if (
-                    not isinstance(sample_extract, (int, float))
-                    or isinstance(sample_extract, bool)
-                    or not math.isfinite(sample_extract)
-                    or sample_extract < 0
+                    duration is not None
+                    and isinstance(latency, (int, float))
+                    and not isinstance(latency, bool)
+                    and math.isfinite(latency)
+                    and latency > 0
                 ):
-                    sample_extract = 0.0
-                estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
-            if estimated is not None and math.isfinite(estimated):
-                sample["estimated_seconds"] = round(estimated, 3)
+                    frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
+                    sample_extract = sample.get("mean_sample_extract_seconds")
+                    if (
+                        not isinstance(sample_extract, (int, float))
+                        or isinstance(sample_extract, bool)
+                        or not math.isfinite(sample_extract)
+                        or sample_extract < 0
+                    ):
+                        sample_extract = 0.0
+                    estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
+            sample["estimated_seconds"] = round(estimated, 3) if estimated is not None and math.isfinite(estimated) else None
             if sample.get("calibration_status") in ("timeout_fallback", "fallback"):
-                est_text = f"{sample['estimated_seconds']:.1f}s" if "estimated_seconds" in sample else "unknown"
+                est_value = sample["estimated_seconds"]
+                est_text = f"{est_value:.1f}s" if est_value is not None else "unknown"
                 log(f"screen OCR calibration {sample['calibration_status']} (estimated {est_text}): {sample.get('calibration_reason', '')}")
             if estimated is not None and estimated > safe_budget:
                 screen["timeout_seconds"] = budget
