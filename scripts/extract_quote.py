@@ -123,8 +123,7 @@ def extract_screen(job: Path, start: int, end: int) -> tuple[str, list[str]]:
         if pending_blank:
             output.append("")
             pending_blank = False
-        stamp_token = line.strip().split("]", 1)[0] + "]"
-        output.append(f"> {stamp_token}{SCREEN_TAG} {text}")
+        output.append(f"> {line.strip()}")
 
     warnings = [f"跳过 {skipped_uncertain} 行存疑画面（不能当依据）"] if skipped_uncertain else []
     if not output:
