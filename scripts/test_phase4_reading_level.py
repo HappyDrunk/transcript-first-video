@@ -1114,5 +1114,13 @@ class ExampleTests(unittest.TestCase):
         self.assertLessEqual(len(excerpt.encode("utf-8")), 5120)
 
 
+class LoadPrefsTests(unittest.TestCase):
+    def test_load_prefs_returns_empty_with_cleared_environment(self):
+        import user_prefs
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(user_prefs.load_prefs(), {})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
