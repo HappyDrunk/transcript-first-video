@@ -287,6 +287,41 @@ class ClosingTests(JobCase):
                         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                         self.assertFalse(self.output.exists())
 
+    def test_mismatched_closing_refuses_render_without_locking_review_batch(self):
+        self.reopen_level("plain")
+        self.write_note(concise_note())
+        self.bind_review("clear")
+        self.assertIsNone(self.status().get("review"))
+
+        result = self.render(require_review=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.output.exists())
+        self.assertIsNone(self.status().get("review"))
+
+    def test_mismatched_closing_with_changes_receipt_refuses_verify_and_allows_recovery(self):
+        self.reopen_level("plain")
+        self.write_note(concise_note())
+        self.bind_review("changes")
+        self.assertIsNone(self.status().get("review"))
+
+        result = cli("verify_note.py", "--job", self.job, "--with-coverage")
+        with self.subTest(stage="verify refuses mismatched closing"):
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        with self.subTest(stage="verify preserves review batch"):
+            self.assertIsNone(self.status().get("review"))
+
+        with self.subTest(stage="render mismatched closing"):
+            result = self.render(require_review=True)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertFalse(self.output.exists())
+            self.assertIsNone(self.status().get("review"))
+
+        with self.subTest(stage="render corrected closing"):
+            self.write_note(NOTE)
+            result = self.render(require_review=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn(PLAIN_H2, self.output.read_text(encoding="utf-8").splitlines())
+
     def test_scaffold_uses_matching_heading(self):
         for level, expected, other in (
             (None, PLAIN_H2, CONCISE_H2),
@@ -391,6 +426,59 @@ Label one envelope with its planting month. ⏱ 00:20
 
 
 class ReadingOwnershipTests(JobCase):
+    def test_cli_language_flag_and_low_cjk_bilingual_note(self):
+        self.reopen_level("plain")
+        prose = (
+            f"{FIRST_H2}\n\n"
+            "写清月份。\n"
+            "Write the planting month on the outside of each seed envelope before putting it away.\n\n"
+            "## 这场在谈什么、谁\n\n"
+            "整理种子。\n"
+            "The speaker explains how to organize seed envelopes in a storage drawer. "
+            "The talk starts with what to write on the outside of a packet, then explains "
+            "why damp envelopes go to a dry shelf before sorting and why envelopes with "
+            "faded labels go on a separate tray. It ends with how to leave space between "
+            "the dividers so that a packet can be removed without disturbing the row behind it.\n\n"
+            "## 主线论点\n\n"
+            "Write the planting month on the outside of the envelope. ⏱ 00:20\n\n"
+            "Open the storage drawer at 08:30 and move the damp envelopes to a dry shelf "
+            "before sorting. ⏱ 16:10\n\n"
+            "Put envelopes with faded labels on a separate tray so nobody has to guess "
+            "what they contain. ⏱ 34:25\n\n"
+            "Leave enough room between the dividers to pull out a packet without disturbing "
+            "the row behind it. ⏱ 01:00:07\n\n"
+            "## 可复用做法\n\n"
+            "Move damp envelopes to a dry shelf before sorting the rest. ⏱ 16:10\n\n"
+            "## 翻车或别用\n\n"
+            "Keep faded labels separate so nobody needs to guess what they contain. ⏱ 34:25\n\n"
+            f"{PLAIN_H2}\n\n"
+            "Write the planting month on the outside of a seed envelope before storing it. ⏱ 00:20"
+        )
+        body_text = re.sub(r"(?m)^## .*", "", prose)
+        cjk = len(re.findall(r"[\u4e00-\u9fff]", body_text))
+        latin = len(re.findall(r"[A-Za-z]", body_text))
+        self.assertGreaterEqual(cjk, 4)
+        self.assertGreater(latin, 20 * cjk)
+        self.assertGreater(len(re.findall(r"[A-Za-z][A-Za-z'’-]*", body_text)), 20 * cjk)
+        _, evidence = NOTE.split("本文略去｜", 1)
+        frontmatter = FRONTMATTER.replace("type: 访谈", "type: 讲座")
+        self.write_note(f"{frontmatter}\n{prose}\n\n本文略去｜{evidence}")
+
+        for language, expected in (
+            (None, PLAIN_ZH),
+            ("中英文对照", PLAIN_ZH),
+            ("英文", "Reading level: Plain — terms and background are explained."),
+        ):
+            with self.subTest(language=language):
+                self.output.unlink(missing_ok=True)
+                options = ("--language", language) if language else ()
+                result = self.render(*options)
+                self.assertNotIn("language", self.status())
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                paragraphs = header_paragraphs(self.output.read_text(encoding="utf-8"))
+                self.assertEqual(len(paragraphs), 4, paragraphs)
+                self.assertEqual(paragraphs[3], expected)
+
     def assert_automatic_overwrite(self, *options):
         self.set_status(reading_level="plain", reading_level_source="request")
         self.bind_review()
@@ -563,6 +651,27 @@ class PreferenceTests(unittest.TestCase):
         for obsolete in ("language.txt", "x_host.py"):
             self.assertNotIn(obsolete, preference[1])
             self.assertNotIn(obsolete, step_one)
+
+    def test_skill_scopes_reading_preferences_and_concise_closing_to_youtube(self):
+        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        preference = skill.split("\n## Language and reading preference\n", 1)[1].split("\n## ", 1)[0]
+        run = skill.split("\n## Run\n", 1)[1].split("\n## ", 1)[0]
+        step_one = run.split("\n1. ", 1)[1].split("\n2. ", 1)[0]
+        step_four = run.split("\n4. ", 1)[1].split("\n5. ", 1)[0]
+        with self.subTest(section="preferences and Run step 1"):
+            for obsolete in ("language.txt", "x_host.py"):
+                self.assertNotIn(obsolete, preference)
+                self.assertNotIn(obsolete, step_one)
+            self.assertIn("YouTube", preference)
+        with self.subTest(section="Run step 4"):
+            self.assertIn(CONCISE_H2, step_four)
+            self.assertRegex(
+                step_four,
+                rf"without `?reading_level`?[^.\n]*{re.escape(PLAIN_H2)}",
+            )
+        with self.subTest(section="README"):
+            readme = (ROOT / "README.md").read_text(encoding="utf-8")
+            self.assertNotIn("language.txt", readme)
 
     def test_show_pref_without_job_is_read_only(self):
         absent = cli("youtube_host.py", "--show-pref", cwd=self.root, env=self.env)
