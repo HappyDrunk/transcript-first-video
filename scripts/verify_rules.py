@@ -299,7 +299,7 @@ _FRONTMATTER = re.compile(r"\A---\n.*?\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$", re.MULTILINE)
 _EMPTY_ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+#+)?[ \t]*$")
 _SETEXT_UNDERLINE = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_HTML_COMMENT = re.compile(r"<!--(?:.*?-->|.*)", re.DOTALL)
 _HEADING_MASK = re.compile(rf"{_FENCED_CODE.pattern}|{_HTML_COMMENT.pattern}", _FENCED_CODE.flags)
 _LIST_ITEM = re.compile(r"^\s*(?:[-+*][ \t]+(?:\d+[.)][ \t]+)?|\d+[.)][ \t]+)")
 _INLINE_LIST_ITEM = re.compile(r"([：:；;])[ \t]*\d+[.)][ \t]+")
@@ -406,7 +406,7 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
             headings.append((1 if underline[1][0] == "=" else 2, title, paragraph_start, end))
         elif (stripped and not underline and not _LIST_ITEM.match(line) and not stripped.startswith(">")
               and not re.fullmatch(r"#{1,6}|[-+*]|(?:[-*_][ \t]*){3,}", stripped)
-              and (paragraph or not line.startswith(("    ", "\t")))):
+              and (paragraph or not line.expandtabs(4).startswith("    "))):
             if not paragraph:
                 paragraph_start = start
             paragraph.append(stripped)
@@ -1766,12 +1766,23 @@ def _strip_markdown_links(text: str) -> str:
     angle_destination = re.compile(r"<(?:\\[^\r\n]|[^\\>\r\n])*>")
     title = re.compile(r'''"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\((?:\\[\s\S]|[^()\\])*\)''')
     whitespace = re.compile(r"\s*")
+    label_ends: dict[int, int] = {}
+    openings: list[int] = []
+    for token in re.finditer(r"\\[\s\S]|[\[\]]", text):
+        if token[0] == "[":
+            openings.append(token.start())
+        elif token[0] == "]" and openings:
+            label_ends[openings.pop()] = token.start()
+
     parts: list[str] = []
     start = 0
-    for match in re.finditer(r"!?\[([^\]]*)\]\(", text):
-        if match.start() < start:
+    for match in re.finditer(r"\\[\s\S]|!?\[", text):
+        if match.start() < start or match[0].startswith("\\"):
             continue
-        end = whitespace.match(text, match.end()).end()
+        label_end = label_ends.get(match.end() - 1)
+        if label_end is None or not text.startswith("(", label_end + 1):
+            continue
+        end = whitespace.match(text, label_end + 2).end()
         if text.startswith("<", end):
             destination = angle_destination.match(text, end)
             if destination is None:
@@ -1799,7 +1810,8 @@ def _strip_markdown_links(text: str) -> str:
             if quoted_title:
                 after_space = whitespace.match(text, quoted_title.end()).end()
         if text.startswith(")", after_space):
-            parts.extend((text[start : match.start()], match[1]))
+            label = text[match.end() : label_end]
+            parts.extend((text[start : match.start()], _strip_markdown_links(label) if "[" in label else label))
             start = after_space + 1
     parts.append(text[start:])
     return "".join(parts)
