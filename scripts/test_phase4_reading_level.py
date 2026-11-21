@@ -257,10 +257,14 @@ class ClosingTests(JobCase):
                 "\n\n本文略去", "\n\n褪色标签的信封要单放。 ⏱ 34:25\n\n本文略去"), "C04a"),
             ("both headings", concise_note().replace(
                 "\n\n本文略去", f"\n\n{PLAIN_H2}\n\n{APPLICATIONS[0]}\n\n本文略去"), "C04a"),
+            ("setext h2 after concise closing", concise_note(APPLICATIONS[:1], bullets=False).replace(
+                "\n\n本文略去", "\n\n补充讨论 ⏱ 00:20\n-----\n\n本文略去"), "C04a"),
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
             ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
             ("hidden link destination only", concise_note((APPLICATIONS[0], "[...](https://example.com) ⏱ 00:20")), "R13"),
             ("html comment only", concise_note((APPLICATIONS[0], "<!-- hidden text --> ⏱ 00:20")), "R13"),
+            ("multiline html comment only", concise_note((APPLICATIONS[0],
+                "<!-- line one\n\nline two --> ⏱ 00:20")), "R13"),
             ("three sentences", concise_note((APPLICATIONS[0],
                 "写上播种月份。把信封收好。查看标签。 ⏱ 00:20")), "R13"),
         )
@@ -269,6 +273,24 @@ class ClosingTests(JobCase):
                 result = self.verify_without_status(note)
                 self.assertIs(result["allowed"], False, result)
                 self.assertTrue(any(line.startswith(f"{rule} FAIL:") for line in result["reasons"]), result)
+
+    def test_concise_closing_allows_balanced_parentheses_in_link_destination(self):
+        result = self.verify_without_status(
+            concise_note(("[查看示例](https://example.test/a(b)c.d.e)。 ⏱ 00:20",))
+        )
+        self.assertIs(result["allowed"], True, result["reasons"])
+
+    def test_closing_heading_pair_ignores_comments_and_fenced_code(self):
+        for wrapper in ("<!-- {} -->", "<!--\n{}\n-->", "```markdown\n{}\n```"):
+            with self.subTest(wrapper=wrapper, closing="present"):
+                note = concise_note().replace(
+                    "\n\n本文略去", f"\n\n{wrapper.format(PLAIN_H2)}\n\n本文略去", 1
+                )
+                verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
+            with self.subTest(wrapper=wrapper, closing="missing"):
+                note = NOTE.replace(PLAIN_H2, wrapper.format(PLAIN_H2), 1)
+                with self.assertRaises(ValueError):
+                    verify_note.check_closing_heading_pair(note.encode("utf-8"), "plain")
 
     def test_renderer_requires_matching_level_and_heading(self):
         baseline = self.status()
@@ -344,6 +366,31 @@ class ClosingTests(JobCase):
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         with self.subTest(stage="render review status"):
             self.assertIsNone(self.status().get("review"))
+
+    def test_setext_h2_after_concise_closing_refuses_without_consuming_changes_batch(self):
+        note = concise_note(APPLICATIONS[:1], bullets=False)
+        malformed = note.replace(
+            "\n\n本文略去", "\n\n补充讨论 ⏱ 00:20\n-----\n\n本文略去", 1
+        )
+        commands = (
+            ("verify", lambda: cli("verify_note.py", "--job", self.job, "--with-coverage")),
+            ("render", lambda: self.render(require_review=True)),
+        )
+        for name, run in commands:
+            with self.subTest(command=name):
+                self.job = self.root / name
+                write_job(self.job)
+                self.reopen_level("concise")
+                self.write_note(note)
+                self.bind_review("changes")
+                self.assertIsNone(self.status().get("review"))
+                self.write_note(malformed)
+
+                result = run()
+                with self.subTest(check="exit"):
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                with self.subTest(check="review status"):
+                    self.assertIsNone(self.status().get("review"))
 
     def test_scaffold_uses_matching_heading(self):
         for level, expected, other in (

@@ -382,7 +382,7 @@ class DeliveryContractTests(unittest.TestCase):
                 self.assertIn("C04a", _c04_reasons(result), result["reasons"])
 
     def test_delivery_format_examples_pass_c04(self) -> None:
-        reference = (ROOT / "references/delivery-format.md").read_bytes().decode("utf-8")
+        reference = (ROOT / "references/delivery-format.md").read_text(encoding="utf-8")
         examples = re.findall(
             r"^## 合成示例([一二三四])：(.*?)(?=^## (?:合成示例|真实精炼证据版节选)|\Z)",
             reference, re.MULTILINE | re.DOTALL,
@@ -397,12 +397,12 @@ class DeliveryContractTests(unittest.TestCase):
                 )
                 self.assertEqual(len(blocks), 2, "expected the frozen single-note and selection blocks")
                 article, selection = blocks
-                self.assertEqual((job / "note.md").read_bytes(), article.encode("utf-8"))
-                self.assertEqual((job / "selection.md").read_bytes(), selection.encode("utf-8"))
+                self.assertEqual((job / "note.md").read_text(encoding="utf-8"), article)
+                self.assertEqual((job / "selection.md").read_text(encoding="utf-8"), selection)
                 evidence = re.findall(r"^> (\[\d\d:\d\d\].*)$", article, re.MULTILINE)
                 omitted_cues = re.findall(r"`(\[\d\d:\d\d\] [^`]+)`", example)
                 cues = "\n".join(sorted(set(evidence + omitted_cues))) + "\n"
-                self.assertEqual((job / "transcript.txt").read_bytes(), cues.encode("utf-8"))
+                self.assertEqual((job / "transcript.txt").read_text(encoding="utf-8"), cues)
 
         for name in ("cold-dough", "clinic-reminders", "cold-chain", "kitchen-stock"):
             with self.subTest(compatibility_fixture=name):
