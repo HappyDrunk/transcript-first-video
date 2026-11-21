@@ -17,7 +17,3 @@ Mechanical rules verify traceability; meaning is checked during review.
 | C04c | Normalized numbers/names mismatch evidence; warnings need review. | [正文与检查](delivery-format.md#正文原文依据和检查) / [告警裁定](review-guide.md#c04c-告警裁定) |
 | C04d | Term, analogy, or correction blocks/spelling conflict. | [三种标记块](delivery-format.md#三种标记块) |
 | S01 | Selection has range, threshold, omission, screen, or slide errors. | [取舍](delivery-format.md#动笔前通读和取舍) |
-
-`S01 WARN` appears when omitted intervals exceed 50% of runtime.
-A length WARN appears when the Chinese body exceeds 1.2 Han characters per English transcript word.
-Both are non-blocking; the shared ordinary repair budget is in [生成阅读版与交付](delivery-format.md#生成阅读版与交付).
