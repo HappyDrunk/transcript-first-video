@@ -215,6 +215,18 @@ class ReadingLevelStateTests(JobCase):
         with self.subTest(check="previous reading copy"):
             self.assertEqual(self.output.read_bytes(), previous)
 
+    def test_malformed_stored_review_blocks_default_render_when_receipt_removed(self):
+        self.set_status(reading_level="plain", reading_level_source="request")
+        self.bind_review()
+        self.set_status(review="corrupted")
+        (self.job / "review.md").unlink()
+
+        refused = self.render(require_review=False)
+        with self.subTest(check="exit status"):
+            self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
+        with self.subTest(check="no reading copy"):
+            self.assertFalse(self.output.exists())
+
     def test_first_review_submission_refuses_level_change(self):
         self.set_status(reading_level="plain", reading_level_source="request")
         self.bind_review()
@@ -286,9 +298,13 @@ class ClosingTests(JobCase):
                 "\n\n本文略去", "\n\n##\n\n本文略去"), "C04a"),
             ("fenced code item", concise_note(
                 ("```text\n给信封标上播种月份。 ⏱ 00:20\n```",), bullets=False), "C04a"),
+            ("nested fenced code in list item", concise_note((
+                "先看下面示例。\n    ```text\n    给信封标上播种月份。 ⏱ 00:20\n    ```",)), "C04a"),
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
             ("timestamp hidden in link title", concise_note((
                 '[查看示例](https://example.test "⏱ 00:20")。',)), "R13"),
+            ("timestamp after closing paren in quoted link title", concise_note((
+                '[查看示例](https://example.test "note) ⏱ 00:20")。',)), "R13"),
             ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
             ("hidden link destination only", concise_note((APPLICATIONS[0], "[...](https://example.com) ⏱ 00:20")), "R13"),
             ("html comment only", concise_note((APPLICATIONS[0], "<!-- hidden text --> ⏱ 00:20")), "R13"),
@@ -320,6 +336,17 @@ class ClosingTests(JobCase):
                 note = NOTE.replace(PLAIN_H2, wrapper.format(PLAIN_H2), 1)
                 with self.assertRaises(ValueError):
                     verify_note.check_closing_heading_pair(note.encode("utf-8"), "plain")
+
+    def test_closing_heading_pair_rejects_multiline_setext_and_indented_code_break(self):
+        cases = (
+            ("multiline Setext", "额外前提\n可以怎么用、可以拿去讨论什么\n-----"),
+            ("indented code before thematic break", "    可以怎么用、可以拿去讨论什么\n-----"),
+        )
+        for case, replacement in cases:
+            with self.subTest(case=case):
+                note = concise_note().replace(CONCISE_H2, replacement, 1)
+                with self.assertRaises(ValueError):
+                    verify_note.check_closing_heading_pair(note.encode("utf-8"), "concise")
 
     def test_closing_heading_pair_rejects_bare_empty_h2(self):
         note = concise_note().replace("\n\n本文略去", "\n\n##\n\n本文略去")
