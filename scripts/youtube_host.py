@@ -16,6 +16,7 @@ Exit 1 usage.
 from __future__ import annotations
 
 import argparse
+import http.client
 import ipaddress
 import json
 import math
@@ -439,6 +440,7 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
     data = bytearray()
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            read_chunk = response.read1 if isinstance(response, http.client.HTTPResponse) else response.read
             raw = getattr(getattr(response, "fp", None), "raw", None)
             while True:
                 remaining = deadline - time.monotonic()
@@ -449,7 +451,7 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
                         raw._sock.settimeout(remaining)
                     except (AttributeError, OSError):
                         pass
-                chunk = response.read(min(16_384, limit + 1 - len(data)))
+                chunk = read_chunk(min(16_384, limit + 1 - len(data)))
                 data.extend(chunk)
                 if len(data) > limit:
                     raise HostError("caption response too large")
@@ -459,7 +461,9 @@ def http_get(url: str, *, limit: int, timeout: int | float, accept: str) -> byte
                     break
     except urllib.error.HTTPError as exc:
         raise HostError(f"HTTP {exc.code} for caption request") from exc
-    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+    except http.client.InvalidURL as exc:
+        raise HostError("caption request failed: invalid URL") from exc
+    except (urllib.error.URLError, http.client.HTTPException, OSError, TimeoutError) as exc:
         raise HostError(f"caption request failed: {redact(str(exc))}") from exc
     return bytes(data)
 
@@ -481,6 +485,15 @@ def _valid_mirror_base(base: str, *, require_https: bool = False) -> str | None:
         host = parsed.hostname
         schemes = {"https"} if require_https else {"http", "https"}
         if parsed.scheme not in schemes or parsed.query or parsed.fragment or not host:
+            return None
+        if require_https and (parsed.username is not None or parsed.password is not None or "@" in parsed.netloc):
+            return None
+        port = parsed.port
+        hostport = parsed.netloc.rsplit("@", 1)[-1]
+        expected = f"[{host}]" if ":" in host else host
+        if port is not None:
+            expected = f"{expected}:{port}"
+        if hostport.casefold() != expected.casefold():
             return None
         try:
             ipaddress.ip_address(host)
