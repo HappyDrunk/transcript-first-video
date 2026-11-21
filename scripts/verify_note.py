@@ -27,6 +27,8 @@ except ModuleNotFoundError as exc:
 import c04c_review  # noqa: E402
 
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
+SCREEN_PENDING = "screen_pending"
+SCREEN_PENDING_MESSAGE = "Screen acquisition is pending; wait for the host or rerun acquisition if it stopped."
 
 
 def citation_forms(transcript: Path) -> set[str]:
@@ -698,6 +700,8 @@ def check_job_submission(
     """Check and record one submission while the caller holds the job lock."""
     review = reviewed_inputs is not None
     status = read_job_status(job)
+    if status.get("status") == SCREEN_PENDING:
+        return {"allowed": False, "reasons": [SCREEN_PENDING_MESSAGE]}
     if repair_lock(status, review=review):
         return stopped_result(job, status)
 

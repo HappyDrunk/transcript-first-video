@@ -211,10 +211,14 @@ def omission_issue(units: list[SelectionUnit], omission: str | None) -> list[str
 
 
 def check_structure(job: Path) -> dict:
+    status = verify_note.read_job_status(job)
+    if status.get("status") == verify_note.SCREEN_PENDING:
+        return {"allowed": False, "scope": "structure-only", "selection_endpoint": None,
+                "reasons": [verify_note.SCREEN_PENDING_MESSAGE]}
     transcript = job / "transcript.txt"
     raw = _read(transcript) if transcript.is_file() else ""
     segments = rules.transcript_segments(raw, job / "segments.json")
-    endpoint = rules.selection_endpoint(segments, verify_note.read_job_status(job).get("duration_seconds"))
+    endpoint = rules.selection_endpoint(segments, status.get("duration_seconds"))
     units, _, _, selection_issues = read_selection(job)
     if not selection_issues:
         selection_issues = selection_boundaries(units, endpoint)
@@ -394,6 +398,8 @@ def check_job(job: Path, delivery: Path | None = None) -> dict:
 
 def _check_and_record(job: Path, delivery: Path | None) -> dict:
     status = verify_note.read_job_status(job)
+    if status.get("status") == verify_note.SCREEN_PENDING:
+        return {"ok": False, "reasons": [verify_note.SCREEN_PENDING_MESSAGE], "warnings": [], "not_checked": []}
     if verify_note.repair_lock(status):
         return {"ok": False, "warnings": [], "not_checked": [], **verify_note.stopped_result(job, status)}
     try:

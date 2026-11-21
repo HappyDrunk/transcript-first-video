@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -922,14 +923,6 @@ def finalize_job(
                            if selection_end is not None else None),
         )
         staged_scaffold.write_text(scaffold_body, encoding="utf-8")
-        mode = verify_rules.screen_mode()
-        if screen_download is not None and mode != "off":
-            screen = screen_ocr.extract(
-                staged, mode, source, screen_download, media_duration, _screen_download_options,
-            )
-            if "reason" in screen:
-                screen["reason"] = redact(screen["reason"])
-            base["screen_ocr"] = screen
         base.update(
             {
                 "status": "transcript_ready",
@@ -954,8 +947,155 @@ def finalize_job(
                 "exit_code": 0,
             }
         )
-        _publish_transcript(job_dir, staged, base)
-    return base
+        if screen_download is None:
+            _publish_transcript(job_dir, staged, base)
+            return base
+        request = verify_rules.screen_mode() if "TFV_SCREEN_MODE" in os.environ else "auto"
+        if request == "off":
+            base["screen_ocr"] = {"requested_mode": "off", "mode": "off", "state": "disabled", "result": "disabled"}
+            _publish_transcript(job_dir, staged, base)
+            return base
+        pending = {
+            **base, "status": verify_note.SCREEN_PENDING, "next_step": "wait-for-screen",
+            "reason": verify_note.SCREEN_PENDING_MESSAGE,
+            "screen_ocr": {"requested_mode": request, "mode": "off", "state": "pending", "attempt": staged.name},
+        }
+        _publish_transcript(job_dir, staged, pending)
+        base.update({key: pending[key] for key in ("note", "delivery", "note_stale")})
+        base["screen_ocr"] = _screen_result(staged, request, source, screen_download, media_duration)
+        return _publish_screen(job_dir, staged, base)
+
+
+SLOW_MACHINE_HINT = "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
+
+
+def _screen_fallback(screen: dict, result: str, reason: str = "") -> dict:
+    fallback = {**screen, "state": "fallback", "mode": "off", "result": result}
+    if reason:
+        fallback["reason"] = redact(re.sub(r"\w+://\S+", "<URL>", reason))
+    if result == "not_found":
+        fallback["hint"] = "No slides found. If the video has slides, rerun with TFV_SCREEN_MODE=slides."
+    elif result == "missing_dependencies":
+        fallback["hint"] = "Using subtitles only. For screen OCR, install rapidocr and onnxruntime in this Python and put ffmpeg and yt-dlp on PATH."
+    return fallback
+
+
+def _screen_result(staged: Path, request: str, source: str, command: list[str], duration: float | None) -> dict:
+    screen = {"requested_mode": request}
+    try:
+        mode = request
+        if request == "auto":
+            sample = screen_ocr.sample_slides(staged, source, command, _screen_download_options)
+            sample = dict(sample)
+            if "calibration_reason" in sample:
+                sample["calibration_reason"] = screen_ocr._sanitize_calibration_reason(
+                    str(sample["calibration_reason"]),
+                    "timeout" if sample.get("calibration_status") == "timeout_fallback" else "fallback",
+                )
+            screen["sample"] = sample
+            if sample["result"] != "slides_detected":
+                return _screen_fallback(screen, sample["result"], sample.get("reason", ""))
+            if (
+                not isinstance(duration, (int, float))
+                or isinstance(duration, bool)
+                or not math.isfinite(duration)
+                or duration <= 0
+            ):
+                sampled_duration = sample.get("duration")
+                duration = (
+                    sampled_duration
+                    if isinstance(sampled_duration, (int, float))
+                    and not isinstance(sampled_duration, bool)
+                    and math.isfinite(sampled_duration)
+                    and sampled_duration > 0
+                    else None
+                )
+            budget = duration / 2 if duration else screen_ocr.UNKNOWN_DURATION_TIMEOUT
+            safe_budget = budget * screen_ocr.AUTO_BUDGET_HEADROOM
+            estimated = None
+            calibration = sample.get("calibration")
+            calibrated = calibration.get("estimated_total_seconds") if isinstance(calibration, dict) else None
+            latency = sample.get("mean_frame_ocr_seconds")
+            if (
+                isinstance(calibrated, (int, float))
+                and not isinstance(calibrated, bool)
+                and math.isfinite(calibrated)
+                and calibrated > 0
+            ):
+                estimated = float(calibrated)
+                if duration is not None:
+                    intervals = calibration.get("intervals")
+                    download_seconds = calibration.get("download_seconds")
+                    extract_per_interval = calibration.get("extract_seconds_per_interval")
+                    group_per_frame = calibration.get("group_seconds_per_frame")
+                    read_per_frame = calibration.get("read_frame_seconds")
+                    effective_intervals = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
+                    if all(
+                        isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and math.isfinite(value)
+                        and value >= 0
+                        for value in (intervals, download_seconds, extract_per_interval, group_per_frame, read_per_frame)
+                    ) and effective_intervals != intervals:
+                        seconds_per_interval = float(extract_per_interval) + float(group_per_frame) + float(read_per_frame)
+                        adjusted = float(download_seconds) + seconds_per_interval * effective_intervals
+                        estimated = adjusted if math.isfinite(adjusted) and adjusted > 0 else None
+            if estimated is None:
+                if sample.get("calibration_status") == "calibrated":
+                    sample["calibration_status"] = "fallback"
+                    sample.setdefault("calibration_reason", "calibration estimate unavailable")
+                if (
+                    duration is not None
+                    and isinstance(latency, (int, float))
+                    and not isinstance(latency, bool)
+                    and math.isfinite(latency)
+                    and latency > 0
+                ):
+                    frames = max(1, math.ceil(duration / screen_ocr.SLIDE_INTERVAL))
+                    sample_extract = sample.get("mean_sample_extract_seconds")
+                    if (
+                        not isinstance(sample_extract, (int, float))
+                        or isinstance(sample_extract, bool)
+                        or not math.isfinite(sample_extract)
+                        or sample_extract < 0
+                    ):
+                        sample_extract = 0.0
+                    estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
+            sample["estimated_seconds"] = round(estimated, 3) if estimated is not None and math.isfinite(estimated) else None
+            if sample.get("calibration_status") in ("timeout_fallback", "fallback"):
+                est_value = sample["estimated_seconds"]
+                est_text = f"{est_value:.1f}s" if est_value is not None else "unknown"
+                log(f"screen OCR calibration {sample['calibration_status']} (estimated {est_text}): {sample.get('calibration_reason', '')}")
+            if estimated is not None and estimated > safe_budget:
+                screen["timeout_seconds"] = budget
+                screen["safe_budget_seconds"] = round(safe_budget, 3)
+                if math.isfinite(estimated):
+                    screen["estimated_seconds"] = round(estimated, 3)
+                reason = (
+                    f"Estimated full-scan screen time ({estimated:.1f}s) "
+                    f"exceeds safe full-scan budget ({safe_budget:.1f}s)."
+                )
+                fallback = _screen_fallback(screen, "timeout", reason)
+                fallback["hint"] = SLOW_MACHINE_HINT
+                return fallback
+            mode = "slides"
+        if request == "auto":
+            result = screen_ocr.extract(
+                staged, mode, source, command, duration, _screen_download_options, True,
+            )
+        else:
+            result = screen_ocr.extract(
+                staged, mode, source, command, duration, _screen_download_options,
+            )
+        if result.get("state") == "ready":
+            return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
+        screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
+        fallback = _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
+        if result.get("overrun_aborted"):
+            fallback["hint"] = SLOW_MACHINE_HINT
+        return fallback
+    except Exception as exc:
+        return _screen_fallback(screen, screen_ocr.failure_result(exc), str(exc))
 
 
 def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
@@ -986,9 +1126,7 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
                     target.replace(saved)
                     archived.append((saved, target))
                 source = staged / name
-                if name not in optional or (
-                    payload.get("screen_ocr", {}).get("state") == "ready"
-                ):
+                if name not in optional:
                     source.replace(target)
                     installed.append((target, source))
             for key, path in zip(("note", "delivery"), old_notes):
@@ -1000,6 +1138,39 @@ def _publish_transcript(job: Path, staged: Path, payload: dict) -> None:
             for saved, target in reversed(archived):
                 saved.replace(target)
             raise
+
+
+def _publish_screen(job: Path, staged: Path, payload: dict) -> dict:
+    """Finish the same acquisition that installed the transcript."""
+    with verify_note.job_lock(job):
+        current = verify_note.read_job_status(job)
+        pending = current.get("screen_ocr")
+        if (current.get("status") != verify_note.SCREEN_PENDING
+                or not isinstance(pending, dict) or pending.get("attempt") != staged.name):
+            return {**current, "exit_code": 2, "reason": "another acquisition superseded this screen attempt"}
+        if "last_attempt" in current:
+            payload["last_attempt"] = current["last_attempt"]
+        installed = []
+        screen = payload["screen_ocr"]
+        if screen["state"] == "ready":
+            try:
+                for name in (verify_rules.SCREEN_FILE, verify_rules.SCREEN_FRAMES):
+                    target = job / name
+                    (staged / name).replace(target)
+                    installed.append(target)
+            except OSError as exc:
+                for target in installed:
+                    target.replace(staged / target.name)
+                installed.clear()
+                context = {key: screen[key] for key in ("requested_mode", "sample") if key in screen}
+                payload["screen_ocr"] = _screen_fallback(context, "error", str(exc))
+        try:
+            verify_note.write_job_status(job, {key: value for key, value in payload.items() if key != "exit_code"})
+        except OSError:
+            for target in installed:
+                target.replace(staged / target.name)
+            raise
+    return payload
 
 
 def _record_failed_attempt(job: Path, payload: dict) -> None:
@@ -1112,9 +1283,7 @@ def run_host(
     caption = None
     metadata: dict[str, str] = {}
     base_cmd = ytdlp_base()
-    screen_download = None
-    if verify_rules.screen_mode() != "off":
-        screen_download = base_cmd or []
+    screen_download = base_cmd or []
     if base_cmd is None:
         attempts.append({"source": "yt-dlp", "ok": False, "detail": "yt-dlp is not installed"})
     else:
@@ -1248,6 +1417,8 @@ def _emit(payload: dict, as_json: bool) -> int:
             print(f"scaffold: {public['scaffold']}")
         if public.get("note"):
             print(f"note: {public['note']}")
+        if hint := public.get("screen_ocr", {}).get("hint"):
+            print(hint, file=sys.stderr)
     return code
 
 

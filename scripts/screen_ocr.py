@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -21,11 +22,13 @@ from itertools import groupby
 from pathlib import Path
 from statistics import median
 from threading import BoundedSemaphore, Thread, enumerate as live_threads
+from urllib.request import ProxyHandler, Request, build_opener, getproxies
 
 import quality_gate
 from verify_rules import SCREEN_FILE, SCREEN_FRAMES, SCREEN_TAG, UNCERTAIN_SCREEN_TAG
 
 SLIDE_INTERVAL = 8
+SLIDE_OCR_PASSES = 2
 SLIDE_GROUP_LEFT = 0.30
 SLIDE_GROUP_BOTTOM = 0.78
 SLIDE_GROUP_SIZE = (160, 90)
@@ -35,6 +38,17 @@ NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
 NAMEPLATE_TIMEOUT = 120
 UNKNOWN_DURATION_TIMEOUT = 600
+AUTO_SAMPLE_TIMEOUT = 45
+AUTO_CALIBRATION_TIMEOUT = 30
+AUTO_BUDGET_HEADROOM = 0.70
+AUTO_LIVE_OVERRUN_MIN_FRAMES = 4
+AUTO_SAMPLE_CLEANUP_SECONDS = 0.5
+AUTO_SAMPLE_POSITIONS = (0.10, 0.33, 0.56, 0.80)
+AUTO_MIN_CONFIDENCE = 0.80
+AUTO_MIN_LINE_LENGTH = 6
+AUTO_MIN_LINES = 3
+AUTO_MIN_TEXT_LENGTH = 42
+AUTO_MIN_VERTICAL_SPAN = 0.12
 _OCR_SLOTS = BoundedSemaphore(2)
 _OCR_WORKER = "tfv-rapidocr"
 
@@ -69,6 +83,22 @@ class ScreenError(Exception):
     pass
 
 
+class ScreenTimeout(ScreenError):
+    pass
+
+
+class ScreenDependencyError(ScreenError):
+    pass
+
+
+def failure_result(exc: Exception) -> str:
+    if isinstance(exc, (ScreenTimeout, subprocess.TimeoutExpired, TimeoutError)):
+        return "timeout"
+    if isinstance(exc, (ScreenDependencyError, ModuleNotFoundError)):
+        return "missing_dependencies"
+    return "error"
+
+
 def native_ocr_running() -> bool:
     return any(thread.name == _OCR_WORKER for thread in live_threads())
 
@@ -99,16 +129,17 @@ class Frame:
 
 
 class Scan:
-    def __init__(self, mode: str, duration: float | None):
+    def __init__(self, mode: str, duration: float | None, *, budget: float | None = None):
         self.started = time.monotonic()
-        self.budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else (
+        full_budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else (
             duration / 2 if duration else UNKNOWN_DURATION_TIMEOUT
         )
+        self.budget = full_budget if budget is None else budget
 
     def remaining(self) -> float:
         left = self.budget - (time.monotonic() - self.started)
         if left <= 0:
-            raise ScreenError("screen OCR timed out")
+            raise ScreenTimeout("screen OCR timed out")
         return left
 
     def run(self, args: list[str], step: str, *, limit: int | None = None):
@@ -121,7 +152,7 @@ class Scan:
                 timeout=timeout, check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise ScreenError(f"{step} timed out") from exc
+            raise ScreenTimeout(f"{step} timed out") from exc
         except OSError as exc:
             raise ScreenError(f"{step} unavailable: {exc.strerror or exc}") from exc
         if result.returncode:
@@ -132,30 +163,24 @@ class Scan:
 
     def probe(self, versions: dict[str, str]) -> str:
         ffmpeg = shutil.which("ffmpeg")
-        failures = []
-        for name, executable, flag in (
-            ("python", sys.executable, "--version"),
-            ("ffmpeg", ffmpeg, "-version"),
-        ):
-            if not executable:
-                failures.append(f"{name} missing")
-                continue
-            try:
-                result = self.run([executable, flag], f"{name} version probe", limit=10)
-                output = (result.stdout or result.stderr).strip()
-                if not output:
-                    raise ScreenError(f"{name} version probe returned no version")
-                versions[name] = output.splitlines()[0]
-            except ScreenError as exc:
-                failures.append(str(exc))
+        missing = [] if ffmpeg else ["ffmpeg missing"]
         for package in ("rapidocr", "onnxruntime"):
             try:
                 versions[package] = version(package)
             except PackageNotFoundError:
-                failures.append(f"{package} missing")
-        if failures:
-            raise ScreenError(", ".join(failures))
+                missing.append(f"{package} missing")
+        if missing:
+            raise ScreenDependencyError(", ".join(missing))
         assert ffmpeg is not None
+        for name, executable, flag in (
+            ("python", sys.executable, "--version"),
+            ("ffmpeg", ffmpeg, "-version"),
+        ):
+            result = self.run([executable, flag], f"{name} version probe", limit=10)
+            output = (result.stdout or result.stderr).strip()
+            if not output:
+                raise ScreenError(f"{name} version probe returned no version")
+            versions[name] = output.splitlines()[0]
         return ffmpeg
 
     def recognize(self, operation, *args):
@@ -163,7 +188,7 @@ class Scan:
         # thread and use bytes so it cannot race temporary-file cleanup.
         deadline = time.monotonic() + min(30, self.remaining())
         if not _OCR_SLOTS.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise ScreenError("RapidOCR timed out")
+            raise ScreenTimeout("RapidOCR timed out")
         future = Future()
 
         def run():
@@ -182,8 +207,10 @@ class Scan:
         try:
             result = future.result(timeout=max(0, deadline - time.monotonic()))
         except TimeoutError as exc:
-            raise ScreenError("RapidOCR timed out") from exc
+            raise ScreenTimeout("RapidOCR timed out") from exc
         except Exception as exc:
+            if isinstance(exc, ModuleNotFoundError):
+                raise ScreenDependencyError(str(exc)) from exc
             raise ScreenError(f"RapidOCR failed: {exc}") from exc
         self.remaining()
         return result
@@ -331,6 +358,322 @@ def _rapidocr(mode: str):
         # a shallow lower-third crop. Keep the package's existing 2000 px cap.
         params.update({"Det.limit_type": "max", "Det.limit_side_len": 2000})
     return RapidOCR(params=params)
+
+
+def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> bool:
+    readings = []
+    frame_ocr_times = getattr(scan, "frame_ocr_times", None)
+    for path in paths:
+        frame = path.read_bytes()
+        started = time.monotonic()
+        result = scan.recognize(ocr, frame)
+        elapsed = time.monotonic() - started
+        if frame_ocr_times is not None and math.isfinite(elapsed) and elapsed > 0:
+            frame_ocr_times.append(elapsed)
+        lines = {}
+        for box, text, score in zip(result.boxes if result.boxes is not None else (),
+                                    result.txts or (), result.scores or ()):
+            key = "".join(char for char in text.casefold() if char.isalnum())
+            if score >= AUTO_MIN_CONFIDENCE and len(key) >= AUTO_MIN_LINE_LENGTH:
+                lines[key] = sum(point[1] for point in box) / len(box)
+        readings.append(lines)
+    first, second = readings
+    stable = first.keys() & second.keys()
+    if len(stable) < AUTO_MIN_LINES or sum(map(len, stable)) < AUTO_MIN_TEXT_LENGTH:
+        return False
+    positions = [first[key] for key in stable]
+    return max(positions) - min(positions) >= height * AUTO_MIN_VERTICAL_SPAN
+
+
+def _measure_download_seconds(
+    url: str, headers: dict, proxy: str, filesize: float | int | None, timeout: float,
+) -> float:
+    try:
+        if not filesize or filesize <= 0 or timeout <= 0:
+            return 0.0
+        opener = build_opener(ProxyHandler({"https": proxy, "http": proxy} if proxy else {}))
+        request = Request(url, headers=headers)
+        request.add_header("Range", "bytes=0-1048575")
+        wall_limit = min(6.0, timeout)
+        future = Future()
+
+        def measure() -> float:
+            deadline = time.monotonic() + wall_limit
+            with opener.open(request, timeout=wall_limit) as response:
+                started = time.monotonic()
+                reader = getattr(response, "read1", response.read)
+                sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+                total = 0
+                while total < 1048576:
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        break
+                    try:
+                        if sock is not None and hasattr(sock, "settimeout"):
+                            sock.settimeout(left)
+                    except Exception:
+                        pass
+                    chunk = reader(min(65536, 1048576 - total))
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                elapsed = time.monotonic() - started
+                if total >= 65536 and elapsed > 0:
+                    return float(filesize) / (total / elapsed)
+            return 0.0
+
+        def worker():
+            try:
+                future.set_result(measure())
+            except Exception as exc:
+                future.set_exception(exc)
+
+        Thread(target=worker, name="tfv-dl-probe", daemon=True).start()
+        return future.result(timeout=wall_limit)
+    except Exception:
+        return 0.0
+
+
+def _calibrate_full_scan(
+    ffmpeg: str, ocr, full_fmt: dict, duration: float, hit_at: int, proxy: str, work: Path,
+) -> dict:
+    cal_scan = Scan("slides", None, budget=AUTO_CALIBRATION_TIMEOUT)
+    full_url = full_fmt["url"]
+    full_headers = full_fmt.get("http_headers") or {}
+    filesize = full_fmt.get("filesize") or full_fmt.get("filesize_approx")
+    download_seconds = _measure_download_seconds(
+        full_url, full_headers, proxy, filesize, cal_scan.remaining(),
+    )
+    if not math.isfinite(download_seconds) or download_seconds < 0:
+        download_seconds = 0.0
+    headers = "".join(f"{name}: {value}\r\n" for name, value in full_headers.items())
+    full_network = (["-http_proxy", proxy] if proxy else []) + (["-headers", headers] if headers else [])
+    ffmpeg_input = [ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
+                    "-rw_timeout", "8000000", *full_network]
+    cal_dir = work / "calibration"
+    cal_dir.mkdir(exist_ok=True)
+    clip = cal_dir / "clip.mkv"
+    cal_scan.run([
+        *ffmpeg_input, "-i", full_url, "-t", str(SLIDE_INTERVAL), "-an", "-c", "copy", str(clip),
+    ], "FFmpeg calibration clip")
+
+    frame_dir = cal_dir / "clip-frames"
+    frame_dir.mkdir()
+    frame_scan = Scan("slides", duration, budget=cal_scan.remaining())
+    started = time.monotonic()
+    _frames(frame_scan, ffmpeg, clip, frame_dir, "slides")
+    decode_seconds = time.monotonic() - started
+
+    last_seek = max(0, int(duration) - 2)
+    alt = min(last_seek, round(duration * 0.33))
+    if abs(alt - hit_at) < SLIDE_INTERVAL:
+        alt = min(last_seek, hit_at + SLIDE_INTERVAL)
+    if alt == hit_at and duration >= 2:
+        alt = 0 if hit_at else min(SLIDE_INTERVAL, duration / 2)
+    if duration < 2:
+        alt = hit_at
+    cal_frames = []
+    for index, pos in enumerate((hit_at, alt)):
+        frame_path = cal_dir / f"cal-{index:02d}.png"
+        cal_scan.run([
+            *ffmpeg_input, "-ss", str(pos), "-i", full_url, "-frames:v", "1", "-an", str(frame_path),
+        ], "FFmpeg calibration frame")
+        cal_frames.append(Frame(frame_path, float(pos)))
+
+    started = time.monotonic()
+    _group_frames(cal_scan, ffmpeg, cal_frames)
+    group_per_frame = (time.monotonic() - started) / len(cal_frames)
+    crop = _crop("slides")
+    read_times = []
+    for frame in cal_frames:
+        started = time.monotonic()
+        _read_frame(cal_scan, ffmpeg, ocr, "slides", crop, frame)
+        read_times.append(time.monotonic() - started)
+    mean_read_frame = sum(read_times) / len(read_times)
+    intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
+    extract_seconds = decode_seconds * intervals
+    group_seconds = group_per_frame * intervals
+    ocr_seconds = mean_read_frame * intervals
+    return {
+        "intervals": intervals,
+        "download_seconds": round(download_seconds, 3),
+        "download_measured": download_seconds > 0,
+        "extract_seconds_per_interval": round(decode_seconds, 6),
+        "extract_seconds": round(extract_seconds, 3),
+        "group_seconds_per_frame": round(group_per_frame, 6),
+        "group_seconds": round(group_seconds, 3),
+        "read_frame_seconds": round(mean_read_frame, 6),
+        "ocr_seconds": round(ocr_seconds, 3),
+        "estimated_total_seconds": round(download_seconds + extract_seconds + group_seconds + ocr_seconds, 3),
+    }
+
+
+def _is_direct_https_format(fmt: dict) -> bool:
+    if not isinstance(fmt, dict):
+        return False
+    url = fmt.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return False
+    path = url.split("?", 1)[0].split("#", 1)[0][len("https://"):].partition("/")[2]
+    return (
+        fmt.get("protocol") in (None, "https")
+        and not path.lower().endswith((".m3u8", ".mpd"))
+    )
+
+
+def _is_sample_format(fmt: dict) -> bool:
+    if not _is_direct_https_format(fmt) or fmt.get("ext") not in (None, "mp4"):
+        return False
+    height = fmt.get("height")
+    return isinstance(height, (int, float)) and not isinstance(height, bool) and 0 < height <= 480
+
+
+def _is_full_scan_format(fmt: dict, sample_height: float | int) -> bool:
+    if not _is_direct_https_format(fmt):
+        return False
+    height = fmt.get("height")
+    return (
+        isinstance(height, (int, float))
+        and not isinstance(height, bool)
+        and (isinstance(height, int) or math.isfinite(height))
+        and height >= sample_height
+    )
+
+
+_CALIBRATION_TIMEOUT_REASONS = {
+    "FFmpeg calibration clip timed out",
+    "FFmpeg calibration frame timed out",
+    "frame extraction timed out",
+    "slide grouping timed out",
+    "RapidOCR timed out",
+    "screen OCR timed out",
+}
+_CALIBRATION_FIXED_REASONS = _CALIBRATION_TIMEOUT_REASONS | {
+    "calibration estimate unavailable",
+    "calibration timed out",
+    "calibration error",
+    "calibration fallback",
+    "calibration missing_dependencies",
+}
+_CALIBRATION_STEP_FAILURE = re.compile(
+    r"^\s*(FFmpeg calibration (?:clip|frame)|frame extraction|slide grouping|RapidOCR)\s+(failed|unavailable)\b"
+)
+
+
+def _sanitize_calibration_reason(text: str, kind: str) -> str:
+    safe_kind = kind if kind in {"timeout", "missing_dependencies", "error", "fallback"} else "fallback"
+    stripped = text.strip()
+    if stripped in _CALIBRATION_FIXED_REASONS:
+        return stripped
+    if safe_kind == "timeout":
+        return "calibration timed out"
+    if match := _CALIBRATION_STEP_FAILURE.match(text):
+        prefix = f"{match.group(1)} {match.group(2)}"
+        if stripped == f"{prefix}: <URL>" or re.search(r"[A-Za-z][A-Za-z0-9+.-]*://\S+", text):
+            return f"{prefix}: <URL>"
+        return prefix
+    return f"calibration {safe_kind}"
+
+
+def sample_slides(
+    staged: Path, source: str, download_command: list[str],
+    download_options: Callable[[], list[str]],
+) -> dict:
+    """Check at most four pairs for stable screen text before the full scan."""
+    # Leave time to terminate the child and discard its temporary frames.
+    scan = Scan("slides", None, budget=AUTO_SAMPLE_TIMEOUT - AUTO_SAMPLE_CLEANUP_SECONDS)
+    scan.frame_ocr_times = []
+    sample_extract_times = []
+    status = {"groups_checked": 0, "timeout_seconds": AUTO_SAMPLE_TIMEOUT}
+    try:
+        if not download_command:
+            raise ScreenDependencyError("yt-dlp missing")
+        ffmpeg = scan.probe({})
+        proxies = getproxies()
+        proxy = proxies.get("https") or proxies.get("all") or proxies.get("http") or ""
+        response = scan.run([
+            *download_command, *download_options(), "--proxy", proxy, "--no-playlist",
+            "--skip-download", "--no-warnings", "--socket-timeout", "8", "--retries", "0",
+            "-f", "bv[height<=480][ext=mp4][protocol=https],(bv[height=1080]/bv[height<=1080]/b[height<=1080])",
+            "--dump-single-json", source,
+        ], "yt-dlp sample stream")
+        info = json.loads(response.stdout)
+        requested_downloads = info.get("requested_downloads")
+        if isinstance(requested_downloads, list) and requested_downloads:
+            sample_fmt = next((fmt for fmt in requested_downloads if _is_sample_format(fmt)), None)
+            if sample_fmt is None:
+                raise ScreenError("sample stream has no usable <=480p HTTPS MP4 video")
+            sample_height = int(sample_fmt["height"])
+            full_fmt = max(
+                (fmt for fmt in requested_downloads
+                 if fmt is not sample_fmt and _is_full_scan_format(fmt, sample_height)),
+                key=lambda fmt: fmt["height"],
+                default=None,
+            )
+        else:
+            sample_fmt = info
+            full_fmt = None
+            if not _is_sample_format(sample_fmt):
+                raise ScreenError("sample stream has no usable <=480p HTTPS MP4 video")
+        media = sample_fmt["url"]
+        duration = float(info.get("duration") or sample_fmt.get("duration"))
+        height = int(sample_fmt.get("height") or info.get("height"))
+        sample_headers = sample_fmt.get("http_headers") or info.get("http_headers") or {}
+        if not math.isfinite(duration) or duration <= 0 or height <= 0:
+            raise ScreenError("sample stream has no usable HTTPS video or duration")
+        status["duration"] = duration
+        headers = "".join(f"{name}: {value}\r\n" for name, value in sample_headers.items())
+        network = (["-http_proxy", proxy] if proxy else []) + (["-headers", headers] if headers else [])
+        with tempfile.TemporaryDirectory(prefix="sample-", dir=staged) as temp:
+            work = Path(temp)
+            ocr = None
+            status["result"] = "not_found"
+            for fraction in AUTO_SAMPLE_POSITIONS:
+                at = min(round(duration * fraction), max(0, int(duration) - 2))
+                result_path = work / f"{at:04d}-%02d.jpg"
+                started = time.monotonic()
+                scan.run([
+                    ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
+                    "-rw_timeout", "8000000", *network, "-ss", str(at), "-i", media,
+                    "-t", "2", "-vf", "fps=1", "-an", "-q:v", "3", str(result_path),
+                ], "FFmpeg sample frames")
+                extract_elapsed = time.monotonic() - started
+                paths = sorted(work.glob(f"{at:04d}-*.jpg"))
+                if paths and math.isfinite(extract_elapsed) and extract_elapsed > 0:
+                    sample_extract_times.append(extract_elapsed / len(paths))
+                if len(paths) != 2:
+                    raise ScreenError("FFmpeg did not return two sample frames")
+                if ocr is None:
+                    ocr = scan.recognize(_rapidocr, "slides")
+                qualifies = _sample_pair_qualifies(scan, ocr, paths, height)
+                for path in paths:
+                    path.unlink()
+                scan.remaining()
+                status["groups_checked"] += 1
+                if qualifies:
+                    status["result"] = "slides_detected"
+                    hit_at = at
+                    break
+            if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:
+                try:
+                    status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
+                    status["calibration_status"] = "calibrated"
+                except Exception as exc:
+                    kind = failure_result(exc)
+                    status["calibration_status"] = "timeout_fallback" if kind == "timeout" else "fallback"
+                    status["calibration_reason"] = _sanitize_calibration_reason(str(exc), kind)
+    except Exception as exc:
+        status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
+    if scan.frame_ocr_times:
+        status["mean_frame_ocr_seconds"] = round(
+            sum(scan.frame_ocr_times) / len(scan.frame_ocr_times), 6
+        )
+    if sample_extract_times:
+        status["mean_sample_extract_seconds"] = round(
+            sum(sample_extract_times) / len(sample_extract_times), 6,
+        )
+    status["elapsed_seconds"] = round(time.monotonic() - scan.started, 3)
+    return status
 
 
 def _nameplate(lines: list[Line]) -> list[Line]:
@@ -566,7 +909,7 @@ def _write_evidence(
 
 def extract(
     staged: Path, mode: str, source: str, download_command: list[str], duration: float | None,
-    download_options: Callable[[], list[str]],
+    download_options: Callable[[], list[str]], abort_on_overrun: bool = False,
 ) -> dict:
     scan = Scan(mode, duration)
     versions: dict[str, str] = {}
@@ -583,7 +926,23 @@ def extract(
             video.unlink()
             groups = _group_frames(scan, ffmpeg, frames) if mode == "slides" else None
             ocr = scan.recognize(_rapidocr, mode)
-            results = [_read_frame(scan, ffmpeg, ocr, mode, crop, frame) for frame in frames]
+            results, read_times = [], []
+            for frame in frames:
+                started = time.monotonic()
+                results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
+                read_times.append(time.monotonic() - started)
+                if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
+                    remaining_frames = len(frames) - len(read_times)
+                    if remaining_frames > 0:
+                        mean_read = sum(read_times) / len(read_times)
+                        remaining_needed = mean_read * remaining_frames
+                        left = scan.remaining()
+                        if remaining_needed > left:
+                            status["overrun_aborted"] = True
+                            raise ScreenTimeout(
+                                f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
+                                f"exceeds remaining budget ({left:.1f}s)."
+                            )
             references = _write_evidence(
                 staged, frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
             )
@@ -594,7 +953,7 @@ def extract(
                       screenshot_lines=references,
                       sha256=hashlib.sha256((staged / SCREEN_FILE).read_bytes()).hexdigest())
     except (OSError, ScreenError) as exc:
-        status.update(state="fallback", reason=str(exc))
+        status.update(state="fallback", reason=str(exc), failure=failure_result(exc))
     status.update(elapsed_seconds=round(time.monotonic() - scan.started, 3),
                   timeout_seconds=scan.budget)
     return status
