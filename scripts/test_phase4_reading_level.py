@@ -258,6 +258,7 @@ class ClosingTests(JobCase):
             ("both headings", concise_note().replace(
                 "\n\n本文略去", f"\n\n{PLAIN_H2}\n\n{APPLICATIONS[0]}\n\n本文略去"), "C04a"),
             ("one missing link", concise_note((APPLICATIONS[0], "把褪色标签的信封单独放。")), "R13"),
+            ("punctuation-only linked item", concise_note((APPLICATIONS[0], "— ⏱ 00:20")), "R13"),
             ("three sentences", concise_note((APPLICATIONS[0],
                 "写上播种月份。把信封收好。查看标签。 ⏱ 00:20")), "R13"),
         )
@@ -616,14 +617,23 @@ class PreferenceTests(unittest.TestCase):
         self.assert_job(result, "plain", "default")
 
     def test_invalid_prefs_default_without_crashing(self):
+        nested = "[" * 1500 + "]" * 1500
+        try:
+            json.loads(nested)
+        except RecursionError:
+            pass
+        else:
+            # Some Python builds allow deeper nesting in the native decoder.
+            nested = "[" * 10000 + "]" * 10000
         for raw in (
             "{broken",
             '["中文", "concise"]',
             '{"language": "中文", "reading_level": "concise", "extra": true}',
             '{"language": "中文", "reading_level": "auto"}',
             '{"language": "Klingon", "reading_level": "concise"}',
+            nested,
         ):
-            with self.subTest(raw=raw):
+            with self.subTest(raw="deeply nested JSON" if raw == nested else raw):
                 self.write_prefs(raw)
                 if self.job.exists():
                     shutil.rmtree(self.job)
@@ -764,6 +774,27 @@ class ExampleTests(unittest.TestCase):
         document = (DOCUMENTS / "note-examples.md").read_text(encoding="utf-8")
         self.assertIn("选读", document)
 
+    def test_delivery_guidance_matches_reading_level_rules(self):
+        delivery = (DOCUMENTS / "delivery-format.md").read_text(encoding="utf-8")
+        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+        bullet = re.search(r"(?m)^- \*\*解释留用的技术要素。\*\*.*$", delivery)
+        self.assertIsNotNone(bullet, "Missing technical-elements bullet")
+        guidance = bullet[0]
+        plain = re.search(r"通俗版(?:(?!精炼版).)*?(?:任何|所有|每个)术语", guidance)
+        concise = re.search(r"精炼版((?:(?!通俗版).)*)", guidance)
+        checks = {
+            "Universal term callouts must be scoped to 通俗版": plain is not None,
+            "精炼版 must limit required explanations to the four categories in rules.md": (
+                concise is not None
+                and re.search(r"只|仅", concise[1]) is not None
+                and re.search(r"(?:陌生|不熟悉|需要解释)[^。；、，]*缩写|缩写[^。；、，]*需要解释",
+                              concise[1]) is not None
+                and all(term in concise[1] for term in ("视频自造", "冷门专名", "通行定义不一致"))
+            ),
+            "SKILL.md still advertises an outdated example count": "four synthetic examples" not in skill,
+        }
+        self.assertEqual([message for message, passed in checks.items() if not passed], [])
+
     def test_example_screen_checksum_matches_lf_fixture(self):
         status = read_json(EXAMPLE / "status.json")
         screen = (EXAMPLE / "screen.txt").read_bytes()
@@ -825,4 +856,3 @@ class ExampleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-
