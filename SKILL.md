@@ -90,7 +90,7 @@ Gate fail ⇒ do **not** save as final knowledge. Retry with a stronger model in
 
 The gate reads the transcript text. It does not play the audio. A fluent wrong caption can still pass. CI checks transcript quality, the single-note structure, evidence links, and coverage. CI does not grade whether that analysis is the best reading of the talk. That reading is `evals/results/spotcheck.md`, and CI does not score it.
 
-Read `references/pitfalls.md` before treating a Chinese ASR default as production-ready. `references/delivery-format.md` has templates and four synthetic examples.
+Read `references/pitfalls.md` before treating a Chinese ASR default as production-ready. `references/delivery-format.md` has templates and two synthetic examples and a concise excerpt.
 
 ## CJK ratio and English jargon
 

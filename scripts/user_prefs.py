@@ -31,7 +31,7 @@ def load_prefs(path: Path | None = None) -> dict[str, str]:
     target = prefs_path() if path is None else path
     try:
         data = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return {}
     if (isinstance(data, dict) and data.keys() == {"language", "reading_level"}
             and _valid_preferences(data["language"], data["reading_level"])):
