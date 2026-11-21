@@ -385,7 +385,8 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
     """Return heading levels, text, and source spans excluding the final newline."""
     masked = _HEADING_MASK.sub(lambda match: re.sub(r"[^\n]", " ", match[0]), body)
     headings: list[tuple[int, str, int, int]] = []
-    paragraph = None
+    paragraph: list[str] = []
+    paragraph_start = 0
     offset = 0
     for raw in masked.split("\n"):
         start = offset
@@ -400,14 +401,17 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
             headings.append((len(empty_atx[1]), "", start, end))
         elif atx:
             headings.append((len(atx[1]), atx[2], start, end))
-        elif underline and paragraph is not None:
-            title, paragraph_start = paragraph
+        elif underline and paragraph:
+            title = "\n".join(paragraph)
             headings.append((1 if underline[1][0] == "=" else 2, title, paragraph_start, end))
         elif (stripped and not underline and not _LIST_ITEM.match(line) and not stripped.startswith(">")
-              and not re.fullmatch(r"#{1,6}|[-+*]|(?:[-*_][ \t]*){3,}", stripped)):
-            paragraph = (stripped, start)
+              and not re.fullmatch(r"#{1,6}|[-+*]|(?:[-*_][ \t]*){3,}", stripped)
+              and (paragraph or not line.startswith(("    ", "\t")))):
+            if not paragraph:
+                paragraph_start = start
+            paragraph.append(stripped)
             continue
-        paragraph = None
+        paragraph.clear()
     return headings
 
 
@@ -422,7 +426,7 @@ def delivery_sections(body: str) -> list[DeliverySection]:
         has_fence = False
         if list_forms is not None:
             section_body = _HTML_COMMENT.sub("", section_body)
-            has_fence = bool(_FENCED_CODE.search(section_body))
+            has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
         prose, blocks = delivery_parts(section_body, list_forms=list_forms)
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
         sections.append(DeliverySection(level, heading, prose, blocks, mixed_list, has_fence))
@@ -1758,31 +1762,45 @@ def action_sentences(prose: str) -> list[str]:
 
 
 def _strip_markdown_links(text: str) -> str:
-    """Keep the visible label of each link or image with a balanced destination."""
+    """Keep the visible label of each link or image."""
+    angle_destination = re.compile(r"<(?:\\[^\r\n]|[^\\>\r\n])*>")
+    title = re.compile(r'''"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\((?:\\[\s\S]|[^()\\])*\)''')
+    whitespace = re.compile(r"\s*")
     parts: list[str] = []
     start = 0
-    for match in re.finditer(r"!?\[([^\]]*)\]\([ \t]*", text):
+    for match in re.finditer(r"!?\[([^\]]*)\]\(", text):
         if match.start() < start:
             continue
-        end = match.end()
-        in_angle = text.startswith("<", end)
-        depth = 1
-        while end < len(text):
-            char = text[end]
-            end += 1
-            if char == "\\":
+        end = whitespace.match(text, match.end()).end()
+        if text.startswith("<", end):
+            destination = angle_destination.match(text, end)
+            if destination is None:
+                continue
+            end = destination.end()
+        else:
+            depth = 0
+            while end < len(text) and not text[end].isspace():
+                char = text[end]
+                if char == "\\":
+                    end += 2
+                    continue
+                if char == "(":
+                    depth += 1
+                elif char == ")":
+                    if depth == 0:
+                        break
+                    depth -= 1
                 end += 1
-            elif in_angle:
-                if char == ">":
-                    in_angle = False
-            elif char == "(":
-                depth += 1
-            elif char == ")":
-                depth -= 1
-                if depth == 0:
-                    parts.extend((text[start : match.start()], match[1]))
-                    start = end
-                    break
+            if depth or end > len(text):
+                continue
+        after_space = whitespace.match(text, end).end()
+        if after_space > end:
+            quoted_title = title.match(text, after_space)
+            if quoted_title:
+                after_space = whitespace.match(text, quoted_title.end()).end()
+        if text.startswith(")", after_space):
+            parts.extend((text[start : match.start()], match[1]))
+            start = after_space + 1
     parts.append(text[start:])
     return "".join(parts)
 

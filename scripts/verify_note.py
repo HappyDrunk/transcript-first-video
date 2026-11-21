@@ -375,7 +375,10 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     first = lines[0].decode("utf-8-sig", errors="replace") if lines else ""
     if not first.startswith("<!-- tfv-review:"):
         status = read_job_status(job)
-        if required or isinstance(status.get("review"), dict):
+        batch = status.get("review")
+        if batch is not None and not isinstance(batch, dict):
+            raise ValueError("stored review batch in status.json is malformed")
+        if required or batch is not None:
             raise ValueError("a Task review.md receipt is required before reading delivery")
         return None
     header = re.fullmatch(r"<!-- tfv-review: (.+) -->", first)
