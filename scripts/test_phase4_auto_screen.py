@@ -6,6 +6,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 import hashlib
 import io
 import json
+import math
 import os
 from pathlib import Path
 import struct
@@ -175,13 +176,20 @@ class ScreenHostTests(unittest.TestCase):
 
 
 class SampleTests(unittest.TestCase):
-    def trial(self, hits, *, fault=None):
-        stream = json.dumps({"duration": 1000, "height": 480, "url": "https://media.example/track"})
+    def trial(self, hits, *, fault=None, requested_downloads=None, forbidden_step=None, steps=None):
+        info = {"duration": 1000, "height": 480, "url": "https://media.example/track"}
+        if requested_downloads is not None:
+            info.update(requested_downloads[0], requested_downloads=requested_downloads)
+        stream = json.dumps(info)
         commands = []
         windows = []
         budgets = []
 
         def run(scan, args, description, **kwargs):
+            if steps is not None:
+                steps.append(description)
+            if description == forbidden_step:
+                self.fail(f"Unexpected external command: {description}")
             budgets.append(scan.budget)
             commands.append(args)
             if fault and args[0] == "ffmpeg":
@@ -206,6 +214,40 @@ class SampleTests(unittest.TestCase):
         ):
             result = screen_ocr.sample_slides(Path(folder), SOURCE, ["fetch"], lambda: [])
         return result, commands, windows, budgets
+
+    def test_sample_rejects_1080p_only_requested_downloads_without_480p_sample(self):
+        full_format = {"url": "https://media.example/1080.mp4", "height": 1080,
+                       "ext": "mp4", "protocol": "https"}
+        steps = []
+        result, _, _, _ = self.trial(
+            iter(()), requested_downloads=[full_format],
+            forbidden_step="FFmpeg sample frames", steps=steps,
+        )
+
+        self.assertEqual(result["result"], "error")
+        self.assertNotIn("FFmpeg sample frames", steps)
+
+    def test_sample_skips_hls_calibration_and_accepts_singleton_480p_sample(self):
+        sample_format = {"url": "https://media.example/480.mp4", "height": 480,
+                         "ext": "mp4", "protocol": "https"}
+        hls_format = {"url": "https://media.example/1080.m3u8", "height": 1080,
+                      "ext": "mp4", "protocol": "m3u8_native", "filesize": 30_000_000}
+        for name, formats in (
+            ("singleton_480p", [sample_format]),
+            ("hls_full_format", [sample_format, hls_format]),
+        ):
+            with self.subTest(name=name):
+                steps = []
+                with patch.object(screen_ocr, "_measure_download_seconds", return_value=1.0) as measure:
+                    result, _, _, _ = self.trial(
+                        iter((True,)), requested_downloads=formats,
+                        forbidden_step="FFmpeg calibration clip", steps=steps,
+                    )
+
+                self.assertEqual(result["result"], "slides_detected")
+                self.assertNotIn("calibration", result)
+                measure.assert_not_called()
+                self.assertNotIn("FFmpeg calibration clip", steps)
 
     def test_probe_selects_original_positions_uses_one_proxy_and_stops_at_first_hit(self):
         result, commands, windows, budgets = self.trial(iter((False, True)))
@@ -244,6 +286,36 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.addCleanup(folder.cleanup)
         self.out = Path(folder.name)
         self.job = self.out / f"youtube_{VIDEO}"
+
+    def test_measure_download_seconds_enforces_wall_clock_deadline_on_trickle(self):
+        read_calls = 0
+        elapsed = 0.0
+
+        def read(size=-1):
+            nonlocal read_calls, elapsed
+            read_calls += 1
+            if size > 65_536:
+                # A large HTTPResponse.read can wait for many socket reads.
+                elapsed += 2.0 * math.ceil(size / 32_768)
+                return b"x" * size
+            elapsed += 2.0
+            return b"x" * (32_768 if size < 0 else min(size, 32_768))
+
+        @contextmanager
+        def open_response(*args, **kwargs):
+            yield SimpleNamespace(read=read)
+
+        with (
+            patch.object(screen_ocr, "build_opener", return_value=SimpleNamespace(open=open_response)),
+            patch.object(screen_ocr.time, "monotonic", side_effect=lambda: elapsed),
+        ):
+            est = screen_ocr._measure_download_seconds(
+                "https://media.example/1080.mp4", {}, "", 30_000_000, 30.0,
+            )
+
+        self.assertLessEqual(read_calls, 4)
+        self.assertLessEqual(elapsed, 8.0)
+        self.assertGreater(est, 0)
 
     @staticmethod
     def gray_png(shade):
