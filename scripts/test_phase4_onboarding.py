@@ -38,9 +38,9 @@ class OnboardingTests(unittest.TestCase):
             f"<!-- tfv-review: {json.dumps(header)} -->\n\n## C04c 告警裁定\n无\n", encoding="utf-8",
         )
 
-    def render(self):
+    def render(self, *extra_args):
         return self.run_cli("render_reading_note.py", "--task-dir", str(self.job),
-                            "--require-review", "--output-dir", str(self.output))
+                            "--require-review", "--output-dir", str(self.output), *extra_args)
 
     def test_generates_filename_and_marks_self_review(self):
         self.receipt("self")
@@ -64,6 +64,95 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(len(files), 1)
         self.assertNotRegex(files[0].name, r'[<>:"/\\|?*—]')
         self.assertNotIn("未经独立复核", files[0].read_text(encoding="utf-8"))
+
+    def assert_automatic_overwrite_refused(self, original):
+        self.receipt("self")
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(original)
+
+        result = self.render()
+
+        self.assertEqual(path.read_bytes(), original)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("--output", result.stderr)
+
+    def test_refuses_source_link_only_in_body(self):
+        self.assert_automatic_overwrite_refused((
+            "# 整理种子盒\n\n"
+            "合成园艺课堂 · 2026-04-08\n\n"
+            "参考资料：[原视频](https://example.invalid/videos/seed-box)\n"
+        ).encode("utf-8"))
+
+    def test_refuses_unrelated_note_with_closed_frontmatter(self):
+        self.assert_automatic_overwrite_refused((
+            "---\n"
+            "title: 园艺备忘\n"
+            "---\n\n"
+            "# 园艺备忘\n\n"
+            "待整理的资料\n\n"
+            "参考资料：[原视频](https://example.invalid/videos/seed-box)\n"
+        ).encode("utf-8"))
+
+    def test_refuses_unclosed_frontmatter(self):
+        self.assert_automatic_overwrite_refused((
+            "---\n"
+            "title: 整理种子盒\n\n"
+            "# 整理种子盒\n\n"
+            "合成园艺课堂 · 2026-04-08 · [原视频](https://example.invalid/videos/seed-box)\n"
+        ).encode("utf-8"))
+
+    def test_refuses_non_utf8_file(self):
+        self.assert_automatic_overwrite_refused(b"\xff\xfe\x80\x81")
+
+    def test_refuses_directory_at_generated_path(self):
+        self.receipt("self")
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        path.mkdir(parents=True)
+
+        result = self.render()
+
+        self.assertTrue(path.is_dir())
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("--output", result.stderr)
+
+    def assert_generated_note_can_be_overwritten(self, first_args, second_args):
+        self.receipt("self")
+        result = self.render(*first_args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = self.output / "2026-04-08 合成园艺课堂 - 整理种子盒.md"
+        self.assertTrue(path.is_file(), result.stdout)
+        original = path.read_text(encoding="utf-8")
+        if first_args:
+            lines = original.splitlines()
+            self.assertEqual(lines[0], "---")
+            self.assertIn("---", lines[1:])
+        else:
+            self.assertTrue(original.startswith("# "), original)
+
+        result = self.render(*second_args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updated = path.read_text(encoding="utf-8")
+        self.assertNotEqual(updated, original)
+        if second_args:
+            lines = updated.splitlines()
+            self.assertEqual(lines[0], "---")
+            self.assertIn("---", lines[1:])
+        else:
+            self.assertTrue(updated.startswith("# "), updated)
+
+    def test_overwrites_generated_note_without_frontmatter(self):
+        self.assert_generated_note_can_be_overwritten((), ("--keep-frontmatter",))
+
+    def test_overwrites_generated_note_with_closed_frontmatter(self):
+        self.assert_generated_note_can_be_overwritten(("--keep-frontmatter",), ())
+
+    def test_require_review_help_describes_review_marker(self):
+        result = self.run_cli("render_reading_note.py", "--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        help_text = " ".join(result.stdout.split())
+        self.assertNotIn("independent Task", help_text)
+        self.assertIn("未经独立复核", help_text)
 
     def test_dependency_groups_keep_ocr_optional(self):
         groups = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]
