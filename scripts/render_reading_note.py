@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import stat
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -252,11 +253,13 @@ def reading_path(directory: Path, job: Path, note: bytes) -> Path:
 
 def owns_generated_output(output: Path, source: str) -> bool:
     try:
-        raw = output.read_text(encoding="utf-8")
+        if not stat.S_ISREG(output.lstat().st_mode):
+            return False
+        raw = output.read_bytes().decode("utf-8")
     except (UnicodeDecodeError, OSError):
         return False
 
-    lines = raw.splitlines()
+    lines = [line[:-1] if line.endswith("\r") else line for line in raw.split("\n")]
     if raw.startswith(("---\n", "---\r\n")):
         try:
             closing = lines.index("---", 1)
@@ -264,7 +267,7 @@ def owns_generated_output(output: Path, source: str) -> bool:
             return False
         lines = lines[closing + 1:]
 
-    header = [line for line in lines if line.strip()][:2]
+    header = [line for line in lines if line.strip(" \t")][:2]
     return len(header) == 2 and header[0].startswith("# ") and f"[原视频]({source})" in header[1]
 
 
