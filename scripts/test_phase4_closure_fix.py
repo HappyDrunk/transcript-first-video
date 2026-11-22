@@ -105,6 +105,60 @@ class W11WarnGuidanceTests(unittest.TestCase):
         self.assertNotIn("改正文", result.stdout + result.stderr)
         self.assertNotIn("补挂出处", result.stdout + result.stderr)
 
+    def test_w11_draft2_allowed_with_c04c_warn_prints_next_step_2_of_3_and_no_edit_hint(self) -> None:
+        self._note(self._break_quote(NOTE, "Preserve"))
+        failed = self._run_verify()
+        self.assertEqual(failed.returncode, 2, failed.stdout + failed.stderr)
+        self._note(BAD_C04C_NOTE)
+        result = self._run_verify()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        stdout_lines = result.stdout.splitlines()
+        self.assertGreaterEqual(len(stdout_lines), 2, result.stdout)
+        self.assertEqual(stdout_lines[0], "allowed")
+        self.assertIn("下一步：交独立复核", result.stdout)
+        self.assertIn("2/3", result.stdout)
+        self.assertIn("C04c-001 WARN", result.stderr)
+        self.assertIn(PASSED_C04C_HINT, result.stderr)
+        self.assertNotIn("改正文", result.stdout + result.stderr)
+        self.assertNotIn("补挂出处", result.stdout + result.stderr)
+
+    def test_w11_post_review_allowed_with_c04c_warn_prints_render_next_step_not_review(self) -> None:
+        self._note(BAD_C04C_NOTE)
+        first = self._run_verify()
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        status = json.loads((self.job / "status.json").read_text(encoding="utf-8"))
+        verifier = status["verifier"]
+        header = {
+            "inputs": verifier["inputs"],
+            "result": "changes",
+            "c04c_sha256": verifier["c04c_sha256"],
+        }
+        (self.job / "review.md").write_text(
+            f"<!-- tfv-review: {json.dumps(header, ensure_ascii=False)} -->\n\n"
+            "## C04c 告警裁定\n\n"
+            "- C04c-001 | 21.1 | two centimeters below the rim | 误报\n",
+            encoding="utf-8",
+        )
+        # Apply a minor post-review revision while keeping the adjudicated C04c WARN
+        revised = BAD_C04C_NOTE.replace(
+            "Protect the firm roots and let the new pot drain.",
+            "Keep firm roots intact and make sure the new pot drains.",
+            1,
+        )
+        self._note(revised)
+        result = self._run_verify()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        stdout_lines = result.stdout.splitlines()
+        self.assertGreaterEqual(len(stdout_lines), 2, result.stdout)
+        self.assertEqual(stdout_lines[0], "allowed")
+        self.assertIn("下一步：渲染阅读版", result.stdout)
+        self.assertIn("不必再改稿", result.stdout)
+        self.assertNotIn("交独立复核", result.stdout)
+        self.assertIn("C04c-001 WARN", result.stderr)
+        self.assertIn(PASSED_C04C_HINT, result.stderr)
+        self.assertNotIn("改正文", result.stdout + result.stderr)
+        self.assertNotIn("补挂出处", result.stdout + result.stderr)
+
     def test_w11_draft3_allowed_with_c04c_warn_prints_next_step_3_of_3_and_no_edit_hint(self) -> None:
         for token in ("Preserve", "Inspect"):
             self._note(self._break_quote(NOTE, token))

@@ -167,7 +167,7 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 ### 怎么跑
 
-若系统 Python 报 `externally-managed-environment`（PEP 668），先创建并激活虚拟环境（`python3 -m venv .venv && source .venv/bin/activate`）再安装依赖。
+先进入安装目录；若系统 Python 报 `externally-managed-environment`（PEP 668），在该目录下先创建并激活虚拟环境（`python3 -m venv .venv && source .venv/bin/activate`）再安装依赖。
 
 ```bash
 cd ~/.agents/skills/transcript-first-video

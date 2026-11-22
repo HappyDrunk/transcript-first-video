@@ -814,7 +814,9 @@ def check_job_submission(
                 for row in result["c04c"]
             }
             result["warnings"] = [c04c_passed.get(line, line) for line in result.get("warnings", [])]
-        if not review:
+        if review:
+            result["next_step_hint"] = "下一步：渲染阅读版；剩余 WARN 不必再改稿"
+        else:
             edit_rounds = status.get("edit_rounds", 0)
             result["next_step_hint"] = f"下一步：交独立复核（普通稿已用 {edit_rounds}/{MAX_ORDINARY_DRAFTS}）"
     return result
