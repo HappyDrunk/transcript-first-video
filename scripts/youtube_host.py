@@ -1134,7 +1134,14 @@ def finalize_job(
         return _publish_screen(job_dir, staged, base)
 
 
-SLOW_MACHINE_HINT = "这台机器识别太慢，只用了字幕；需要画面可在更快的机器上设 TFV_SCREEN_MODE=slides"
+def _budget_exceeded_hint(estimated: float, safe_budget: float) -> str:
+    return (
+        f"预估 {estimated:.1f} 秒超过按片长算的预算 {safe_budget:.1f} 秒，"
+        "只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
+    )
+
+
+OVERRUN_HINT = "扫描耗时超过按片长算的预算，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
 
 
 def _screen_fallback(screen: dict, result: str, reason: str = "") -> dict:
@@ -1178,7 +1185,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                     and sampled_duration > 0
                     else None
                 )
-            budget = duration / 2 if duration else screen_ocr.UNKNOWN_DURATION_TIMEOUT
+            budget = screen_ocr.slide_full_budget(duration)
             safe_budget = budget * screen_ocr.AUTO_BUDGET_HEADROOM
             estimated = None
             calibration = sample.get("calibration")
@@ -1244,7 +1251,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                     f"exceeds safe full-scan budget ({safe_budget:.1f}s)."
                 )
                 fallback = _screen_fallback(screen, "timeout", reason)
-                fallback["hint"] = SLOW_MACHINE_HINT
+                fallback["hint"] = _budget_exceeded_hint(estimated, safe_budget)
                 return fallback
             mode = "slides"
         if request == "auto":
@@ -1260,7 +1267,19 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
         screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
         fallback = _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
         if result.get("overrun_aborted"):
-            fallback["hint"] = SLOW_MACHINE_HINT
+            rem_est = result.get("estimated_remaining_seconds")
+            rem_budget = result.get("remaining_budget_seconds")
+            if (
+                isinstance(rem_est, (int, float))
+                and not isinstance(rem_est, bool)
+                and isinstance(rem_budget, (int, float))
+                and not isinstance(rem_budget, bool)
+                and math.isfinite(rem_est)
+                and math.isfinite(rem_budget)
+            ):
+                fallback["hint"] = _budget_exceeded_hint(float(rem_est), float(rem_budget))
+            else:
+                fallback["hint"] = OVERRUN_HINT
         return fallback
     except Exception as exc:
         return _screen_fallback(screen, screen_ocr.failure_result(exc), str(exc))

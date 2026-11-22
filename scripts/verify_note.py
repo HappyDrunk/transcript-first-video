@@ -276,6 +276,8 @@ def prepare_job_note(job: Path) -> None:
             status["coverage"] = {"allowed": False, "reasons": ["note formatting changed after verification"]}
             if status.get("status") == "finished":
                 status["status"] = "transcript_ready"
+            if status.get("next_step") == "deliver":
+                status["next_step"] = "write-note"
             write_job_status(job, status)
         staged.replace(path)
     finally:
@@ -507,6 +509,8 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
         data["coverage"] = {"allowed": False, "reasons": ["note changed after verification"]}
         if data.get("status") == "finished":
             data["status"] = "transcript_ready"
+        if data.get("next_step") == "deliver":
+            data["next_step"] = "write-note"
         if rounds > MAX_ORDINARY_DRAFTS:
             stop_for_user(job, data, DRAFT_LIMIT_MESSAGE, job_inputs(job), unchecked=True)
     write_job_status(job, data)
@@ -581,6 +585,8 @@ def record_gate_result(
     data["finished"] = False
     if data.get("status") == "finished":
         data["status"] = "transcript_ready"
+    if data.get("next_step") == "deliver":
+        data["next_step"] = "write-note"
     if gate == "verify":
         data["verifier"] = {
             "allowed": allowed,
@@ -704,6 +710,8 @@ def _emit_verify(result: dict, *, as_json: bool) -> int:
         sys.stdout.write("\n")
     else:
         print("allowed" if result.get("allowed") else "refused")
+        if result.get("allowed") and result.get("next_step_hint"):
+            print(result["next_step_hint"])
         for reason in result.get("reasons") or []:
             print(reason, file=sys.stderr)
         for line in result.get("warnings", []) + result.get("coverage", {}).get("not_checked", []):
@@ -799,6 +807,16 @@ def check_job_submission(
         result.update(stopped)
     if review_error:
         result["reasons"].append(str(review_error))
+    if coverage is not None and result.get("allowed"):
+        if result.get("c04c"):
+            c04c_passed = {
+                c04c_review.warning(row): c04c_review.warning(row, hint=c04c_review.PASSED_HINT)
+                for row in result["c04c"]
+            }
+            result["warnings"] = [c04c_passed.get(line, line) for line in result.get("warnings", [])]
+        if not review:
+            edit_rounds = status.get("edit_rounds", 0)
+            result["next_step_hint"] = f"下一步：交独立复核（普通稿已用 {edit_rounds}/{MAX_ORDINARY_DRAFTS}）"
     return result
 
 

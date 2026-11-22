@@ -125,7 +125,7 @@ class W11WarnGuidanceTests(unittest.TestCase):
     def test_w11_refused_with_c04c_warn_keeps_original_edit_hint_and_no_review_next_step(self) -> None:
         self.assertEqual(getattr(c04c_review, "PASSED_HINT", None), PASSED_C04C_HINT)
         with self.subTest(case="verify_fail"):
-            self._note(self._break_quote(BAD_C04C_NOTE, "Preserve"))
+            self._note(BAD_C04C_NOTE.replace("> [00:00] Today", "> [00:00] Yesterday", 1))
             result = self._run_verify()
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertEqual(result.stdout.splitlines()[0], "refused")

@@ -38,6 +38,7 @@ NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
 NAMEPLATE_TIMEOUT = 120
 UNKNOWN_DURATION_TIMEOUT = 600
+SLIDE_MIN_FULL_BUDGET = 600
 AUTO_SAMPLE_TIMEOUT = 45
 AUTO_CALIBRATION_TIMEOUT = 30
 AUTO_BUDGET_HEADROOM = 0.70
@@ -128,12 +129,21 @@ class Frame:
     seconds: float
 
 
+def slide_full_budget(duration: float | None) -> float:
+    if (
+        isinstance(duration, (int, float))
+        and not isinstance(duration, bool)
+        and math.isfinite(duration)
+        and duration > 0
+    ):
+        return max(duration / 2, float(SLIDE_MIN_FULL_BUDGET))
+    return float(UNKNOWN_DURATION_TIMEOUT)
+
+
 class Scan:
     def __init__(self, mode: str, duration: float | None, *, budget: float | None = None):
         self.started = time.monotonic()
-        full_budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else (
-            duration / 2 if duration else UNKNOWN_DURATION_TIMEOUT
-        )
+        full_budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else slide_full_budget(duration)
         self.budget = full_budget if budget is None else budget
 
     def remaining(self) -> float:
@@ -263,7 +273,7 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
     if mode == "slides" and duration:
         actual = int(duration[1]) * 3600 + int(duration[2]) * 60 + float(duration[3])
         if actual > 0:
-            scan.budget = actual / 2
+            scan.budget = slide_full_budget(actual)
     frames, checksums = [], set()
     previous_checksum = None
     for index, pts, details in _SHOWINFO.findall(result.stderr):
@@ -939,6 +949,8 @@ def extract(
                         left = scan.remaining()
                         if remaining_needed > left:
                             status["overrun_aborted"] = True
+                            status["estimated_remaining_seconds"] = round(remaining_needed, 3)
+                            status["remaining_budget_seconds"] = round(left, 3)
                             raise ScreenTimeout(
                                 f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
                                 f"exceeds remaining budget ({left:.1f}s)."

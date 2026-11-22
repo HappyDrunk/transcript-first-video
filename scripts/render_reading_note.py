@@ -376,6 +376,9 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
         finally:
             if temp is not None:
                 temp.unlink(missing_ok=True)
+        status = verify_note.read_job_status(job)
+        status["next_step"] = "deliver"
+        verify_note.write_job_status(job, status)
         return output
 
 
