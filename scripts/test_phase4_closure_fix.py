@@ -461,6 +461,48 @@ class A3AndD2ClosureTests(unittest.TestCase):
             after = json.loads(status_path.read_text(encoding="utf-8"))
             self.assertNotEqual(after.get("next_step"), "deliver")
 
+    def test_d2_replace_failures_preserve_reading_file_and_roll_back_next_step(self) -> None:
+        for failing_target in ("status", "output"):
+            with self.subTest(failing_target=failing_target), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                job = root / "job"
+                output = root / "reading.md"
+                write_job(job)
+                status_path = job / "status.json"
+                status = json.loads(status_path.read_text(encoding="utf-8"))
+                status["next_step"] = "write-note"
+                status_path.write_text(json.dumps(status), encoding="utf-8")
+                output.write_bytes(b"prior reading copy\n")
+
+                rendered_markdown = False
+                real_render_note = render_reading_note.render_note
+                real_replace = Path.replace
+
+                def tracked_render_note(*args, **kwargs):
+                    nonlocal rendered_markdown
+                    rendered_markdown = True
+                    return real_render_note(*args, **kwargs)
+
+                def fail_replace(self_path, target):
+                    if rendered_markdown:
+                        resolved_target = Path(target).resolve()
+                        if failing_target == "status" and resolved_target == status_path.resolve():
+                            raise PermissionError("status.json locked")
+                        if failing_target == "output" and resolved_target == output.resolve():
+                            raise PermissionError("reading.md locked")
+                    return real_replace(self_path, target)
+
+                with (
+                    patch.object(render_reading_note, "render_note", side_effect=tracked_render_note),
+                    patch.object(Path, "replace", autospec=True, side_effect=fail_replace),
+                ):
+                    with self.assertRaisesRegex(PermissionError, "locked"):
+                        render_reading_note.render_job(job, output, keep_frontmatter=False)
+
+                self.assertEqual(output.read_bytes(), b"prior reading copy\n")
+                after = json.loads(status_path.read_text(encoding="utf-8"))
+                self.assertEqual(after.get("next_step"), "write-note")
+
     def test_a3_skill_step1_and_readme_document_pep668_venv_and_screen_group(self) -> None:
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         run = _h2_section(skill, "## Run")
