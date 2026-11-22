@@ -636,7 +636,7 @@ def assess(
                 elif len(latin_words) >= LONG_TRANSCRIPT_WORDS and repeated_share >= NGRAM_MIN_COVERAGE:
                     sentence_loop = True
                     reasons.append(
-                        f"looping repeats: repeated 4-word phrases cover {repeated_share:.0%} of words"
+                        f"looping repeats: repeated 4-word phrases cover {repeated_share:.0%} of 4-grams"
                     )
         if len(latin_words) >= TOKEN_MIN_WORDS:
             word, count = Counter(word.casefold() for word in latin_words).most_common(1)[0]

@@ -616,11 +616,17 @@ class TraditionalNumeralsAndBaseMaskingTests(unittest.TestCase):
                 exact_claim = rules.NumericValue("number", rules.NumberRange(1_000_000_000, 1_000_000_000), "10 亿")
                 self.assertFalse(approx[0].supports(exact_claim))
 
-        # Idiomatic 千萬/千万 must not emit 10,000,000
-        for idiom in ("千萬不要關機", "千万不要关机", "千萬別忘記備份"):
+        # Idiomatic 千萬/千万 must not emit 10,000,000, while range quantities like 到千萬不等 are preserved
+        for idiom in ("千萬不要關機", "千万不要关机", "千萬別忘記備份", "千萬記住備份"):
             with self.subTest(idiom=idiom):
                 _, values = rules.canonical_numbers(idiom)
                 self.assertEqual(values, [], f"{idiom!r} must emit 0 numeric values, got {values}")
+        _, range_vals = rules.canonical_numbers("費用從百萬到千萬不等")
+        range_nums = [v.value for v in range_vals if isinstance(v.value, rules.NumberRange)]
+        self.assertTrue(
+            any(rng.low == 10_000_000.0 and rng.high == 10_000_000.0 for rng in range_nums),
+            f"到千萬不等 must preserve 10,000,000, got {range_vals}",
+        )
 
         passed, message = self.grounded(
             "有篇文章发现一个很长的段落在网爬资料里重复了 6 万多次。 ⏱ 22:04",

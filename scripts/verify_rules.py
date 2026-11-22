@@ -210,7 +210,8 @@ _APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "十萬": 100
                       "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
 _INDEFINITE_PERCENT = re.compile(r"百分之[几幾](?![十百千万萬亿億])")
 _ZH_IDIOM_QIANWAN = re.compile(
-    rf"(?<![{_ZH_NUMERAL}几幾数數上成约約大])千[万萬](?=[不别別莫勿要]|记得|記得|小心|注意)"
+    rf"(?<![{_ZH_NUMERAL}几幾数數上成约約大到至])千[万萬]"
+    r"(?=(?:不要|不能|不可|不得|不许|不許|别|別|莫|勿|要|记[得住]|記[得住]|小心|注意|留心|切[记記]))"
 )
 _NUMERAL_BASE = re.compile(
     rf"(?:(?<![{_ZH_NUMERAL}])(?:十六|[二八十])|(?<![A-Za-z0-9])(?<![0-9][.,])(?:16|10|8|2))[ \t]*[进進]制"
