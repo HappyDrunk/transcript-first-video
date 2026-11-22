@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import stat
 import sys
@@ -366,16 +367,37 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
 
         output.parent.mkdir(parents=True, exist_ok=True)
         temp = None
+        status_temp = None
+        rollback_temp = None
+        status_path = job / "status.json"
         try:
             with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as staged:
                 temp = Path(staged.name)
                 staged.write(markdown)
             check_destination(job, output)
             check_finished(job, inputs, verifier, review)
-            temp.replace(output)
+            original_status = status_path.read_bytes()
+            delivered = verify_note.read_job_status(job)
+            delivered["next_step"] = "deliver"
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=job, delete=False) as staged_status:
+                status_temp = Path(staged_status.name)
+                staged_status.write(json.dumps(delivered, ensure_ascii=False, indent=2) + "\n")
+            with tempfile.NamedTemporaryFile(dir=job, delete=False) as staged_rollback:
+                rollback_temp = Path(staged_rollback.name)
+                staged_rollback.write(original_status)
+            status_temp.replace(status_path)
+            status_temp = None
+            try:
+                temp.replace(output)
+                temp = None
+            except BaseException:
+                rollback_temp.replace(status_path)
+                rollback_temp = None
+                raise
         finally:
-            if temp is not None:
-                temp.unlink(missing_ok=True)
+            for path in (temp, status_temp, rollback_temp):
+                if path is not None:
+                    path.unlink(missing_ok=True)
         return output
 
 

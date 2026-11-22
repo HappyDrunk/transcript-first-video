@@ -11,6 +11,7 @@ from verify_rules import canonical_numbers, delivery_evidence, prose_without_tim
 
 HEADING = "## C04c 告警裁定"
 HINT = "所链引文里没有这个词或数：补挂出处，或改正文"
+PASSED_HINT = "已过检，交复核裁定（勿为 WARN 改稿）"
 ID = r"C04c-\d{3,}"
 
 
@@ -19,12 +20,12 @@ def digest(findings: list[dict]) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def warning(row: dict) -> str:
+def warning(row: dict, *, hint: str = HINT) -> str:
     values = ", ".join(value for quote in row["citations"] for value in quote["values"])
     sources = ", ".join(f'{quote["time"]}#{quote["source_line"]}' if quote["screen"] else quote["time"]
                         for quote in row["citations"])
     return (f'{row["id"]} WARN | {row["section"]} L{row["line"]} | 正文={row["term"]!r} '
-            f'| 引文数值=[{values}] | 引文={sources or "无"} | {HINT}')
+            f'| 引文数值=[{values}] | 引文={sources or "无"} | {hint}')
 
 
 def _section(content: bytes) -> list[str] | None:

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLAIM = "stopping two centimeters below the rim"
 BAD = NOTE.replace(CLAIM, "stopping 21.1 centimeters below the rim", 1)
 HINT = "所链引文里没有这个词或数：补挂出处，或改正文"
+PASSED_HINT = "已过检，交复核裁定（勿为 WARN 改稿）"
 
 
 class Phase4ReviewTests(unittest.TestCase):
@@ -118,7 +119,7 @@ class Phase4ReviewTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in findings], ["C04c-001", "C04c-002"])
         self.assertEqual([item["term"] for item in findings], ["four", "21.1"])
         self.assertTrue(all(item["line"] > 0 and item["citations"] for item in findings))
-        self.assertEqual(sum(HINT in message for message in checked["warnings"]), 2)
+        self.assertEqual(sum(PASSED_HINT in message for message in checked["warnings"]), 2)
         self.assertIn("引文数值=", "\n".join(checked["warnings"]))
         self.assertTrue(checked["coverage"]["ok"])
         self.assertEqual(self.status()["repair_rounds"], 0)
@@ -126,7 +127,8 @@ class Phase4ReviewTests(unittest.TestCase):
         self.assertNotEqual(self.render(False).returncode, 0)
         plain = self.command("verify_note.py", "--job", str(self.job), "--with-coverage")
         self.assertEqual(plain.returncode, 0, plain.stderr)
-        self.assertIn(HINT, plain.stderr)
+        self.assertIn(PASSED_HINT, plain.stderr)
+        self.assertNotIn("改正文", plain.stderr)
 
     def test_review_must_cover_each_warning_with_exact_linked_numeric_evidence(self):
         self.warning_draft()

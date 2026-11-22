@@ -27,10 +27,10 @@ python3 ~/.agents/skills/transcript-first-video/scripts/install_check.py
 
 The check prints the installed commit (or the `VERSION` for a source copy) and fails with a list of missing files when the installation is incomplete.
 
-From the installed skill folder, use pip with `--group` support to install dependencies and fetch a captioned URL.
+From the installed skill folder, use pip with `--group` support to install dependencies and fetch a captioned URL. If system Python reports `externally-managed-environment` (PEP 668), create and activate a `venv` (`python3 -m venv .venv && source .venv/bin/activate`) first.
 
 ```bash
-python3 -m pip install --group base
+python3 -m pip install --group base --group screen
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 ```
 
@@ -79,7 +79,7 @@ Adjust these when the reader asks. Keep the [single-note format and evidence](re
 ## Checks
 
 ```bash
-python3 -m pip install --group base
+python3 -m pip install --group base --group screen
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
@@ -104,7 +104,7 @@ python3 scripts/render_reading_note.py --require-review --task-dir "artifacts/yo
 
 Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame.
 
-`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#画面引文). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration for slides and 120 seconds for nameplates. The host records OCR failures or timeouts and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#画面引文). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration (at least 600 seconds) for slides and 120 seconds for nameplates. The host records OCR failures or timeouts and proceeds with the transcript. See [the evidence format](references/delivery-format.md) for quoting and attribution.
 
 Install Python and yt-dlp as above. On Debian or Ubuntu, install FFmpeg and install the OCR packages in the Python environment used to run the host.
 
@@ -167,9 +167,11 @@ git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/ski
 
 ### 怎么跑
 
+先进入安装目录；若系统 Python 报 `externally-managed-environment`（PEP 668），在该目录下先创建并激活虚拟环境（`python3 -m venv .venv && source .venv/bin/activate`）再安装依赖。
+
 ```bash
 cd ~/.agents/skills/transcript-first-video
-python3 -m pip install --group base
+python3 -m pip install --group base --group screen
 python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
 python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage

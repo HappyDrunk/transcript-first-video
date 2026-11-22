@@ -250,7 +250,7 @@ class MediaTools:
         self.ocr_images.append(size)
         if self.timeout and not self.clock_offset:
             self.events.append(("timeout", "rapidocr"))
-            self.clock_offset = 300
+            self.clock_offset = 700
         if self.mode == "nameplate":
             lines = ("Mira Vellora, Horticulturist",)
         elif self.watermark:

@@ -217,8 +217,8 @@ class OCRReplayTests(unittest.TestCase):
     def test_nameplate_budget_is_fixed_and_slides_keep_half_duration(self):
         original = ocr_result((80, 40, "Mira Vellora, Horticulturist"))
         half = ocr_result((40, 20, "Mira Vellora, Horticulturist"))
-        for duration in (90, 600):
-            for mode, expected in (("nameplate", 120), ("slides", duration / 2)):
+        for duration in (90, 600, 1800):
+            for mode, expected in (("nameplate", 120), ("slides", max(duration / 2, 600))):
                 with self.subTest(mode=mode, duration=duration):
                     rows, status = screen_output(mode, FrameCommands(
                         8, ocr_passes=(original, half), duration=duration,
