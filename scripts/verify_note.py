@@ -357,6 +357,23 @@ def _review_retry(status: dict) -> bool:
     )
 
 
+def _c04c_pending_revision(status: dict, batch: dict, previous: dict) -> bool:
+    if batch.get("c04c_pending_inputs") == previous:
+        return True
+    verifier = status.get("verifier")
+    coverage = status.get("coverage")
+    return (
+        not status.get("finished")
+        and status.get("next_step") == "review"
+        and isinstance(verifier, dict)
+        and verifier.get("allowed") is True
+        and verifier.get("inputs") == previous
+        and isinstance(coverage, dict)
+        and coverage.get("allowed") is True
+        and coverage.get("inputs") == previous
+    )
+
+
 def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> None:
     text = _normalized_note_text(note_bytes)
     body = _FORMAT_FRONTMATTER.sub("", text, count=1)
@@ -447,9 +464,17 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
     revisions = batch["revisions"]
     previous = revisions[-1] if revisions else baseline
     if inputs != previous:
-        if (len(revisions) >= 2 or (revisions and batch["failures"] != 1)
-                or inputs in revisions):
+        can_retry = len(revisions) == 1 and (
+            batch["failures"] == 1 or _c04c_pending_revision(status, batch, previous)
+        )
+        if len(revisions) >= 2 or (revisions and not can_retry) or inputs in revisions:
+            status["review"] = batch
+            stop_for_user(job, status, "the review correction allowance is exhausted", inputs, unchecked=True)
+            write_job_status(job, status)
             raise ValueError("the review correction allowance is exhausted")
+        if can_retry and batch["failures"] == 0:
+            batch["failures"] = 1
+        batch.pop("c04c_pending_inputs", None)
         revisions.append(inputs)
         # The ordinary revision recorder must see this authorized review draft
         # as already registered. No ordinary edit or failure count is removed.
@@ -631,13 +656,17 @@ def record_gate_result(
             data.pop("failure_lines", None)
             if review and not pending:
                 data["review"]["final_inputs"] = inputs
+                data["review"].pop("c04c_pending_inputs", None)
             if isinstance(review_error, c04c_review.ConfirmedError):
                 batch = data["review"]
+                batch.pop("c04c_pending_inputs", None)
                 if batch.get("c04c_rejected_inputs") != inputs:
                     batch["c04c_rejected_inputs"] = inputs
                     batch["failures"] += 1
                 if batch["failures"] >= 2:
                     stop_for_user(job, data, str(review_error), note_inputs or inputs)
+            elif review and review_error is not None:
+                data["review"]["c04c_pending_inputs"] = inputs
     write_job_status(job, data)
     return data
 
@@ -875,6 +904,9 @@ def main(argv: list[str] | None = None) -> int:
                     reviewed_inputs=reviewed_inputs, review_content=review_content,
                 )
         except (OSError, RuntimeError, ValueError) as exc:
+            status = read_job_status(args.job)
+            if status.get("status") == NEEDS_USER and status.get("reason") == str(exc):
+                return _emit_verify(stopped_result(args.job, status), as_json=args.json)
             return _emit_verify({"allowed": False, "reasons": [str(exc)]}, as_json=args.json)
         return _emit_verify(result, as_json=args.json)
     if args.transcript is None:

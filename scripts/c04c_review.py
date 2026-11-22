@@ -39,7 +39,7 @@ def _section(content: bytes) -> list[str] | None:
     return [line.strip() for line in section.splitlines() if line.strip()]
 
 
-def _row(line: str, findings: dict, seen: dict) -> None:
+def _row(line: str, findings: dict, seen: dict, *, allow_valueless_number: bool = False) -> None:
     if not line.startswith("- "):
         raise ValueError("C04c decisions must be one bullet per warning")
     parts = [part.strip().replace(r"\|", "|") for part in re.split(r"(?<!\\)\|", line[2:])]
@@ -55,7 +55,12 @@ def _row(line: str, findings: dict, seen: dict) -> None:
     cites = [quote for quote in row["citations"] if fragment and fragment in " ".join(quote["text"].split())]
     if not cites:
         raise ValueError(f"{key}: excerpt is not part of a linked quote")
-    if row["kind"] == "number" and not any(canonical_numbers(fragment, screen=q["screen"])[1] for q in cites):
+    has_linked_values = any(quote["values"] for quote in row["citations"])
+    if (
+        row["kind"] == "number"
+        and (not allow_valueless_number or has_linked_values)
+        and not any(canonical_numbers(fragment, screen=q["screen"])[1] for q in cites)
+    ):
         raise ValueError(f"{key}: excerpt has no numeric value")
     if result not in {"真错", "误报"}:
         raise ValueError(f"{key}: decision must be 真错 or 误报")
@@ -130,7 +135,7 @@ def final(content: bytes, original: list[dict], verdicts: dict,
                 raise ValueError(f"{key}: confirmed change cannot be located in the current note")
             confirmed.add(key)
         elif line.startswith("- 终稿 "):
-            _row("- " + line.removeprefix("- 终稿 "), remaining, final_verdicts)
+            _row("- " + line.removeprefix("- 终稿 "), remaining, final_verdicts, allow_valueless_number=True)
     if set(final_verdicts) != set(remaining):
         raise ValueError("uncleared C04c warnings need decisions on the current draft")
     if remaining and final_digest != digest(current):

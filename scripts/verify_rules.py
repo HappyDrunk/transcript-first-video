@@ -20,9 +20,12 @@ import quality_gate
 
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 _STAMP = re.compile(r"^\[((?:[0-9]+:)?[0-9]{2,}:[0-5][0-9])\]([ \t]*)")
-_ZH_NUMERAL = "零〇一二两三四五六七八九十百千万亿"
+_ZH_NUMERAL = "零〇一二两兩三四五六七八九十百千万萬亿億"
 _ZH_NUMBER = re.compile(rf"[{_ZH_NUMERAL}]+")
-_ZH_FUZZY = re.compile(r"几十万|几百万|几千万|几亿|几十|几百|几千|几万")
+_ZH_FUZZY = re.compile(
+    r"[几幾]十[万萬]|[几幾]百[万萬]|[几幾]千[万萬]|[几幾][亿億]|[几幾]十|[几幾]百|[几幾]千|[几幾][万萬]"
+)
+_ZH_FUZZY_NORMALIZE = str.maketrans("幾萬億", "几万亿")
 _LATIN_WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 _CJK_RUN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")
 _BOOK = re.compile(r"《([^》]{1,40})》")
@@ -86,10 +89,10 @@ def _fold(text: str) -> str:
 def _chinese_integer(text: str) -> int:
     digits = {
         "\u96f6": 0, "\u3007": 0, "\u4e00": 1, "\u4e8c": 2,
-        "\u4e24": 2, "\u4e09": 3, "\u56db": 4, "\u4e94": 5,
+        "\u4e24": 2, "\u5169": 2, "\u4e09": 3, "\u56db": 4, "\u4e94": 5,
         "\u516d": 6, "\u4e03": 7, "\u516b": 8, "\u4e5d": 9,
     }
-    if not any(char in "\u5341\u767e\u5343\u4e07\u4ebf" for char in text):
+    if not any(char in "\u5341\u767e\u5343\u4e07\u842c\u4ebf\u5104" for char in text):
         return int("".join(str(digits[char]) for char in text))
     total = section = pending = 0
     for char in text:
@@ -99,10 +102,10 @@ def _chinese_integer(text: str) -> int:
             unit = {"\u5341": 10, "\u767e": 100, "\u5343": 1000}[char]
             section += (pending or 1) * unit
             pending = 0
-        elif char == "\u4e07":
+        elif char in "\u4e07\u842c":
             total += (section + pending) * 10_000
             section = pending = 0
-        elif char == "\u4ebf":
+        elif char in "\u4ebf\u5104":
             total = (total + section + pending) * 100_000_000
             section = pending = 0
     return total + section + pending
@@ -160,7 +163,7 @@ def body_number_mentions(text: str) -> list[tuple[float, float, str]]:
         "\u51e0\u5343": (1_000, 9_999), "\u51e0\u4e07": (10_000, 99_999),
     }
     for match in _ZH_FUZZY.finditer(text):
-        low, high = fuzzy_ranges[match.group()]
+        low, high = fuzzy_ranges[match.group().translate(_ZH_FUZZY_NORMALIZE)]
         mentions.append((low, high, match.group()))
         occupied.append(match.span())
     for match in _EN_SOURCE_NUMBER.finditer(text):
@@ -173,7 +176,7 @@ def body_number_mentions(text: str) -> list[tuple[float, float, str]]:
         token = match.group()
         if any(start < match.end() and end > match.start() for start, end in occupied):
             continue
-        has_unit = any(char in "\u5341\u767e\u5343\u4e07\u4ebf" for char in token)
+        has_unit = any(char in "\u5341\u767e\u5343\u4e07\u842c\u4ebf\u5104" for char in token)
         value = _chinese_integer(token)
         if value < 10 and not has_unit:
             continue
@@ -184,20 +187,29 @@ def body_number_mentions(text: str) -> list[tuple[float, float, str]]:
 
 _EN_MAGNITUDE = {"thousand": 10**3, "million": 10**6, "billion": 10**9, "trillion": 10**12}
 _EN_ABBREVIATED_MAGNITUDE = {"k": 10**3, "M": 10**6, "B": 10**9}
-_ZH_MAGNITUDE = {"万": 10**4, "亿": 10**8, "万亿": 10**12}
+_ZH_MAGNITUDE = {
+    "万": 10**4, "萬": 10**4, "亿": 10**8, "億": 10**8,
+    "万亿": 10**12, "萬億": 10**12, "万億": 10**12, "萬亿": 10**12,
+}
 _ARABIC_MAGNITUDE = re.compile(
     r"(?<![A-Za-z0-9_.,])(?P<count>[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)"
-    r"(?:[ \t]*(?P<zh>万亿|万|亿)(?![万亿])|(?P<en>[kKMB])"
+    r"(?:[ \t]*(?P<zh>[万萬][亿億]|[万萬]|[亿億])(?![万萬亿億])|(?P<en>[kKMB])"
     r"(?:(?![A-Za-z0-9_])|(?=(?:GPUh|vCPUh)\b)))"
 )
-_ZH_APPROXIMATE_COUNT = re.compile(r"(?P<prefix>上|成|数|约|大约)(?P<scale>十万|万亿|百万|千万|百|千|万|亿)")
+_ZH_APPROXIMATE_COUNT = re.compile(
+    r"(?P<prefix>上|成|数|數|约|約|大约|大約)(?P<scale>十[万萬]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
+)
 _EN_APPROXIMATE_COUNT = re.compile(
     r"\b(?P<scale>hundreds|thousands|millions|billions)"
     r"(?:[ \t]+of[ \t]+(?P<of>thousands|millions|billions))?\b", re.IGNORECASE,
 )
-_APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "百万": 1_000_000,
-                      "千万": 10_000_000, "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
-_INDEFINITE_PERCENT = re.compile(r"百分之几(?![十百千万亿])")
+_APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "十萬": 100_000,
+                      "百万": 1_000_000, "百萬": 1_000_000, "千万": 10_000_000, "千萬": 10_000_000,
+                      "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
+_INDEFINITE_PERCENT = re.compile(r"百分之[几幾](?![十百千万萬亿億])")
+_NUMERAL_BASE = re.compile(
+    rf"(?:(?<![{_ZH_NUMERAL}])(?:十六|[二八十])|(?<![A-Za-z0-9.,])(?:16|10|8|2))[ \t]*[进進]制"
+)
 _MULTIPLIER_SUFFIX = re.compile(r"(?<=\d)[xX×](?![A-Za-z0-9_])")
 _ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re.IGNORECASE)
 _COMPOUND_NAME_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])")
@@ -1389,7 +1401,7 @@ _SPOKEN_YEAR = re.compile(
     re.IGNORECASE,
 )
 _ZH_YEAR = re.compile(
-    rf"(?<![A-Za-z0-9$€£¥{_ZH_NUMERAL}])(?P<year>(?:19|20)[0-9]{{2}}|[二两][〇零一二三四五六七八九]{{3}})[ \t]*年"
+    rf"(?<![A-Za-z0-9$€£¥{_ZH_NUMERAL}])(?P<year>(?:19|20)[0-9]{{2}}|[二两兩][〇零一二三四五六七八九]{{3}})[ \t]*年"
 )
 _BARE_YEAR = re.compile(r"(?<![A-Za-z0-9_.,$€£¥+\-])(?:19|20)[0-9]{2}(?![A-Za-z0-9_%]|[.,][0-9])")
 _QUANTITY_SUFFIX = re.compile(
@@ -1448,6 +1460,7 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
     # Keep the whole decimal before the number lexer meets a Latin suffix.
     text = _MULTIPLIER_SUFFIX.sub(" ", _MILLISECONDS_SUFFIX.sub(" 毫秒", text))
     text = _INDEFINITE_PERCENT.sub(" ", text)
+    text = _NUMERAL_BASE.sub(lambda match: " " * len(match[0]), text)
     values: list[NumericValue] = []
 
     def magnitude(match: re.Match[str]) -> str:

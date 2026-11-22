@@ -12,6 +12,7 @@ import argparse
 import html
 import json
 import re
+import statistics
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -41,6 +42,9 @@ NGRAM_MIN_COVERAGE = 0.34
 TOKEN_MIN_WORDS = 30
 TOKEN_DOMINANCE = 0.50
 UNIQUE_WORD_FLOOR = 0.12
+LONG_TRANSCRIPT_WORDS = 1000
+UNIQUE_WORD_WINDOW = 500
+LONG_WINDOW_UNIQUE_FLOOR = 0.08
 MICRO_CUE_SECONDS = 0.08
 CHUNK_MAX_SECONDS = 8 * 60
 CHUNK_MAX_CHARS = 6000
@@ -521,6 +525,20 @@ def _language_reasons(counts: dict[str, int], family: str | None, lang: str | No
     return reasons
 
 
+def _window_unique_ratios(words: list[str], window: int = UNIQUE_WORD_WINDOW) -> list[float]:
+    """Compute unique-word ratios over non-overlapping windows plus a trailing full window."""
+    if len(words) < window:
+        return []
+    ratios = [
+        len({word.casefold() for word in words[index : index + window]}) / window
+        for index in range(0, len(words) - window + 1, window)
+    ]
+    if len(words) % window != 0:
+        tail = words[-window:]
+        ratios.append(len({word.casefold() for word in tail}) / window)
+    return ratios
+
+
 def assess(
     raw: str,
     *,
@@ -549,6 +567,13 @@ def assess(
         if latin_words
         else 1.0
     )
+    window_ratios = (
+        _window_unique_ratios(latin_words)
+        if len(latin_words) >= LONG_TRANSCRIPT_WORDS
+        else []
+    )
+    window_median = statistics.median(window_ratios) if window_ratios else None
+    window_min = min(window_ratios) if window_ratios else None
     metrics = {
         "speech_chars": speech,
         "cjk": counts["cjk"],
@@ -563,6 +588,9 @@ def assess(
         "expected_lang": lang,
         "confidence": confidence,
     }
+    if window_ratios:
+        metrics["window_unique_median"] = round(window_median, 4)
+        metrics["window_unique_min"] = round(window_min, 4)
     reasons: list[str] = []
     if speech == 0:
         reasons.append("empty or unusable transcript (no speech text after cleanup)")
@@ -596,21 +624,44 @@ def assess(
             if grams:
                 _gram, count = grams.most_common(1)[0]
                 coverage = count * 4 / len(latin_words)
+                total_grams = len(latin_words) - 3
+                repeated_share = (
+                    sum(c for c in grams.values() if c >= NGRAM_MIN_COUNT) / total_grams
+                    if total_grams > 0
+                    else 0.0
+                )
                 if count >= NGRAM_MIN_COUNT and coverage >= NGRAM_MIN_COVERAGE:
                     sentence_loop = True
                     reasons.append(
                         f"looping repeats: a 4-word phrase repeats {count} times "
                         f"({coverage:.0%} of words)"
                     )
+                elif len(latin_words) >= LONG_TRANSCRIPT_WORDS and repeated_share >= NGRAM_MIN_COVERAGE:
+                    sentence_loop = True
+                    reasons.append(
+                        f"looping repeats: repeated 4-word phrases cover {repeated_share:.0%} of words"
+                    )
         if len(latin_words) >= TOKEN_MIN_WORDS:
             word, count = Counter(word.casefold() for word in latin_words).most_common(1)[0]
             share = count / len(latin_words)
             if share >= TOKEN_DOMINANCE:
                 reasons.append(f"looping repeats: '{word}' is {share:.0%} of words")
-            elif unique_ratio < UNIQUE_WORD_FLOOR:
-                reasons.append(
-                    f"looping repeats: unique-word ratio {unique_ratio:.2f} is too low"
-                )
+            elif len(latin_words) < LONG_TRANSCRIPT_WORDS:
+                if unique_ratio < UNIQUE_WORD_FLOOR:
+                    reasons.append(
+                        f"looping repeats: unique-word ratio {unique_ratio:.2f} is too low"
+                    )
+            else:
+                if window_median is not None and window_median < UNIQUE_WORD_FLOOR:
+                    reasons.append(
+                        f"looping repeats: median {UNIQUE_WORD_WINDOW}-word unique-word ratio "
+                        f"{window_median:.2f} is too low"
+                    )
+                elif window_min is not None and window_min < LONG_WINDOW_UNIQUE_FLOOR:
+                    reasons.append(
+                        f"looping repeats: minimum {UNIQUE_WORD_WINDOW}-word unique-word ratio "
+                        f"{window_min:.2f} is too low"
+                    )
         if counts["latin"] >= MIN_LATIN_FOR_VOWEL and vowel_ratio < MIN_VOWEL_RATIO:
             reasons.append(
                 f"gibberish: Latin vowel ratio {vowel_ratio:.2f} is too low to be speech"
