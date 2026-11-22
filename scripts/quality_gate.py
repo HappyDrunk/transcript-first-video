@@ -588,9 +588,6 @@ def assess(
         "expected_lang": lang,
         "confidence": confidence,
     }
-    if window_ratios:
-        metrics["window_unique_median"] = round(window_median, 4)
-        metrics["window_unique_min"] = round(window_min, 4)
     reasons: list[str] = []
     if speech == 0:
         reasons.append("empty or unusable transcript (no speech text after cleanup)")
@@ -626,7 +623,7 @@ def assess(
                 coverage = count * 4 / len(latin_words)
                 total_grams = len(latin_words) - 3
                 repeated_share = (
-                    sum(c for c in grams.values() if c >= NGRAM_MIN_COUNT) / total_grams
+                    sum(c for c in grams.values() if c >= 2) / total_grams
                     if total_grams > 0
                     else 0.0
                 )

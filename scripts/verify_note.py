@@ -446,16 +446,12 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
 
     if sources(inputs) != sources(baseline):
         raise ValueError("review source evidence changed; the receipt is stale")
-    check_closing_heading_pair((job / "note.md").read_bytes(), knowledge_note.read_reading_level(status))
     original = batch.get("c04c", [])
     if receipt.get("c04c_sha256") != batch.get("c04c_sha256"):
         raise ValueError("only the original C04c warning snapshot may be processed")
     decisions = c04c_review.initial(content, original, receipt.get("c04c_sha256"), batch["result"])
     if batch.get("c04c_decisions", decisions) != decisions:
         raise ValueError("initial C04c verdicts changed during this review batch")
-    if inputs == baseline:
-        c04c_review.final(content, original, decisions, original, (job / "note.md").read_text(encoding="utf-8"))
-    batch["c04c_decisions"] = decisions
     if batch["result"] == "clear" and inputs != baseline:
         raise ValueError("a clear review only covers the unchanged reviewed inputs")
     if batch.get("final_inputs") is not None and inputs != batch["final_inputs"]:
@@ -463,15 +459,23 @@ def prepare_review_submission(job: Path, *, required: bool = False) -> tuple[byt
 
     revisions = batch["revisions"]
     previous = revisions[-1] if revisions else baseline
+    can_retry = False
     if inputs != previous:
         can_retry = len(revisions) == 1 and (
             batch["failures"] == 1 or _c04c_pending_revision(status, batch, previous)
         )
         if len(revisions) >= 2 or (revisions and not can_retry) or inputs in revisions:
+            batch["c04c_decisions"] = decisions
             status["review"] = batch
             stop_for_user(job, status, "the review correction allowance is exhausted", inputs, unchecked=True)
             write_job_status(job, status)
             raise ValueError("the review correction allowance is exhausted")
+
+    check_closing_heading_pair((job / "note.md").read_bytes(), knowledge_note.read_reading_level(status))
+    if inputs == baseline:
+        c04c_review.final(content, original, decisions, original, (job / "note.md").read_text(encoding="utf-8"))
+    batch["c04c_decisions"] = decisions
+    if inputs != previous:
         if can_retry and batch["failures"] == 0:
             batch["failures"] = 1
         batch.pop("c04c_pending_inputs", None)
@@ -904,7 +908,10 @@ def main(argv: list[str] | None = None) -> int:
                     reviewed_inputs=reviewed_inputs, review_content=review_content,
                 )
         except (OSError, RuntimeError, ValueError) as exc:
-            status = read_job_status(args.job)
+            try:
+                status = read_job_status(args.job)
+            except (OSError, UnicodeError, ValueError):
+                status = {}
             if status.get("status") == NEEDS_USER and status.get("reason") == str(exc):
                 return _emit_verify(stopped_result(args.job, status), as_json=args.json)
             return _emit_verify({"allowed": False, "reasons": [str(exc)]}, as_json=args.json)

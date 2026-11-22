@@ -72,20 +72,29 @@ def _make_zipf_lecture(word_count: int = 17_000, *, seed: int = 20261122) -> str
 
 class LongTranscriptQualityGateTests(unittest.TestCase):
     def test_long_zipf_lecture_passes_windowed_unique_word_ratio(self) -> None:
+        short_keys = set(quality_gate.assess("This is a short valid English transcript sentence for schema parity.", expected_lang="en").metrics)
         lecture = _make_zipf_lecture(17_000, seed=20261122)
         result = quality_gate.assess(lecture, expected_lang="en")
         self.assertGreaterEqual(result.metrics["latin_words"], 17_000)
         self.assertLess(result.metrics["unique_word_ratio"], quality_gate.UNIQUE_WORD_FLOOR)
+        self.assertEqual(set(result.metrics), short_keys, "metrics schema must remain unchanged for long transcripts")
         self.assertTrue(result.passed, f"expected healthy long lecture to pass: {result.reasons}")
 
     def test_long_400_word_period_repeat_rejected(self) -> None:
         block = _make_zipf_lecture(400, seed=99)
         multiline_repeat = "\n".join([block] * 42)
         singleline_repeat = " ".join(block.splitlines() * 42)
-        for label, payload in (("multiline", multiline_repeat), ("singleline", singleline_repeat)):
+        # 3-copy punctuation-free 400-word block (~1,200 words, unique tokens per copy)
+        distinct_400 = " ".join(f"tok{chr(97 + (i // 26) % 26)}{chr(97 + i % 26)}e" for i in range(400))
+        three_copy_singleline = " ".join([distinct_400] * 3)
+        for label, payload, min_words in (
+            ("multiline", multiline_repeat, 16_000),
+            ("singleline", singleline_repeat, 16_000),
+            ("three_copy_singleline", three_copy_singleline, 1_200),
+        ):
             with self.subTest(form=label):
                 result = quality_gate.assess(payload, expected_lang="en")
-                self.assertGreaterEqual(result.metrics["latin_words"], 16_000)
+                self.assertGreaterEqual(result.metrics["latin_words"], min_words)
                 self.assertFalse(result.passed, f"{label} 400-word repeat must be rejected")
                 self.assertTrue(
                     any("looping repeats" in reason for reason in result.reasons),
@@ -341,6 +350,30 @@ class PostReviewC04cDeadlockTests(unittest.TestCase):
             self.assertTrue((self.job / "issues.md").is_file())
             self.assertIn("exhausted", (self.job / "issues.md").read_text(encoding="utf-8"))
 
+        # Subcase A2: Restoring baseline after 2 pending revisions must ALSO stop cleanly with issues.md
+        with self.subTest(case="restore_baseline_after_two_revisions_stops_cleanly"):
+            self.setUp()
+            base_receipt = self.start_changes_review()
+            confirmed = "- 已修 C04c-001 | stopping two centimeters below the rim\n"
+            (self.job / "review.md").write_text(base_receipt + confirmed, encoding="utf-8")
+
+            self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_NEW, 1))
+            self.assertNotEqual(self.submit().returncode, 0)
+
+            self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_ALT, 1))
+            self.assertNotEqual(self.submit().returncode, 0)
+
+            # Restore exact baseline draft (BAD_NUMERIC) -> must stop_for_user before baseline final() check
+            self.note(BAD_NUMERIC)
+            third = self.submit()
+            self.assertNotEqual(third.returncode, 0)
+            st3 = self.status()
+            self.assertEqual(st3["status"], "needs_user_input")
+            self.assertEqual(st3["next_step"], "return-draft-and-issues")
+            self.assertFalse(st3["finished"])
+            self.assertTrue((self.job / "issues.md").is_file())
+            self.assertIn("exhausted", (self.job / "issues.md").read_text(encoding="utf-8"))
+
         # Subcase B: Revision 1 (uncleared) -> Revision 2 (ConfirmedError) -> stop_for_user
         with self.subTest(case="rev2_confirmed_error_stops_cleanly"):
             self.setUp()
@@ -413,25 +446,21 @@ class PostReviewC04cDeadlockTests(unittest.TestCase):
                 self.assertNotEqual(self.submit().returncode, 0)
             return self.start_changes_review()
 
-        def assert_progressable(st: dict, label: str, next_fn) -> None:
+        def assert_transition(st: dict, expected_before: tuple, label: str, next_fn, expected_after: tuple) -> None:
             key = state_key(st)
+            self.assertEqual(key, expected_before, f"{label} before-state mismatch: {st}")
             observed_states[key] = label
-            if st.get("finished"):
-                self.assertEqual(st["status"], "finished")
-                return
-            if st.get("status") == "needs_user_input":
-                self.assertTrue((self.job / "issues.md").is_file(), f"{label}: missing issues.md")
-                self.assertEqual(st.get("next_step"), "return-draft-and-issues", label)
-                return
-            # Non-finished, non-stopped state MUST allow a legal next transition
             next_rc, next_st = next_fn()
-            progressed = (
-                next_rc == 0
-                or next_st.get("finished") is True
-                or next_st.get("status") == "needs_user_input"
-                or state_key(next_st) != key
-            )
-            self.assertTrue(progressed, f"deadlocked state {key} in {label}: {next_st}")
+            after_key = state_key(next_st)
+            self.assertEqual(after_key, expected_after, f"{label} after-state mismatch (rc={next_rc}): {next_st}")
+            observed_states[after_key] = f"{label}:after"
+            if expected_after[4] == "finished":
+                self.assertEqual(next_rc, 0, f"{label}: expected exit 0")
+                self.assertTrue(next_st.get("finished"), label)
+            elif expected_after[4] == "needs_user_input":
+                self.assertNotEqual(next_rc, 0, f"{label}: expected non-zero exit")
+                self.assertTrue((self.job / "issues.md").is_file(), f"{label}: missing issues.md")
+                self.assertEqual(next_st.get("next_step"), "return-draft-and-issues", label)
 
         for init_fail in (0, 2):
             # Path 1: Rev1 uncleared -> edit note (Rev2 clean) -> finished
@@ -439,12 +468,13 @@ class PostReviewC04cDeadlockTests(unittest.TestCase):
             (self.job / "review.md").write_text(base + confirmed, encoding="utf-8")
             self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_NEW, 1))
             self.assertNotEqual(self.submit().returncode, 0)
-            assert_progressable(
+            assert_transition(
                 self.status(),
+                (1, 0, False, True, "transcript_ready"),
                 f"init{init_fail}:rev1_uncleared->rev2_edit",
                 lambda: (self.note(NOTE) or self.submit().returncode, self.status()),
+                (2, 1, True, False, "finished"),
             )
-            self.assertTrue(self.status()["finished"])
 
             # Path 2: Rev1 uncleared -> review-only update -> finished
             base = setup_scenario(init_fail)
@@ -462,22 +492,28 @@ class PostReviewC04cDeadlockTests(unittest.TestCase):
                 )
                 return self.submit().returncode, self.status()
 
-            assert_progressable(self.status(), f"init{init_fail}:rev1_uncleared->review_only", clear_rev1)
-            self.assertTrue(self.status()["finished"])
+            assert_transition(
+                self.status(),
+                (1, 0, False, True, "transcript_ready"),
+                f"init{init_fail}:rev1_uncleared->review_only",
+                clear_rev1,
+                (1, 0, True, False, "finished"),
+            )
 
             # Path 3: Rev1 verify fail -> Rev2 uncleared -> review-only update -> finished
             base = setup_scenario(init_fail)
             (self.job / "review.md").write_text(base + confirmed, encoding="utf-8")
             self.note(BROKEN_QUOTE_NOTE)
             self.assertNotEqual(self.submit().returncode, 0)
-            st_r1_fail = self.status()
-            assert_progressable(
-                st_r1_fail,
+            assert_transition(
+                self.status(),
+                (1, 1, False, False, "transcript_ready"),
                 f"init{init_fail}:rev1_fail->rev2_uncleared",
                 lambda: (
                     self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_NEW, 1)) or self.submit().returncode,
                     self.status(),
                 ),
+                (2, 1, False, True, "transcript_ready"),
             )
             st_r2_pend = self.status()
             v2 = st_r2_pend["verifier"]
@@ -491,24 +527,38 @@ class PostReviewC04cDeadlockTests(unittest.TestCase):
                 )
                 return self.submit().returncode, self.status()
 
-            assert_progressable(st_r2_pend, f"init{init_fail}:rev2_uncleared->review_only", clear_rev2)
-            self.assertTrue(self.status()["finished"])
+            assert_transition(
+                st_r2_pend,
+                (2, 1, False, True, "transcript_ready"),
+                f"init{init_fail}:rev2_uncleared->review_only",
+                clear_rev2,
+                (2, 1, True, False, "finished"),
+            )
 
-            # Path 4: Rev1 uncleared -> Rev2 uncleared -> 3rd note edit -> needs_user_input + issues.md
+            # Path 4: Rev1 uncleared -> Rev2 uncleared -> 3rd note edit -> needs_user_input + stays terminal
             base = setup_scenario(init_fail)
             (self.job / "review.md").write_text(base + confirmed, encoding="utf-8")
             self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_NEW, 1))
             self.assertNotEqual(self.submit().returncode, 0)
             self.note(NOTE.replace(VALUELESS_CLAIM_SRC, VALUELESS_CLAIM_ALT, 1))
             self.assertNotEqual(self.submit().returncode, 0)
-            assert_progressable(
+            assert_transition(
                 self.status(),
+                (2, 1, False, True, "transcript_ready"),
                 f"init{init_fail}:rev2_uncleared->rev3_stops",
                 lambda: (self.note(NOTE) or self.submit().returncode, self.status()),
+                (2, 1, False, True, "needs_user_input"),
             )
-            assert_progressable(self.status(), f"init{init_fail}:stopped_terminal", lambda: (2, self.status()))
+            # Real resubmission from stopped state must stay terminal (needs_user_input)
+            assert_transition(
+                self.status(),
+                (2, 1, False, True, "needs_user_input"),
+                f"init{init_fail}:stopped_resubmit_stays_terminal",
+                lambda: (self.submit().returncode, self.status()),
+                (2, 1, False, True, "needs_user_input"),
+            )
 
-        self.assertGreaterEqual(len(observed_states), 4)
+        self.assertGreaterEqual(len(observed_states), 6)
 
 
 class TraditionalNumeralsAndBaseMaskingTests(unittest.TestCase):
@@ -545,16 +595,32 @@ class TraditionalNumeralsAndBaseMaskingTests(unittest.TestCase):
             ("突破一萬億個參數", 1_000_000_000_000.0),
             ("資料量有300億個文字", 30_000_000_000.0),
             ("閱讀了30萬遍", 300_000.0),
-            ("寫成一個有數十億個未知參數的函式", 1_000_000_000.0),
+            ("一千萬筆紀錄", 10_000_000.0),
         )
         for text, expected in cases:
             with self.subTest(text=text):
                 _, values = rules.canonical_numbers(text)
                 nums = [v.value for v in values if isinstance(v.value, rules.NumberRange)]
                 self.assertTrue(
-                    any(rng.low <= expected <= rng.high for rng in nums),
-                    f"{text!r} expected {expected}, got {values}",
+                    any(rng.low == expected and rng.high == expected for rng in nums),
+                    f"{text!r} expected exact {expected}, got {values}",
                 )
+
+        # 數十億 / 数十亿 must parse as approximate_count(1e9, 1e10 - 1), NOT an exact 1e9 point
+        for approx_text in ("寫成一個有數十億個未知參數的函式", "写成有数十亿个未知参数的函数"):
+            with self.subTest(approx_text=approx_text):
+                _, values = rules.canonical_numbers(approx_text)
+                approx = [v for v in values if v.kind == "approximate_count"]
+                self.assertEqual(len(approx), 1, values)
+                self.assertEqual(approx[0].value, rules.NumberRange(1_000_000_000, 9_999_999_999))
+                exact_claim = rules.NumericValue("number", rules.NumberRange(1_000_000_000, 1_000_000_000), "10 亿")
+                self.assertFalse(approx[0].supports(exact_claim))
+
+        # Idiomatic 千萬/千万 must not emit 10,000,000
+        for idiom in ("千萬不要關機", "千万不要关机", "千萬別忘記備份"):
+            with self.subTest(idiom=idiom):
+                _, values = rules.canonical_numbers(idiom)
+                self.assertEqual(values, [], f"{idiom!r} must emit 0 numeric values, got {values}")
 
         passed, message = self.grounded(
             "有篇文章发现一个很长的段落在网爬资料里重复了 6 万多次。 ⏱ 22:04",
@@ -575,11 +641,19 @@ class TraditionalNumeralsAndBaseMaskingTests(unittest.TestCase):
                 _, values = rules.canonical_numbers(f"界面用 {term} 显示原始字节。")
                 self.assertEqual(values, [], f"{term!r} should emit 0 numeric values, got {values}")
 
-        # Ordinary quantities and non-base numbers must remain intact
-        _, ordinary = rules.canonical_numbers("协议头共有十六个字节，编号从 32进制扩展表 读取。")
+        # Preceding ASCII punctuation (not preceded by a digit) must still mask the radix label
+        for punctuated in ("改用,16進制顯示", "改为.16进制表示", "(16进制)"):
+            with self.subTest(punctuated=punctuated):
+                _, values = rules.canonical_numbers(punctuated)
+                self.assertEqual(values, [], f"{punctuated!r} should emit 0 numeric values, got {values}")
+
+        # Ordinary quantities, decimals, grouped numbers, and non-base radices must remain intact
+        _, ordinary = rules.canonical_numbers("协议头共有十六个字节，编号从 32进制扩展表 读取，版本 1.16进制测试 与 1,016进制。")
         nums = [v.value for v in ordinary if isinstance(v.value, rules.NumberRange)]
         self.assertTrue(any(rng.low == 16.0 and rng.high == 16.0 for rng in nums), ordinary)
         self.assertTrue(any(rng.low == 32.0 and rng.high == 32.0 for rng in nums), ordinary)
+        self.assertTrue(any(rng.low == 1.16 and rng.high == 1.16 for rng in nums), ordinary)
+        self.assertTrue(any(rng.low == 1016.0 and rng.high == 1016.0 for rng in nums), ordinary)
 
         # C04c grounding against an English quote containing "hex" and no digits
         passed, message = self.grounded(

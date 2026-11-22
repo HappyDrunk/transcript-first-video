@@ -197,7 +197,8 @@ _ARABIC_MAGNITUDE = re.compile(
     r"(?:(?![A-Za-z0-9_])|(?=(?:GPUh|vCPUh)\b)))"
 )
 _ZH_APPROXIMATE_COUNT = re.compile(
-    r"(?P<prefix>上|成|数|數|约|約|大约|大約)(?P<scale>十[万萬]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
+    r"(?P<prefix>上|成|数|數|约|約|大约|大約)"
+    r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
 )
 _EN_APPROXIMATE_COUNT = re.compile(
     r"\b(?P<scale>hundreds|thousands|millions|billions)"
@@ -205,10 +206,14 @@ _EN_APPROXIMATE_COUNT = re.compile(
 )
 _APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "十萬": 100_000,
                       "百万": 1_000_000, "百萬": 1_000_000, "千万": 10_000_000, "千萬": 10_000_000,
+                      "十亿": 1_000_000_000, "十億": 1_000_000_000,
                       "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
 _INDEFINITE_PERCENT = re.compile(r"百分之[几幾](?![十百千万萬亿億])")
+_ZH_IDIOM_QIANWAN = re.compile(
+    rf"(?<![{_ZH_NUMERAL}几幾数數上成约約大])千[万萬](?=[不别別莫勿要]|记得|記得|小心|注意)"
+)
 _NUMERAL_BASE = re.compile(
-    rf"(?:(?<![{_ZH_NUMERAL}])(?:十六|[二八十])|(?<![A-Za-z0-9.,])(?:16|10|8|2))[ \t]*[进進]制"
+    rf"(?:(?<![{_ZH_NUMERAL}])(?:十六|[二八十])|(?<![A-Za-z0-9])(?<![0-9][.,])(?:16|10|8|2))[ \t]*[进進]制"
 )
 _MULTIPLIER_SUFFIX = re.compile(r"(?<=\d)[xX×](?![A-Za-z0-9_])")
 _ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re.IGNORECASE)
@@ -1460,6 +1465,7 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
     # Keep the whole decimal before the number lexer meets a Latin suffix.
     text = _MULTIPLIER_SUFFIX.sub(" ", _MILLISECONDS_SUFFIX.sub(" 毫秒", text))
     text = _INDEFINITE_PERCENT.sub(" ", text)
+    text = _ZH_IDIOM_QIANWAN.sub(lambda match: " " * len(match[0]), text)
     text = _NUMERAL_BASE.sub(lambda match: " " * len(match[0]), text)
     values: list[NumericValue] = []
 
