@@ -324,16 +324,17 @@ class AutoScreenBudgetTests(unittest.TestCase):
     def assert_budget_hint(self, screen):
         hint = screen["hint"]
         self.assertNotIn("这台机器识别太慢", hint)
-        self.assertRegex(
-            hint,
-            r"^预估 \d+\.\d 秒超过按片长算的预算 \d+\.\d 秒，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides$",
-        )
         if "estimated_seconds" in screen and "safe_budget_seconds" in screen:
             expected = (
                 f"预估 {screen['estimated_seconds']:.1f} 秒超过按片长算的预算 "
                 f"{screen['safe_budget_seconds']:.1f} 秒，{self.HINT_SUFFIX}"
             )
             self.assertEqual(hint, expected)
+        else:
+            self.assertRegex(
+                hint,
+                r"^预估剩余 \d+\.\d 秒超过剩余预算 \d+\.\d 秒，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides$",
+            )
 
     def setUp(self):
         folder = tempfile.TemporaryDirectory()

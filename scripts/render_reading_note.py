@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import stat
 import sys
@@ -366,19 +367,25 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
 
         output.parent.mkdir(parents=True, exist_ok=True)
         temp = None
+        status_temp = None
         try:
             with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as staged:
                 temp = Path(staged.name)
                 staged.write(markdown)
             check_destination(job, output)
             check_finished(job, inputs, verifier, review)
+            delivered = verify_note.read_job_status(job)
+            delivered["next_step"] = "deliver"
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=job, delete=False) as staged_status:
+                status_temp = Path(staged_status.name)
+                staged_status.write(json.dumps(delivered, ensure_ascii=False, indent=2) + "\n")
             temp.replace(output)
+            status_temp.replace(job / "status.json")
         finally:
             if temp is not None:
                 temp.unlink(missing_ok=True)
-        status = verify_note.read_job_status(job)
-        status["next_step"] = "deliver"
-        verify_note.write_job_status(job, status)
+            if status_temp is not None:
+                status_temp.unlink(missing_ok=True)
         return output
 
 

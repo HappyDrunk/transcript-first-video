@@ -1141,6 +1141,13 @@ def _budget_exceeded_hint(estimated: float, safe_budget: float) -> str:
     )
 
 
+def _live_overrun_hint(estimated_remaining: float, remaining_budget: float) -> str:
+    return (
+        f"预估剩余 {estimated_remaining:.1f} 秒超过剩余预算 {remaining_budget:.1f} 秒，"
+        "只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
+    )
+
+
 OVERRUN_HINT = "扫描耗时超过按片长算的预算，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
 
 
@@ -1277,7 +1284,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 and math.isfinite(rem_est)
                 and math.isfinite(rem_budget)
             ):
-                fallback["hint"] = _budget_exceeded_hint(float(rem_est), float(rem_budget))
+                fallback["hint"] = _live_overrun_hint(float(rem_est), float(rem_budget))
             else:
                 fallback["hint"] = OVERRUN_HINT
         return fallback

@@ -17,6 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import c04c_review
+import render_reading_note
 import screen_ocr
 import verify_rules
 import youtube_host
@@ -162,6 +163,43 @@ class W11WarnGuidanceTests(unittest.TestCase):
         total = sum(sizes.values())
         self.assertLessEqual(total, WRITER_BASELINE_BYTES + 200, f"sizes={sizes}, total={total}")
 
+    def test_w11_allowed_draft_with_s01_and_length_warns_contains_no_edit_hint(self) -> None:
+        (self.job / "selection.md").write_text(
+            "00:00–00:30 | 开场换盆 | 留 | 演示脱盆与松土\n"
+            "00:30–01:00 | 修根加树皮 | 留 | 讲清修根和换新盆土\n"
+            "01:00–02:00 | 浇水与养护 | 留 | 说明浇透水和摆放位置\n"
+            "02:00–04:40 | 闲聊收尾 | 略 | 与换盆步骤无关\n",
+            encoding="utf-8",
+        )
+        (self.job / "status.json").write_text(
+            json.dumps({
+                "status": "transcript_ready",
+                "expected_lang": "en",
+                "duration_seconds": 280,
+                "next_step": "write-note",
+            }),
+            encoding="utf-8",
+        )
+        long_zh = "先把发黑发软的根系剪掉，保留结实发白的根系，再在新花盆底部铺上一层树皮颗粒让多余水分能够顺利排出，避免积水影响排水导致叶片发黄。" * 3
+        note = NOTE.replace(
+            "Protect the firm roots and let the new pot drain.",
+            long_zh,
+            1,
+        ).replace(
+            "本文略去｜无",
+            "本文略去｜闲聊收尾（02:00–04:40）",
+            1,
+        )
+        self._note(note)
+        result = self._run_verify()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.splitlines()[0], "allowed")
+        self.assertIn("下一步：交独立复核", result.stdout)
+        self.assertIn("S01 WARN:", result.stderr)
+        self.assertIn("长度 WARN:", result.stderr)
+        self.assertNotIn("改正文", result.stdout + result.stderr)
+        self.assertNotIn("补挂出处", result.stdout + result.stderr)
+
 
 class S7SlideBudgetFloorTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -273,6 +311,44 @@ class S7SlideBudgetFloorTests(unittest.TestCase):
                 self.assertEqual(len(frames), 1)
                 self.assertEqual(scan.budget, expected_budget)
 
+    def test_s7_live_overrun_hint_distinguishes_remaining_budget_from_full_budget(self) -> None:
+        sample_result = {"result": "slides_detected", "duration": 1000, "mean_frame_ocr_seconds": 0.2}
+        overrun_extract = {
+            "mode": "slides",
+            "state": "fallback",
+            "failure": "timeout",
+            "reason": "Estimated remaining OCR time (100.0s) exceeds remaining budget (99.0s).",
+            "overrun_aborted": True,
+            "estimated_remaining_seconds": 100.0,
+            "remaining_budget_seconds": 99.0,
+            "timeout_seconds": 600.0,
+            "elapsed_seconds": 501.0,
+        }
+        env = {key: value for key, value in os.environ.items() if key != "TFV_SCREEN_MODE"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch.object(youtube_host, "ytdlp_base", return_value=["fetch"]),
+            patch.object(youtube_host, "fetch_ytdlp_captions", return_value={
+                "text": TRANSCRIPT + "\n[01:59] That concludes the demonstration.\n",
+                "source": "yt-dlp",
+                "language": "en",
+                "kind": "manual",
+                "media_duration": 1000,
+            }),
+            patch.object(screen_ocr, "sample_slides", return_value=sample_result),
+            patch.object(screen_ocr, "extract", return_value=overrun_extract),
+        ):
+            result = youtube_host.run_host(
+                video_id=VIDEO, source=SOURCE, out_dir=self.out,
+                expected_lang="en", asr_choice="off", verify=True,
+            )
+        hint = result["screen_ocr"]["hint"]
+        self.assertEqual(
+            hint,
+            "预估剩余 100.0 秒超过剩余预算 99.0 秒，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides",
+        )
+        self.assertNotIn("按片长算的预算", hint)
+
 
 class A3AndD2ClosureTests(unittest.TestCase):
     def test_d2_render_reading_note_sets_next_step_deliver(self) -> None:
@@ -347,6 +423,43 @@ class A3AndD2ClosureTests(unittest.TestCase):
             updated = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertIs(updated["finished"], True)
             self.assertEqual(updated.get("next_step"), "deliver")
+
+    def test_d2_status_stage_failure_preserves_prior_reading_file_and_next_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / "job"
+            output = root / "reading.md"
+            write_job(job)
+            status_path = job / "status.json"
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+            status["next_step"] = "write-note"
+            status_path.write_text(json.dumps(status), encoding="utf-8")
+            output.write_bytes(b"prior reading copy\n")
+
+            real_ntf = render_reading_note.tempfile.NamedTemporaryFile
+            rendered_markdown = False
+            real_render_note = render_reading_note.render_note
+
+            def tracked_render_note(*args, **kwargs):
+                nonlocal rendered_markdown
+                rendered_markdown = True
+                return real_render_note(*args, **kwargs)
+
+            def fail_status_stage(*args, **kwargs):
+                if rendered_markdown and Path(kwargs.get("dir", "")).resolve() == job.resolve():
+                    raise OSError("No space left on device")
+                return real_ntf(*args, **kwargs)
+
+            with (
+                patch.object(render_reading_note, "render_note", side_effect=tracked_render_note),
+                patch.object(render_reading_note.tempfile, "NamedTemporaryFile", side_effect=fail_status_stage),
+            ):
+                with self.assertRaisesRegex(OSError, "No space left on device"):
+                    render_reading_note.render_job(job, output, keep_frontmatter=False)
+
+            self.assertEqual(output.read_bytes(), b"prior reading copy\n")
+            after = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertNotEqual(after.get("next_step"), "deliver")
 
     def test_a3_skill_step1_and_readme_document_pep668_venv_and_screen_group(self) -> None:
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
