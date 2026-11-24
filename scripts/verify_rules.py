@@ -60,10 +60,6 @@ _EN_VERBS = {
     "read", "review", "send", "set", "skip", "slide", "snip", "start",
     "stop", "turn", "wait", "water", "write",
 }
-_ZH_VERB_PREFIX = (
-    "不要", "别再", "别", "请", "倒", "拨", "剪", "写", "问", "停", "开",
-    "关", "放", "拿", "浇", "垫", "移", "记",
-)
 _EN_STOP = {
     "the", "and", "for", "that", "this", "with", "from", "your", "you", "are",
     "was", "not", "but", "its", "they", "them", "then", "than", "into", "about",
@@ -325,6 +321,7 @@ _MARKDOWN_CODE_OR_COMMENT = re.compile(
 _LIST_ITEM = re.compile(r"^\s*(?:[-+*][ \t]+(?:\d+[.)][ \t]+)?|\d+[.)][ \t]+)")
 _INLINE_LIST_ITEM = re.compile(r"([：:；;])[ \t]*\d+[.)][ \t]+")
 _DELIVERY_TIME = re.compile(r"⏱\ufe0f?[ \t]+((?:[0-9]+:)?[0-9]{2,}:[0-5][0-9])(?![\d:])")
+_TIME_CLUSTER = re.compile(rf"(?:{_DELIVERY_TIME.pattern}(?:[ \t]*{_DELIVERY_TIME.pattern})*)")
 _CALLOUT = re.compile(r"^>\s*\[!(note|tip|warning)\]\s*(.*)$")
 _TERM_TITLE = re.compile(r"^术语\s*[:：]\s*(.*)$")
 _TERM_ALIAS_SEPARATOR = re.compile(r"[/／()（）]")
@@ -334,7 +331,36 @@ _CORRECTION_TARGET = re.compile(
     r'^(?:`[^`]+`|“[^”]+”|「[^」]+」|"[^"]+")|^.+?(?=[，,。；;！？（(]|\.(?:\s|$)|$)'
 )
 _CORRECTION_QUOTES = "`“”「」\""
-_ANALOGY_LIMIT = re.compile(r"^不成立的地方\s*[:：]\s*\S")
+DISCREPANCY_TITLE = "原文出入"
+_DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
+_DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
+_AI_CREDIT = re.compile(r"[（(]Claude[ \t]+补充(?:[，,][ \t]*非视频内容)?[）)]")
+_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
+_MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
+_CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
+_CODE_KEYWORDS = {
+    "def", "return", "import", "from", "for", "in", "if", "else", "elif", "while",
+    "with", "as", "try", "except", "finally", "class", "pass", "break", "continue",
+    "and", "or", "not", "is", "lambda", "yield", "async", "await", "raise", "assert",
+    "del", "global", "nonlocal", "true", "false", "none", "null", "let", "const",
+    "var", "function", "export", "default", "new", "typeof", "void", "self", "this",
+    "cls", "args", "kwargs", "print", "len", "range", "open", "int", "str", "float",
+    "bool", "list", "dict", "set", "tuple", "sum", "max", "min", "type", "super",
+    "main", "init", "echo", "cd", "ls", "cat", "rm", "cp", "mv", "mkdir", "pwd",
+    "python", "python3", "pip", "git", "bash", "sh", "node", "npm", "uv",
+}
+# Phase 6A calibrated thresholds (locked after offline dry-run distribution sweep).
+MAX_CLUSTER_ANCHORS = 3          # P95 = 3 anchors/cluster (WARN when exceeded)
+MAX_SLICE_CHARS = 220            # P90 = 214 chars/slice excluding code (WARN when exceeded)
+MAX_TAIL_CHARS = 80              # Unlinked fact-free tail exemption cap
+MAX_LEAD_CHARS = 120             # Unlinked fact-free lead-in paragraph exemption cap
+MAX_TERM_SENTENCES = 2           # Hard FAIL cap per term block
+MAX_TERM_CHARS = 120             # Hard FAIL cap per term block (P90 = 69, Max = 90)
+TERM_COUNT_WARN_THRESHOLD = 12   # Soft WARN for glossary density (bidirectional review)
+MAX_DOUBT_CHARS = 50             # Hard FAIL cap per 原文出入 Type-3 explanation
+EDIT_DISTANCE_MAX_RATIO = 0.45
+EDIT_DISTANCE_MAX_CHARS = 3
 _NAMED_ZH_TERM = re.compile(
     r"(?:名为|名叫|公司|项目|品牌|机构)[ \t]*[“「]([^”」]+)[”」]"
 )
@@ -347,6 +373,7 @@ _C04_MIDDLE = {
     "访谈": ("话题", "意见不一致的地方"),
     "大会": ("发布或主张了什么", "有证据的 / 只是说法"),
     "演示": ("演示了什么", "关键数字与条件"),
+    "教程": ("操作步骤",),
 }
 _CONFERENCE_LEGACY = _C04_MIDDLE["大会"][-1]
 _CONFERENCE_MAIN = "主线讲了什么"
@@ -362,14 +389,64 @@ def middle_headings(kind: str, sections: list[DeliverySection]) -> tuple[str, ..
 
 
 
-def delivery_parts(body: str, *, list_forms: list[bool] | None = None) -> tuple[list[str], list[list[str]]]:
+def _is_table_block(lines: list[str]) -> bool:
+    if any(line.lstrip().startswith("|") for line in lines):
+        return True
+    return len(lines) >= 2 and any(_TABLE_SEP.fullmatch(line) for line in lines)
+
+
+def delivery_parts(
+    body: str,
+    *,
+    list_forms: list[bool] | None = None,
+    block_contexts: list[str | None] | None = None,
+) -> tuple[list[str], list[list[str]]]:
     """Split Markdown into prose paragraphs/list items and explicit callouts."""
     prose: list[str] = []
     blocks: list[list[str]] = []
     paragraph: list[str] = []
+    paragraph_raw: list[str] = []
     in_list = False
     block: list[str] | None = None
+    in_fence_char: str | None = None
+    in_fence_len = 0
+    fence_lines: list[str] = []
+    last_context: str | None = None
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph, paragraph_raw, last_context
+        if not paragraph:
+            return
+        text = "\n".join(paragraph)
+        prose.append(text)
+        if list_forms is not None:
+            list_forms.append(in_list)
+        last_context = None if _is_table_block(paragraph_raw) else "\n".join(paragraph_raw)
+        paragraph = []
+        paragraph_raw = []
+
     for raw in body.splitlines() + [""]:
+        fence = _FENCE_OPEN.match(raw)
+        if in_fence_char is not None:
+            fence_lines.append(raw)
+            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+                prose.append("\n".join(fence_lines))
+                if list_forms is not None:
+                    list_forms.append(False)
+                fence_lines = []
+                in_fence_char = None
+                in_fence_len = 0
+                last_context = None
+            continue
+        if fence:
+            block = None
+            flush_paragraph()
+            in_fence_char = fence[1][0]
+            in_fence_len = len(fence[1])
+            fence_lines = [raw]
+            last_context = None
+            continue
+
         line = raw.strip()
         if block is not None and line.startswith(">") and not line.lstrip("> ").startswith("[!"):
             block.append(line[1:].strip())
@@ -378,17 +455,21 @@ def delivery_parts(body: str, *, list_forms: list[bool] | None = None) -> tuple[
         is_callout = line.startswith(">") and line.lstrip("> ").startswith("[!")
         item = _LIST_ITEM.match(line)
         if (not line or item or is_callout) and paragraph:
-            prose.append("\n".join(paragraph))
-            if list_forms is not None:
-                list_forms.append(in_list)
-            paragraph = []
+            flush_paragraph()
         if is_callout:
             block = [line]
             blocks.append(block)
+            if block_contexts is not None:
+                block_contexts.append(last_context)
         elif line:
             if not paragraph:
                 in_list = item is not None
             paragraph.append(line[item.end() :] if item else line)
+            paragraph_raw.append(raw.strip())
+    if fence_lines:
+        prose.append("\n".join(fence_lines))
+        if list_forms is not None:
+            list_forms.append(False)
     return prose, blocks
 
 
@@ -400,6 +481,7 @@ class DeliverySection:
     blocks: list[list[str]]
     mixed_list: bool = False
     has_fence: bool = False
+    block_contexts: tuple[str | None, ...] = ()
 
 
 def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
@@ -441,8 +523,9 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
 def delivery_sections(body: str) -> list[DeliverySection]:
     headings = markdown_headings(body)
     starts = [start for _, _, start, _ in headings] + [len(body)]
-    prose, blocks = delivery_parts(body[:starts[0]])
-    sections = [DeliverySection(0, "", prose, blocks)]
+    contexts0: list[str | None] = []
+    prose, blocks = delivery_parts(body[:starts[0]], block_contexts=contexts0)
+    sections = [DeliverySection(0, "", prose, blocks, block_contexts=tuple(contexts0))]
     for index, (level, heading, _, end) in enumerate(headings):
         section_body = body[end : starts[index + 1]]
         list_forms = [] if heading == CONCISE_ACTION_HEADING else None
@@ -452,9 +535,10 @@ def delivery_sections(body: str) -> list[DeliverySection]:
                 lambda match: "" if match["comment"] else match[0], section_body
             )
             has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
-        prose, blocks = delivery_parts(section_body, list_forms=list_forms)
+        contexts: list[str | None] = []
+        prose, blocks = delivery_parts(section_body, list_forms=list_forms, block_contexts=contexts)
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
-        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list, has_fence))
+        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list, has_fence, tuple(contexts)))
     return sections
 
 
@@ -465,17 +549,35 @@ def closing_heading(sections: list[DeliverySection]) -> str:
     return ACTION_HEADING
 
 
+def _is_ordered_subsequence(items: tuple[str, ...], allowed: tuple[str, ...]) -> bool:
+    cursor = 0
+    for item in items:
+        try:
+            found = allowed.index(item, cursor)
+        except ValueError:
+            return False
+        cursor = found + 1
+    return True
+
+
 def delivery_structure(sections: list[DeliverySection], kind: str) -> list[str]:
     issues: list[str] = []
     if sections[0].prose or sections[0].blocks:
         issues.append("orphan content before the first heading")
     expected_middle = middle_headings(kind, sections)
     if not expected_middle:
-        issues.append("frontmatter type must be 讲座, 访谈, 大会 or 演示")
+        issues.append("frontmatter type must be 讲座, 访谈, 大会, 演示 or 教程")
     else:
-        expected = _C04_START + expected_middle + _C04_END + (closing_heading(sections),)
+        required_prefix = _C04_START + expected_middle
+        optional_tail = _C04_END + (closing_heading(sections),)
         actual = tuple(section.heading for section in sections if section.level == 2)
-        if actual != expected:
+        if kind == "访谈" and actual[:len(_C04_START) + 1] == _C04_START + ("话题",) and "意见不一致的地方" not in actual:
+            required_prefix = _C04_START + ("话题",)
+        if (
+            actual[:len(required_prefix)] != required_prefix
+            or not _is_ordered_subsequence(actual[len(required_prefix):], optional_tail)
+        ):
+            expected = required_prefix + optional_tail
             issues.append(f"expected H2 sections in order: {' / '.join(expected)}")
     parent = ""
     children: list[str] = []
@@ -548,6 +650,236 @@ def caption_correction_pair(line: str) -> tuple[str, str] | None:
     return (original, corrected) if original and corrected else None
 
 
+def _levenshtein(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    prev = list(range(len(right) + 1))
+    for i, c1 in enumerate(left, 1):
+        curr = [i]
+        for j, c2 in enumerate(right, 1):
+            cost = 0 if c1 == c2 else 1
+            curr.append(min(curr[-1] + 1, prev[j] + 1, prev[j - 1] + cost))
+        prev = curr
+    return prev[-1]
+
+
+def _numeric_signature(text: str) -> list[tuple[int, ...]]:
+    return [
+        tuple(int(part) for part in re.split(r"[._]", match))
+        for match in re.findall(r"\d+(?:[._]\d+)*", text)
+    ]
+
+
+def _discrepancy_type1_laundering_issue(
+    original: str,
+    corrected: str,
+    second_sources: tuple[str, ...] = (),
+) -> str | None:
+    orig_nums = _numeric_signature(original)
+    corr_nums = _numeric_signature(corrected)
+    if orig_nums != corr_nums:
+        # Allow homophone number-to-word only for standalone spoken integer tokens (not version tags like v10),
+        # OR pure punctuation re-segmentation of the exact same digit sequence backed by a second source (e.g. 1990 -> 1/9/90 on slide).
+        homophone_ok = (
+            len(orig_nums) == 1
+            and len(orig_nums[0]) == 1
+            and not corr_nums
+            and bool(re.search(rf"(?<![A-Za-z0-9_.\-]){orig_nums[0][0]}(?![A-Za-z0-9_.\-])", original))
+            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0][0])
+        )
+        same_digits_backed = (
+            "".join(re.findall(r"\d", original)) == "".join(re.findall(r"\d", corrected))
+            and bool(orig_nums)
+            and any(src and term_occurs(corrected, src) for src in second_sources)
+        )
+        if not homophone_ok and not same_digits_backed:
+            return (
+                f"原文出入 行型 1 数字/版本不一致 ({original!r} -> {corrected!r})，"
+                "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
+            )
+    a = re.sub(r"[\s_\-`'\"]+", "", original).casefold()
+    b = re.sub(r"[\s_\-`'\"]+", "", corrected).casefold()
+    if a == b:
+        return None
+    if any(src and term_occurs(corrected, src) for src in second_sources):
+        return None
+    dist = _levenshtein(a, b)
+    if dist > EDIT_DISTANCE_MAX_CHARS and dist / max(len(a), len(b), 1) > EDIT_DISTANCE_MAX_RATIO:
+        return (
+            f"原文出入 行型 1 专名改动超限且无第二来源 ({original!r} -> {corrected!r})，"
+            "请升级为行型 3（存疑｜「…」｜…）"
+        )
+    orig_tokens = original.split()
+    corr_tokens = corrected.split()
+    if len(orig_tokens) == len(corr_tokens):
+        for old_tok, new_tok in zip(orig_tokens, corr_tokens):
+            old_clean = re.sub(r"[^A-Za-z0-9]", "", old_tok)
+            new_clean = re.sub(r"[^A-Za-z0-9]", "", new_tok)
+            if (
+                old_clean
+                and new_clean.casefold() != old_clean.casefold()
+                and len(new_clean) - len(old_clean) >= 3
+                and len(new_clean) >= 1.5 * len(old_clean)
+            ):
+                return (
+                    f"原文出入 行型 1 疑似补全未核实专名 ({original!r} -> {corrected!r})，"
+                    "无第二来源依据，请升级为行型 3（存疑｜「…」｜…）"
+                )
+    return None
+
+
+def _term_sentences(text: str) -> list[str]:
+    clean = _AI_CREDIT.sub("", text).strip()
+    if not clean:
+        return []
+    parts = [part.strip() for part in _SENTENCE_SPLIT.split(clean) if any(ch.isalnum() for ch in part)]
+    return parts
+
+
+def _scan_balanced(
+    text: str,
+    start: int,
+    open_ch: str,
+    close_ch: str,
+    skip_spans: list[tuple[int, int]] = (),
+) -> int | None:
+    depth = 0
+    pos = start
+    length = len(text)
+    while pos < length:
+        if pos > start:
+            jumped = False
+            for span_start, span_end in skip_spans:
+                if span_start <= pos < span_end:
+                    pos = span_end
+                    jumped = True
+                    break
+            if jumped:
+                continue
+        ch = text[pos]
+        if ch == "\n":
+            return None
+        if ch == "\\":
+            pos += 2
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
+def _overlaps_forbidden_inline_span(text: str, start: int, end: int) -> bool:
+    code_spans = [(match.start(), match.end()) for match in _INLINE_CODE.finditer(text)]
+    for span_start, span_end in code_spans:
+        if start < span_end and end > span_start:
+            return True
+    pos = 0
+    length = len(text)
+    while pos < length:
+        jumped = False
+        for span_start, span_end in code_spans:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
+        if text[pos] == "[":
+            label_end = _scan_balanced(text, pos, "[", "]", code_spans)
+            if label_end is not None and label_end < length and text[label_end] == "(":
+                dest_end = _scan_balanced(text, label_end, "(", ")")
+                if dest_end is not None:
+                    if start < dest_end and end > pos:
+                        return True
+                    pos = dest_end
+                    continue
+        pos += 1
+    return False
+
+
+def _validate_doubt_anchor(anchor: str, explanation: str, preceding_raw: str | None) -> str | None:
+    if not anchor or not explanation:
+        return "原文出入 存疑行缺少锚点或说明"
+    if "）" in explanation or "\n" in explanation:
+        return "原文出入 存疑说明不得包含右括号或换行"
+    if len(explanation) > MAX_DOUBT_CHARS:
+        return f"原文出入 存疑说明超过 {MAX_DOUBT_CHARS} 字上限（当前 {len(explanation)} 字）"
+    if preceding_raw is None:
+        return f"原文出入 存疑锚点 {anchor!r} 必须紧跟非 callout 段落或列表项（不可在标题/代码块/表格后）"
+    if preceding_raw.count(anchor) != 1:
+        return f"原文出入 存疑锚点 {anchor!r} 须在前一段原文中恰好出现一次且不得跨 ⏱"
+    cleaned = prose_without_times(preceding_raw)
+    if cleaned.count(anchor) != 1:
+        return f"原文出入 存疑锚点 {anchor!r} 在去时间码前段中须恰好出现一次"
+    start = cleaned.index(anchor)
+    end = start + len(anchor)
+    if _overlaps_forbidden_inline_span(cleaned, start, end):
+        return f"原文出入 存疑锚点 {anchor!r} 不得落入行内代码或链接"
+    return None
+
+
+def spoken_code_entries(blocks: list[list[str]]) -> list[tuple[str, str]]:
+    """Return (spoken_original, code_text) pairs from 原文出入 Type 2 rows."""
+    entries: list[tuple[str, str]] = []
+    for header, *lines in blocks:
+        match = _CALLOUT.fullmatch(header)
+        if match is None or match.groups() != ("warning", DISCREPANCY_TITLE):
+            continue
+        for line in lines:
+            row = _DISCREPANCY_TYPE2.fullmatch(line)
+            if row:
+                entries.append((row[1].strip(), row[2].strip()))
+    return entries
+
+
+def _spoken_tokens(text: str) -> set[str]:
+    tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", text)}
+    for digit, word in enumerate(_SPOKEN_DIGITS):
+        if word in tokens:
+            tokens.add(str(digit))
+    return tokens
+
+
+def _code_to_spoken_tokens(code_text: str) -> set[str]:
+    text = code_text.strip().strip("`")
+    for op, spoken in (
+        ("+=", " plus equals "), ("-=", " minus equals "), ("==", " equals "),
+        ("!=", " not equals "), (">=", " greater equals "), ("<=", " less equals "),
+        ("->", " arrow "), ("=>", " arrow "), (".", " dot "), ("/", " slash "),
+        (":", " colon "), ("_", " "),
+    ):
+        text = text.replace(op, spoken)
+    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
+    tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", text)}
+    connectors = {"dot", "plus", "minus", "equals", "not", "greater", "less", "arrow", "slash", "colon"}
+    ident_tokens = tokens - connectors
+    return ident_tokens or tokens
+
+
+def _spoken_code_readback_mismatch(spoken_raw: str, code_part: str) -> bool:
+    spoken_tokens = _spoken_tokens(spoken_raw)
+    if not spoken_tokens:
+        return False
+    idents = _extract_code_identifiers(f"`{code_part.strip('`')}`")
+    if idents:
+        for ident in idents:
+            ident_tokens = _code_to_spoken_tokens(ident)
+            if ident_tokens and not (ident_tokens <= spoken_tokens):
+                return True
+    code_tokens = _code_to_spoken_tokens(code_part)
+    if not code_tokens:
+        return False
+    return not (code_tokens <= spoken_tokens)
+
+
 def caption_corrections(
     blocks: list[list[str]], transcript: str, screen: tuple[str, ...] = (),
 ) -> list[tuple[str, str]]:
@@ -555,7 +887,7 @@ def caption_corrections(
     corrections: list[tuple[str, str]] = []
     for header, *lines in blocks:
         match = _CALLOUT.fullmatch(header)
-        if match is None or match.groups() != ("warning", "字幕更正"):
+        if match is None or match.groups() not in {("warning", "字幕更正"), ("warning", DISCREPANCY_TITLE)}:
             continue
         for line in lines:
             pair = caption_correction_pair(line)
@@ -566,11 +898,17 @@ def caption_corrections(
 
 
 def explanation_issues(
-    blocks: list[list[str]], transcript: str, corrections: list[str], screen: tuple[str, ...] = (),
+    blocks: list[list[str]],
+    transcript: str,
+    corrections: list[str],
+    screen: tuple[str, ...] = (),
+    *,
+    block_contexts: list[str | None] | None = None,
+    second_sources: tuple[str, ...] = (),
 ) -> list[str]:
     issues: list[str] = []
     sources = [_HYPHEN.sub(" ", text) for text in (transcript, *corrections)]
-    for header, *lines in blocks:
+    for idx, (header, *lines) in enumerate(blocks):
         match = _CALLOUT.fullmatch(header)
         if match is None:
             issues.append(f"unknown explanation block: {header}")
@@ -582,12 +920,53 @@ def explanation_issues(
             aliases = _TERM_ALIAS_SEPARATOR.split(_HYPHEN.sub(" ", word))
             if not any(term_occurs(alias, source) for alias in map(str.strip, aliases) if alias for source in sources):
                 issues.append(f"term {word!r} is absent from the transcript")
-        elif kind == "tip" and title in {"类比（Claude 补充）", "类比"}:
-            if not any(_ANALOGY_LIMIT.match(line) for line in lines):
-                issues.append("analogy block needs 不成立的地方 and a description")
+            if "⏱" in header or any("⏱" in ln for ln in lines):
+                issues.append(f"term {word!r} block must not contain ⏱ time markers")
+            joined_term = _AI_CREDIT.sub("", " ".join(lines)).strip()
+            if len(joined_term) > MAX_TERM_CHARS:
+                issues.append(f"term {word!r} block exceeds {MAX_TERM_CHARS} characters ({len(joined_term)})")
+            if len(_term_sentences(" ".join(lines))) > MAX_TERM_SENTENCES:
+                issues.append(f"term {word!r} block exceeds {MAX_TERM_SENTENCES} sentences")
+        elif kind == "tip":
+            issues.append("[!tip] analogy blocks are retired; explain in prose or 术语")
         elif kind == "warning" and title == "字幕更正":
-            if not caption_corrections([[header, *lines]], transcript, screen):
+            matched_pairs = caption_corrections([[header, *lines]], transcript, screen)
+            if not matched_pairs:
                 issues.append("字幕更正 needs the original spelling from the transcript and its correction")
+            else:
+                for orig, corr in matched_pairs:
+                    launder = _discrepancy_type1_laundering_issue(orig, corr, (*screen, *second_sources))
+                    if launder:
+                        issues.append(launder)
+        elif kind == "warning" and title == DISCREPANCY_TITLE:
+            if not lines:
+                issues.append("原文出入 block cannot be empty")
+                continue
+            preceding = block_contexts[idx] if block_contexts is not None and idx < len(block_contexts) else None
+            for line in lines:
+                pair = caption_correction_pair(line)
+                if pair is not None:
+                    src = screen if line.startswith("画面") else (transcript,)
+                    if not any(term_occurs(pair[0], s) for s in src):
+                        issues.append(f"原文出入 行型 1 缺少原材依据: {pair[0]!r}")
+                    else:
+                        launder = _discrepancy_type1_laundering_issue(pair[0], pair[1], (*screen, *second_sources))
+                        if launder:
+                            issues.append(launder)
+                    continue
+                t2 = _DISCREPANCY_TYPE2.fullmatch(line)
+                if t2 is not None:
+                    spoken_raw = t2[1].strip()
+                    if not term_occurs(spoken_raw, transcript):
+                        issues.append(f"原文出入 口述代码原词未在字幕中找到: {spoken_raw!r}")
+                    continue
+                t3 = _DISCREPANCY_TYPE3.fullmatch(line)
+                if t3 is not None:
+                    err = _validate_doubt_anchor(t3[1].strip(), t3[2].strip(), preceding)
+                    if err:
+                        issues.append(err)
+                    continue
+                issues.append(f"原文出入 contains unknown line format: {line}")
         else:
             issues.append(f"unknown explanation block: {header}")
     return issues
@@ -737,53 +1116,6 @@ def _tokens(text: str) -> list[str]:
         # Non-overlapping pairs, so a short action can still share a third of its words.
         cjk.extend(run[index : index + 2] for index in range(0, len(run) - 1, 2))
     return latin + cjk
-
-
-def _imperatives(speech: str) -> list[str]:
-    pieces = re.split(r"[。！？.!?；;\n]+", speech)
-    kept: list[str] = []
-    for piece in pieces:
-        line = piece.strip()
-        if len(line) < 8:
-            continue
-        head = _fold(line)
-        first = _LATIN_WORD.findall(line)
-        zh = _CJK_RUN.findall(line)
-        starts_en = bool(first) and first[0].casefold() in _EN_VERBS
-        starts_zh = bool(zh) and any(zh[0].startswith(prefix) for prefix in _ZH_VERB_PREFIX)
-        marked = any(cue in head for cue in ("do not", "don't", "不要", "别", "必须"))
-        if starts_en or starts_zh or marked:
-            kept.append(line)
-    return kept
-
-
-def r14_platform_title(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Words that appear only in platform_title, more than three, fail."""
-    if ctx.gate is None or not ctx.gate.passed:
-        return ("R14", True, "skipped because the transcript is not usable")
-    title = ""
-    if ctx.fields:
-        title = str(ctx.fields.get("platform_title") or "")
-    if not _compact(title):
-        return ("R14", True, "no platform_title")
-    speech = _fold(_speech(ctx))
-    stray = []
-    for token in _tokens(title):
-        if token.casefold() not in speech and token not in speech:
-            stray.append(token)
-    # Unique, stable order.
-    seen: list[str] = []
-    for token in stray:
-        if token not in seen:
-            seen.append(token)
-    if len(seen) > 3:
-        return (
-            "R14",
-            False,
-            f"platform_title words missing from the transcript ({len(seen)}): "
-            + ", ".join(seen[:8]),
-        )
-    return ("R14", True, "platform_title is not driving the note")
 
 
 def r15_failed_status(ctx: RuleContext) -> tuple[str, bool, str]:
@@ -1168,14 +1500,30 @@ def delivery_evidence(body: str) -> tuple[str, str | None, str | None]:
 
 def caption_structure(note: str) -> tuple[str | None, list[str]]:
     body, _, omission = delivery_evidence(_FRONTMATTER.sub("", note, count=1))
-    _, blocks = delivery_parts(body)
+    sections = delivery_sections(body)
     issues = []
-    for header, *lines in blocks:
-        if "字幕更正" in header and (
-            not re.fullmatch(r">\s*\[!warning\]\s*字幕更正", header)
-            or not any(caption_correction_pair(line) for line in lines)
-        ):
-            issues.append("note.md 字幕更正 needs [!warning] 字幕更正 and a 字幕写作 X，实为 Y pair")
+    for section in sections:
+        for idx, (header, *lines) in enumerate(section.blocks):
+            if "字幕更正" in header and (
+                not re.fullmatch(r">\s*\[!warning\]\s*字幕更正", header)
+                or not any(caption_correction_pair(line) for line in lines)
+            ):
+                issues.append("note.md 字幕更正 needs [!warning] 字幕更正 and a 字幕写作 X，实为 Y pair")
+            elif DISCREPANCY_TITLE in header:
+                if not re.fullmatch(rf">\s*\[!warning\]\s*{DISCREPANCY_TITLE}", header) or not lines:
+                    issues.append(f"note.md {DISCREPANCY_TITLE} needs [!warning] {DISCREPANCY_TITLE} with valid rows")
+                    continue
+                preceding = section.block_contexts[idx] if idx < len(section.block_contexts) else None
+                for line in lines:
+                    if caption_correction_pair(line) is not None or _DISCREPANCY_TYPE2.fullmatch(line) is not None:
+                        continue
+                    t3 = _DISCREPANCY_TYPE3.fullmatch(line)
+                    if t3 is not None:
+                        err = _validate_doubt_anchor(t3[1].strip(), t3[2].strip(), preceding)
+                        if err:
+                            issues.append(err)
+                        continue
+                    issues.append(f"note.md {DISCREPANCY_TITLE} contains unknown line format: {line}")
     return omission, issues
 
 
@@ -1304,8 +1652,6 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
         issues.append("note_path is no longer a single-note property")
     if "gate_passed" in fields and not knowledge_note._truthy(fields["gate_passed"]):
         issues.append("gate_passed must be true when supplied")
-    if ctx.omission is None:
-        issues.append(f"expected 本文略去 on its own line after {closing_heading(ctx.sections)}, before {EVIDENCE_HEADING}")
     for parent, section in _with_parents(ctx.sections):
         for claim in section.prose:
             if claim.startswith(">") or any(line.startswith("本文略去") for line in claim.splitlines()):
@@ -1315,6 +1661,106 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
             elif knowledge_note.inapplicable_reason(claim) and not _fixed_explanation(parent, claim):
                 issues.append(f"empty content in {section.heading}: {claim.splitlines()[0][:80]}")
     return _result("C04a", issues, "single-note properties and structure are present")
+
+
+def _strip_code(text: str) -> str:
+    return _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", text))
+
+
+def _extract_code_identifiers(text: str) -> list[str]:
+    chunks: list[str] = []
+    for match in _FENCED_CODE.finditer(text):
+        body = match[0]
+        first_nl = body.find("\n")
+        if first_nl >= 0:
+            body = body[first_nl + 1:]
+        body = re.sub(r"(?:`{3,}|~{3,})\s*$", "", body)
+        chunks.append(body)
+    no_fence = _FENCED_CODE.sub(" ", text)
+    for match in _INLINE_CODE.finditer(no_fence):
+        chunks.append(match[0].strip("`"))
+    found: list[str] = []
+    seen: set[str] = set()
+    for chunk in chunks:
+        for match in _CODE_IDENT.finditer(chunk):
+            ident, has_paren = match[1], bool(match[2])
+            if ident.casefold() in _CODE_KEYWORDS or len(ident) < 3:
+                continue
+            if not ("." in ident or "_" in ident or any(ch.isupper() for ch in ident) or has_paren):
+                continue
+            if ident.startswith("_") and ident.endswith("_"):
+                continue
+            key = ident.casefold()
+            if key not in seen:
+                seen.add(key)
+                found.append(ident)
+    return found
+
+
+def _code_ident_grounded(
+    ident: str,
+    sources: list[str],
+    spoken_code_pairs: list[tuple[str, str]],
+    *,
+    slice_excerpts: list[str] | None = None,
+) -> bool:
+    spoken_scope = sources if slice_excerpts is None else slice_excerpts
+    for spoken_raw, code_part in spoken_code_pairs:
+        if not term_occurs(ident, code_part):
+            continue
+        if not any(term_occurs(spoken_raw, src) for src in spoken_scope):
+            continue
+        ident_tokens = _code_to_spoken_tokens(ident)
+        spoken_tokens = _spoken_tokens(spoken_raw)
+        if not ident_tokens or (ident_tokens <= spoken_tokens):
+            return True
+    if any(term_occurs(ident, src) for src in sources):
+        return True
+    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", ident.replace(".", " ").replace("_", " "))
+    if any(term_occurs(spaced, src) for src in sources):
+        return True
+    if "." in ident:
+        parts = [part for part in ident.split(".") if len(part) >= 3 and part.casefold() not in _CODE_KEYWORDS]
+        if parts and all(
+            any(
+                term_occurs(part, src)
+                or term_occurs(re.sub(r"([a-z])([A-Z])", r"\1 \2", part.replace("_", " ")), src)
+                for src in sources
+            )
+            for part in parts
+        ):
+            return True
+    return False
+
+
+def _split_time_clusters(claim: str) -> tuple[list[tuple[str, set[int]]], str]:
+    """Split a claim into (slice_text, cluster_stamps) pairs plus any unlinked tail."""
+    clusters = list(_TIME_CLUSTER.finditer(claim))
+    if not clusters:
+        return [], claim.strip()
+    slices: list[tuple[str, set[int]]] = []
+    start = 0
+    for cluster in clusters:
+        slices.append((claim[start:cluster.end()], delivery_times(cluster[0])))
+        start = cluster.end()
+    tail = claim[start:].strip()
+    return slices, tail
+
+
+def _has_new_verifiable_facts(text: str, ref_text: str) -> bool:
+    clean = _strip_code(prose_without_times(text))
+    _, nums = canonical_numbers(clean)
+    if nums:
+        ref_nums = canonical_numbers(ref_text)[1] if ref_text else []
+        if any(not any(ref.supports(num) for ref in ref_nums) for num in nums):
+            return True
+    names = proper_names(clean)
+    if names and any(not _grounded_term_occurs(name, ref_text) for name in names):
+        return True
+    code_idents = _extract_code_identifiers(text)
+    if code_idents and any(not _code_ident_grounded(ident, [ref_text] if ref_text else [], []) for ident in code_idents):
+        return True
+    return False
 
 
 def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
@@ -1335,27 +1781,61 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
     valid = ctx.valid_quotes
     middle = middle_headings(ctx.fields.get("type"), ctx.sections)
     for parent, section in _with_parents(ctx.sections):
-        for claim in [section.heading, *section.prose]:
+        h3_evidenced_parts: list[str] = []
+        for item in section.prose:
+            item_slices, _ = _split_time_clusters(item)
+            if item_slices:
+                h3_evidenced_parts.extend(prose_without_times(sl) for sl, _ in item_slices)
+        h3_evidenced = "\n".join(h3_evidenced_parts)
+        first_cited_idx = next(
+            (idx for idx, item in enumerate(section.prose) if delivery_times(item)),
+            None,
+        )
+        for claim_idx, claim in enumerate([section.heading, *section.prose]):
+            prose_idx = claim_idx - 1
             is_middle_claim = parent in middle and claim != section.heading and not _fixed_explanation(parent, claim)
             times = delivery_times(claim)
             clean = prose_without_times(claim)
             if "⏱" in clean:
                 issues.append(f"{section.heading}: malformed ⏱ time link")
             if not times and is_middle_claim:
-                issues.append(f"{section.heading}: claim is missing a ⏱ time link: {clean[:80]}")
-            for stamp in sorted(times):
-                linked, issue = match_link(stamp, valid)
-                if issue:
-                    issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} {issue}")
-                    continue
-                for quote in linked:
-                    if quote.screen:
-                        used_screen.add(quote.raw)
+                no_code = _strip_code(clean).strip()
+                is_opening_lead = prose_idx == 0 and first_cited_idx is not None and first_cited_idx > 0
+                exempt_lead = (
+                    is_opening_lead
+                    and bool(no_code)
+                    and not knowledge_note.inapplicable_reason(claim)
+                    and len(no_code) <= MAX_LEAD_CHARS
+                    and not _has_new_verifiable_facts(claim, h3_evidenced)
+                )
+                if not exempt_lead:
+                    issues.append(f"{section.heading}: claim is missing a ⏱ time link: {clean[:80]}")
+                continue
+            slices, tail = _split_time_clusters(claim)
+            if is_middle_claim and tail and any(ch.isalnum() for ch in tail):
+                tail_no_code = _strip_code(prose_without_times(tail)).strip()
+                tail_ref = "\n".join([prose_without_times(claim[:len(claim) - len(tail)]), h3_evidenced])
+                exempt_tail = (
+                    len(tail_no_code) <= MAX_TAIL_CHARS
+                    and not _has_new_verifiable_facts(tail, tail_ref)
+                )
+                if not exempt_tail:
+                    issues.append(f"{section.heading}: unlinked trailing text after last ⏱: {tail[:80]}")
+            for slice_text, slice_stamps in (slices or [(claim, times)]):
+                slice_clean = prose_without_times(slice_text)
+                for stamp in sorted(slice_stamps):
+                    linked, issue = match_link(stamp, valid)
+                    if issue:
+                        issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} {issue}")
                         continue
-                    used.add(quote.stamp)
-                    if is_middle_claim and not _cross_script(clean, quote.text):
-                        if len(_content_tokens(clean) & _content_tokens(quote.text)) < 3:
-                            issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} needs three shared content tokens")
+                    for quote in linked:
+                        if quote.screen:
+                            used_screen.add(quote.raw)
+                            continue
+                        used.add(quote.stamp)
+                        if is_middle_claim and not _cross_script(slice_clean, quote.text):
+                            if len(_content_tokens(slice_clean) & _content_tokens(quote.text)) < 3:
+                                issues.append(f"{section.heading}: ⏱ {_fmt(stamp)} needs three shared content tokens")
     for stamp in sorted(stamps - used):
         issues.append(f"unused end quote [{_fmt(stamp)}]")
     for quote in ctx.quotes:
@@ -1632,100 +2112,120 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
     screen_corrections = caption_corrections(blocks, "", tuple(quote.text for quote in valid if quote.screen))
+    spoken_code_pairs = spoken_code_entries(blocks)
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
             if _fixed_explanation(parent, claim):
                 continue
-            source_claims = section.prose if claim == section.heading else [claim]
-            times = delivery_times(claim).union(*(delivery_times(item) for item in source_claims))
-            linked = [quote for stamp in sorted(times) for quote in match_link(stamp, valid)[0]]
-            if times and not linked:
-                continue
-            evidence = linked if times else valid
-            numbers_by_quote = [canonical_numbers(quote.text, screen=quote.screen)[1] for quote in evidence]
-            if findings is not None:
-                located = re.compile(r"\s+".join(map(re.escape, claim.split()))).search(ctx.note, cursor)
-                start = located.start() if located else cursor
-                line = ctx.note.count("\n", 0, start) + 1
-                if located:
-                    cursor = located.end()
-                citations = [{
-                    "time": _fmt(quote.stamp), "text": quote.text, "screen": quote.screen,
-                    "source_line": quote.match.offset + 1 if quote.screen else None,
-                    "values": [number.label for number in numbers],
-                } for quote, numbers in zip(evidence, numbers_by_quote)]
+            if claim == section.heading:
+                times = delivery_times(claim).union(*(delivery_times(item) for item in section.prose))
+                check_units = [(claim, times)]
+            else:
+                slices, _ = _split_time_clusters(claim)
+                check_units = slices if slices else [(claim, set())]
 
-            def finding(kind: str, term: str, offset: int) -> dict:
-                return {"kind": kind, "term": term, "line": line, "offset": offset,
-                        "section": section.heading, "claim": claim, "citations": citations}
-
-            def add(kind: str, terms) -> None:
+            for unit_text, unit_times in check_units:
+                linked = [quote for stamp in sorted(unit_times) for quote in match_link(stamp, valid)[0]]
+                if unit_times and not linked:
+                    continue
+                evidence = linked if unit_times else valid
+                numbers_by_quote = [canonical_numbers(quote.text, screen=quote.screen)[1] for quote in evidence]
                 if findings is not None:
-                    for term in terms:
-                        matches = list(re.finditer(re.escape(term), claim, re.IGNORECASE))
-                        for match in matches or (None,):
-                            findings.append(finding(kind, term, match.start() if match else 0))
-            excerpts = [quote.text for quote in evidence]
-            screen_excerpts = [quote.text for quote in evidence if quote.screen]
-            local_corrections = [corrected for original, corrected in screen_corrections
-                                 if any(term_occurs(original, line) for line in screen_excerpts)]
-            source = excerpts + corrections + local_corrections
-            prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(claim))
-            if parent == _C04_START[1]:
-                prose = _remove_properties(prose, ctx.fields)
-            support = [value for numbers in numbers_by_quote for value in numbers]
-            if not ctx.has_screen_file:
-                support.extend(value for excerpt in corrections for value in canonical_numbers(excerpt)[1])
-            numeric_text = prose
-            for quote in evidence:
-                if quote.screen and quote.text in numeric_text:
-                    # An exact reproduction of the cited OCR text is the same date.
-                    numeric_text = numeric_text.replace(quote.text, _OCR_DATE_SEPARATOR.sub(r"\1,", quote.text))
-            numeric_prose, numeric_claims = canonical_numbers(numeric_text)
-            missing_numbers = {
-                claim.label for claim in numeric_claims
-                if not any(value.supports(claim) for value in support)
-            }
-            missing_names = {
-                name for name in proper_names(numeric_prose)
-                if not any(_grounded_term_occurs(name, excerpt) for excerpt in source)
-            }
-            if missing_names:
-                # A complete, contiguous split spelling can back its name
-                # tokens. A token alone still cannot match inside a compound.
-                for excerpt in source:
-                    for compound in _LATIN_WORD.findall(excerpt):
-                        expanded = _COMPOUND_NAME_BOUNDARY.sub(" ", compound)
-                        if expanded != compound and term_occurs(expanded, numeric_prose):
-                            missing_names.difference_update(expanded.split())
-            supported_originals = set()
-            original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]
-            for match in _PARENTHESIZED_ORIGINAL.finditer(prose):
-                original = (match[1] or match[2]).strip()
-                if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
-                    continue
-                if any(_grounded_term_occurs(original, excerpt) for excerpt in original_excerpts):
-                    supported_originals.add(match.start())
-                else:
-                    issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
+                    located = re.compile(r"\s+".join(map(re.escape, unit_text.split()))).search(ctx.note, cursor)
+                    start = located.start() if located else cursor
+                    line = ctx.note.count("\n", 0, start) + 1
+                    if located:
+                        cursor = located.end()
+                    citations = [{
+                        "time": _fmt(quote.stamp), "text": quote.text, "screen": quote.screen,
+                        "source_line": quote.match.offset + 1 if quote.screen else None,
+                        "values": [number.label for number in numbers],
+                    } for quote, numbers in zip(evidence, numbers_by_quote)]
+
+                def finding(kind: str, term: str, offset: int) -> dict:
+                    return {"kind": kind, "term": term, "line": line, "offset": offset,
+                            "section": section.heading, "claim": unit_text, "citations": citations}
+
+                def add(kind: str, terms) -> None:
                     if findings is not None:
-                        findings.append(finding("original", original, match.start()))
-            for match in _QUOTED_TERM.finditer(prose):
-                if match.end() in supported_originals:
-                    continue
-                term = (match[1] or match[2]).strip()
-                if term and not term.startswith("[") and term.casefold() not in _PROPER_SKIP:
-                    if not any(_grounded_term_occurs(term, excerpt) for excerpt in source):
-                        unknown_quoted.setdefault(term.casefold(), term)
+                        for term in terms:
+                            matches = list(re.finditer(re.escape(term), unit_text, re.IGNORECASE))
+                            for match in matches or (None,):
+                                findings.append(finding(kind, term, match.start() if match else 0))
+
+                excerpts = [quote.text for quote in evidence]
+                screen_excerpts = [quote.text for quote in evidence if quote.screen]
+                local_corrections = [corrected for original, corrected in screen_corrections
+                                     if any(term_occurs(original, line) for line in screen_excerpts)]
+                source = excerpts + corrections + local_corrections
+                prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(unit_text))
+                if parent == _C04_START[1]:
+                    prose = _remove_properties(prose, ctx.fields)
+                support = [value for numbers in numbers_by_quote for value in numbers]
+                if not ctx.has_screen_file:
+                    support.extend(value for excerpt in corrections for value in canonical_numbers(excerpt)[1])
+                numeric_text = prose
+                for quote in evidence:
+                    if quote.screen and quote.text in numeric_text:
+                        # An exact reproduction of the cited OCR text is the same date.
+                        numeric_text = numeric_text.replace(quote.text, _OCR_DATE_SEPARATOR.sub(r"\1,", quote.text))
+                numeric_prose, numeric_claims = canonical_numbers(numeric_text)
+                missing_numbers = {
+                    num_claim.label for num_claim in numeric_claims
+                    if not any(value.supports(num_claim) for value in support)
+                }
+                missing_names = {
+                    name for name in proper_names(numeric_prose)
+                    if not any(_grounded_term_occurs(name, excerpt) for excerpt in source)
+                }
+                if missing_names:
+                    # A complete, contiguous split spelling can back its name
+                    # tokens. A token alone still cannot match inside a compound.
+                    for excerpt in source:
+                        for compound in _LATIN_WORD.findall(excerpt):
+                            expanded = _COMPOUND_NAME_BOUNDARY.sub(" ", compound)
+                            if expanded != compound and term_occurs(expanded, numeric_prose):
+                                missing_names.difference_update(expanded.split())
+                missing_code = {
+                    ident for ident in _extract_code_identifiers(prose)
+                    if not _code_ident_grounded(
+                        ident,
+                        source,
+                        spoken_code_pairs,
+                        slice_excerpts=excerpts if unit_times else [],
+                    )
+                }
+                supported_originals = set()
+                original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]
+                for match in _PARENTHESIZED_ORIGINAL.finditer(prose):
+                    original = (match[1] or match[2]).strip()
+                    if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
+                        continue
+                    if any(_grounded_term_occurs(original, excerpt) for excerpt in original_excerpts):
+                        supported_originals.add(match.start())
+                    else:
+                        issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
                         if findings is not None:
-                            quoted_findings.setdefault(term.casefold(), finding("quoted", term, match.start()))
-            issues.extend(f"{section.heading}: number {label!r} is absent from the end evidence"
-                          for label in sorted(missing_numbers))
-            issues.extend(f"{section.heading}: name {name!r} is absent from the end evidence"
-                          for name in sorted(missing_names))
-            add("number", sorted(missing_numbers))
-            add("name", sorted(missing_names))
+                            findings.append(finding("original", original, match.start()))
+                for match in _QUOTED_TERM.finditer(prose):
+                    if match.end() in supported_originals:
+                        continue
+                    term = (match[1] or match[2]).strip()
+                    if term and not term.startswith("[") and term.casefold() not in _PROPER_SKIP:
+                        if not any(_grounded_term_occurs(term, excerpt) for excerpt in source):
+                            unknown_quoted.setdefault(term.casefold(), term)
+                            if findings is not None:
+                                quoted_findings.setdefault(term.casefold(), finding("quoted", term, match.start()))
+                issues.extend(f"{section.heading}: number {label!r} is absent from the end evidence"
+                              for label in sorted(missing_numbers))
+                issues.extend(f"{section.heading}: name {name!r} is absent from the end evidence"
+                              for name in sorted(missing_names))
+                issues.extend(f"{section.heading}: code identifier {ident!r} is absent from screen or 口述代码"
+                              for ident in sorted(missing_code))
+                add("number", sorted(missing_numbers))
+                add("name", sorted(missing_names))
+                add("code", sorted(missing_code))
     if len(unknown_quoted) > 2:
         issues.append(f"quoted names are absent from the end evidence: {', '.join(list(unknown_quoted.values())[:6])}")
         if findings is not None:
@@ -1737,29 +2237,29 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     return _result("C04c", issues, "numbers and names have end evidence")
 
 
-_NOTE_CHECKING_PROCESS = re.compile(
-    r"(?:后半句|前半句|原句|这句话|这段文字)[^。！？\n]{0,20}(?:没(?:有|能)?|未(?:能)?)[^。！？\n]{0,6}识别"
-    r"|(?:这里|本文)[^。！？\n]{0,12}(?:不补写|不补全|不当作成绩|只按口头说法记录)"
-    r"|(?:部分|这部分|这些文字|画面文字|字幕)[^。！？\n]{0,8}识别[^。！？\n]{0,8}(?:不确定|不完整|不清楚)"
-    r"|(?:口播|名字|姓名|术语|词语)[^。！？\n]{0,20}(?:自动字幕|字幕)[^。！？\n]{0,8}(?:写错|听错|识别错|误写)"
-)
-
-
 def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
+    block_contexts = [
+        section.block_contexts[idx] if idx < len(section.block_contexts) else None
+        for section in ctx.sections
+        for idx in range(len(section.blocks))
+    ]
     cited_screen = tuple(quote.text for quote in ctx.valid_quotes if quote.screen)
+    second_sources = tuple(str(ctx.fields.get(key) or "") for key in ("title", "channel") if ctx.fields.get(key))
     corrections = caption_corrections(blocks, ctx.speech, cited_screen)
     corrected_spellings = [corrected for _, corrected in corrections]
-    issues = explanation_issues(blocks, ctx.speech, [*corrected_spellings, *cited_screen], cited_screen)
+    issues = explanation_issues(
+        blocks,
+        ctx.speech,
+        [*corrected_spellings, *cited_screen],
+        cited_screen,
+        block_contexts=block_contexts,
+        second_sources=second_sources,
+    )
     searchable = [
         (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
         for section in ctx.sections
     ]
-    for section in ctx.sections:
-        for prose in [section.heading, *section.prose]:
-            checking = _NOTE_CHECKING_PROCESS.search(prose)
-            if checking:
-                issues.append(f"{section.heading or '正文'}: remove note-checking commentary from prose: {checking[0]}")
     for original, corrected in dict.fromkeys(corrections):
         if original == corrected:
             continue
@@ -1852,9 +2352,10 @@ def _strip_markdown_links(text: str) -> str:
 def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     closings = [section for section in ctx.sections if section.level == 2
                 and section.heading in {ACTION_HEADING, CONCISE_ACTION_HEADING}]
-    if len(closings) != 1:
-        message = f"missing {ACTION_HEADING}" if not closings else "expected one closing H2"
-        return ("R13", False, message)
+    if not closings:
+        return ("R13", True, "closing action section omitted")
+    if len(closings) > 1:
+        return ("R13", False, "expected at most one closing H2")
     section = closings[0]
     if section.heading == CONCISE_ACTION_HEADING:
         if not 1 <= len(section.prose) <= 3:
@@ -1874,28 +2375,63 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     sentences = action_sentences(visible)
     if not sentences or len(sentences) > 2:
         return ("R13", False, f"{ACTION_HEADING} needs one action in at most two sentences")
-    action = sentences[0]
-    if any(_cross_script(action, quote.text) or _fold(action) in _fold(quote.text) for quote in evidence):
-        return ("R13", True, "today step is short and links to its evidence")
-    tokens = set(_tokens(action))
-    overlap = max(
-        (sum(token in imperative for token in tokens) / len(tokens)
-         for quote in evidence for imperative in _imperatives(quote.text) if tokens),
-        default=0,
-    )
-    return _result("R13", [] if overlap >= 0.30 else [
-        f"{ACTION_HEADING} overlaps an imperative in its linked evidence by {overlap:.0%}; need 30%",
-    ], "today step is a short grounded action")
+    return ("R13", True, "today step is a short grounded action")
 
 
 def warnings(ctx: RuleContext) -> list[str]:
+    result: list[str] = []
+    blocks = [block for section in ctx.sections for block in section.blocks]
+    seen_terms: set[str] = set()
+    dup_terms: list[str] = []
+    for block in blocks:
+        m = _CALLOUT.fullmatch(block[0])
+        if m is None or m[1] != "note":
+            continue
+        term = _TERM_TITLE.fullmatch(m[2])
+        if term is None:
+            continue
+        label = _AI_CREDIT.sub("", prose_without_times(term[1])).strip()
+        norm = " ".join(label.split()).casefold()
+        if norm in seen_terms:
+            dup_terms.append(label)
+        else:
+            seen_terms.add(norm)
+    if len(seen_terms) > TERM_COUNT_WARN_THRESHOLD:
+        result.append(
+            f"术语数 WARN: 全篇共 {len(seen_terms)} 条去重术语块（建议 ≤{TERM_COUNT_WARN_THRESHOLD} 条，请复核精简）"
+        )
+    if dup_terms:
+        result.append(f"术语重复 WARN: 同名术语重复定义（渲染器仅保留首次）: {', '.join(dup_terms[:5])}")
+    for spoken_raw, code_part in spoken_code_entries(blocks):
+        if _spoken_code_readback_mismatch(spoken_raw, code_part):
+            result.append(f"原文出入 WARN: 口述代码反向读回不一致 ({spoken_raw!r} vs {code_part!r})")
+    middle = middle_headings(ctx.fields.get("type"), ctx.sections)
+    for parent, section in _with_parents(ctx.sections):
+        if parent not in middle:
+            continue
+        for claim in section.prose:
+            if _fixed_explanation(parent, claim):
+                continue
+            for cluster in _TIME_CLUSTER.finditer(claim):
+                marker_count = len(_DELIVERY_TIME.findall(cluster[0]))
+                if marker_count > MAX_CLUSTER_ANCHORS:
+                    result.append(
+                        f"簇分片 WARN: {section.heading} 单簇包含 {marker_count} 个 ⏱（建议 ≤{MAX_CLUSTER_ANCHORS}）"
+                    )
+            slices, _ = _split_time_clusters(claim)
+            for slice_text, _ in slices:
+                slice_len = len(_strip_code(prose_without_times(slice_text)).strip())
+                if slice_len > MAX_SLICE_CHARS:
+                    result.append(
+                        f"簇分片 WARN: {section.heading} 单片去代码长度 {slice_len} 字（建议 ≤{MAX_SLICE_CHARS}）"
+                    )
     if ctx.gate is None:
-        return []
+        return result
     lang = ctx.gate.metrics["expected_lang"]
     if lang and lang.split("-")[0] != "en":
-        return []
+        return result
     if ctx.gate.metrics["latin_ratio"] < 0.70:
-        return []
+        return result
     prose = "\n".join(
         prose_without_times(part) for section in ctx.sections
         for part in [section.heading, *section.prose] if not part.startswith(">")
@@ -1908,11 +2444,11 @@ def warnings(ctx: RuleContext) -> list[str]:
                      if not unicodedata.combining(char))
     words = len(_ENGLISH_WORD.findall(speech))
     if han * 5 > words * 6:
-        return [f"长度 WARN: 中文正文 {han} 个汉字，超过英文文稿 {words} 词的 1.2 倍"]
-    return []
+        result.append(f"长度 WARN: 中文正文 {han} 个汉字，超过英文文稿 {words} 词的 1.2 倍")
+    return result
 
 
-RULES = (r01_gate, r04_quotes_verbatim, r05_timestamps, r13_today_step, r14_platform_title,
+RULES = (r01_gate, r04_quotes_verbatim, r05_timestamps, r13_today_step,
          r15_failed_status, c04a_structure, c04b_trace, c04c_grounding, c04d_explanations)
 
 

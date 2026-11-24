@@ -35,7 +35,7 @@ TRANSCRIPT = (FIXTURES / "usable_en_timed_transcript.txt").read_text(encoding="u
 NOTE = (FIXTURES / "usable_en_note.md").read_text(encoding="utf-8").replace(
     "evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt"
 )
-RULE_IDS = ["R01", "R04", "R05", "R13", "R14", "R15", "C04a", "C04b", "C04c", "C04d"]
+RULE_IDS = ["R01", "R04", "R05", "R13", "R15", "C04a", "C04b", "C04c", "C04d"]
 HINT = "标明来自画面的内容由机器识别，可能有误差"
 
 
@@ -373,7 +373,7 @@ class Phase2ETests(unittest.TestCase):
             with patch.dict(os.environ, {MODE: "slides"}):
                 reading = render_reading_note.render_note(note.encode("utf-8"), keep_frontmatter=False)
             intro, _, _ = reading.decode("utf-8").partition("## 先记住一句话")
-            self.assertIn(HINT, intro)
+            self.assertNotIn(HINT, intro)
 
         job = self.job("reading-screen", note, line + "\n")
         output = self.temp / "reading-screen.md"
@@ -384,8 +384,8 @@ class Phase2ETests(unittest.TestCase):
         reading = output.read_text(encoding="utf-8")
         print(reading, end="")
         intro, _, _ = reading.partition("## 先记住一句话")
-        self.assertIn(HINT, intro)
-        self.assertEqual(reading.count(HINT), 1)
+        self.assertNotIn(HINT, intro)
+        self.assertEqual(reading.count(HINT), 0)
 
     def host(self, name: str, mode: str | None, *, missing: str | None = None,
              timeout: bool = False, watermark: bool = False) -> tuple[Path, dict, MediaTools]:

@@ -19,19 +19,12 @@ import verify_note
 import verify_rules as rules
 
 
-INTRO = "竖线行是 AI 补充解释"
-SCREEN_HINT = "标明来自画面的内容由机器识别，可能有误差"
-LEVEL_DESCRIPTIONS = {
-    "zh": {
-        "plain": "讲解方式：通俗版——术语和背景都做了解释。",
-        "concise": "讲解方式：精炼版——默认读者有相关背景，只解释少见的词。",
-    },
-    "en": {
-        "plain": "Reading level: Plain — terms and background are explained.",
-        "concise": "Reading level: Concise — assumes relevant background; only uncommon terms are explained.",
-    },
-}
-OUTRO = "每句话对应的视频原话和时间点，保存在这条视频的证据版里。"
+DISCREPANCY_TITLE = "原文出入"
+SPOKEN_CODE_NOTICE = "部分代码按讲者口述整理"
+GLOSSARY_HEADING = "## 术语速查"
+GLOSSARY_NOTICE = "以下为整理者补充，非讲者原话。"
+EMPTY_OMISSION = {"", "无", "无。", "无.", "none"}
+
 FRONTMATTER = re.compile(r"\A---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
 TIME_GROUP = re.compile(
     rf"(?P<before>[ \t]*){rules._DELIVERY_TIME.pattern}"
@@ -44,6 +37,16 @@ EMPTY_SECTION = re.compile(
     r"|本节没有补充中间部分之外的情况)[。.]?"
 )
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
+ANY_OMISSION_LINE = re.compile(r"^本文略去[｜|]", re.MULTILINE)
+DOUBT_NOTE_RE = re.compile(r"（存疑：[^）\n]+）")
+DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
+DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
+DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
+FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+INLINE_CODE_RE = re.compile(r"(`+)([^`\n]+?)\1")
+MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
+PAREN_SPAN_RE = re.compile(r"（[^）\n]*）|\([^)\n]*\)")
+TABLE_SEP_RE = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 JOB_FILES = (
     "note.md", "transcript.txt", "selection.md", "status.json", "segments.json", ".status.lock", "delivery.md",
     rules.SCREEN_FILE, "review.md", "issues.md",
@@ -67,26 +70,275 @@ def remove_times(line: str) -> str:
     return TIME_GROUP.sub(replace, line)
 
 
-def render_lines(body: str) -> tuple[str, set[int]]:
+def _absorb_hidden_block(rendered: list[str], lines: list[str], index: int) -> int:
+    if rendered and index < len(lines) - 1:
+        if rendered[-1].strip() and lines[index].strip():
+            rendered.append("")
+        elif not rendered[-1].strip() and not lines[index].strip():
+            index += 1
+    return index
+
+
+def _is_table_block(block_lines: list[str]) -> bool:
+    if any(line.lstrip().startswith("|") for line in block_lines):
+        return True
+    return len(block_lines) >= 2 and any(TABLE_SEP_RE.fullmatch(line) for line in block_lines)
+
+
+def _scan_balanced(
+    text: str,
+    start: int,
+    open_ch: str,
+    close_ch: str,
+    skip_spans: list[tuple[int, int]] = (),
+) -> int | None:
+    depth = 0
+    pos = start
+    length = len(text)
+    while pos < length:
+        if pos > start:
+            jumped = False
+            for span_start, span_end in skip_spans:
+                if span_start <= pos < span_end:
+                    pos = span_end
+                    jumped = True
+                    break
+            if jumped:
+                continue
+        ch = text[pos]
+        if ch == "\n":
+            return None
+        if ch == "\\":
+            pos += 2
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
+def _protected_spans(text: str, *, include_parens: bool = False) -> list[tuple[int, int]]:
+    code_spans: list[tuple[int, int]] = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(text)]
+    spans: list[tuple[int, int]] = list(code_spans)
+    # Balanced Markdown links: [label](dest with balanced (parens))
+    length = len(text)
+    pos = 0
+    while pos < length:
+        jumped = False
+        for span_start, span_end in code_spans:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
+        if text[pos] == "[":
+            label_end = _scan_balanced(text, pos, "[", "]", code_spans)
+            if label_end is not None and label_end < length and text[label_end] == "(":
+                dest_end = _scan_balanced(text, label_end, "(", ")")
+                if dest_end is not None:
+                    spans.append((pos, dest_end))
+                    pos = dest_end
+                    continue
+        if include_parens and text[pos] in "（(":
+            close_ch = "）" if text[pos] == "（" else ")"
+            paren_end = _scan_balanced(text, pos, text[pos], close_ch, code_spans)
+            if paren_end is not None:
+                spans.append((pos, paren_end))
+                pos = paren_end
+                continue
+        pos += 1
+    spans.sort()
+    return spans
+
+
+def _overlaps_forbidden_span(text: str, start: int, end: int) -> bool:
+    return any(start < span_end and end > span_start for span_start, span_end in _protected_spans(text))
+
+
+def _sentence_insertion_index(text: str, anchor_end: int) -> int:
+    protected = _protected_spans(text, include_parens=True)
+    pos = anchor_end
+    length = len(text)
+    while pos < length:
+        jumped = False
+        for span_start, span_end in protected:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
+        ch = text[pos]
+        if ch == "\n":
+            return pos
+        if ch in "。！？!?":
+            return pos
+        if ch == ".":
+            next_ch = text[pos + 1] if pos + 1 < length else ""
+            if not next_ch or next_ch.isspace() or next_ch in "\"'”’）)]":
+                return pos
+        pos += 1
+    return length
+
+
+def _resolve_doubt_insertion(block_text: str, anchor: str, explanation: str) -> tuple[int, str]:
+    if not anchor or not explanation or "\n" in explanation or "）" in explanation:
+        raise RenderError(f"invalid 存疑 entry: anchor={anchor!r}, explanation={explanation!r}")
+    count = block_text.count(anchor)
+    if count != 1:
+        raise RenderError(f"存疑 anchor {anchor!r} must occur exactly once in preceding block (found {count})")
+    start = block_text.index(anchor)
+    end = start + len(anchor)
+    if _overlaps_forbidden_span(block_text, start, end):
+        raise RenderError(f"存疑 anchor {anchor!r} must not fall inside code or link")
+    return _sentence_insertion_index(block_text, end), f"（存疑：{explanation}）"
+
+
+def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
+    insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+    return f"{block_text[:insert_at]}{annotation}{block_text[insert_at:]}"
+
+
+def _apply_doubt_notes(block_text: str, doubts: list[tuple[str, str]]) -> tuple[str, list[tuple[int, int]]]:
+    """Resolve all anchors against original block_text, then apply stably and return generated spans."""
+    if len(doubts) == 1:
+        anchor, explanation = doubts[0]
+        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+        updated = _insert_doubt_note(block_text, anchor, explanation)
+        return updated, [(insert_at, insert_at + len(annotation))]
+
+    resolved: list[tuple[int, int, str]] = []
+    for order, (anchor, explanation) in enumerate(doubts):
+        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+        resolved.append((insert_at, order, annotation))
+
+    # Build left-to-right so we know exact final (start, end) spans in updated block_text.
+    resolved.sort(key=lambda item: (item[0], item[1]))
+    parts: list[str] = []
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    out_len = 0
+    for insert_at, _, annotation in resolved:
+        chunk = block_text[cursor:insert_at]
+        parts.append(chunk)
+        out_len += len(chunk)
+        span_start = out_len
+        parts.append(annotation)
+        out_len += len(annotation)
+        spans.append((span_start, out_len))
+        cursor = insert_at
+    parts.append(block_text[cursor:])
+    return "".join(parts), spans
+
+
+def _parse_discrepancy_lines(content: list[str]) -> tuple[bool, list[tuple[str, str]]]:
+    if not content:
+        raise RenderError("empty 原文出入 block")
+    has_spoken_code = False
+    doubts: list[tuple[str, str]] = []
+    for line in content:
+        if DISCREPANCY_TYPE1.fullmatch(line):
+            continue
+        if DISCREPANCY_TYPE2.fullmatch(line):
+            has_spoken_code = True
+            continue
+        match = DISCREPANCY_TYPE3.fullmatch(line)
+        if match:
+            anchor = match[1].strip()
+            explanation = match[2].strip()
+            if not anchor or not explanation or "）" in explanation:
+                raise RenderError(f"invalid 存疑 line in 原文出入: {line}")
+            doubts.append((anchor, explanation))
+            continue
+        raise RenderError(f"unknown line in 原文出入: {line}")
+    return has_spoken_code, doubts
+
+
+def _with_note_suffix(label: str) -> str:
+    return label if label.endswith("（注）") else f"{label}（注）"
+
+
+def render_lines(
+    body: str,
+    *,
+    inline_terms: bool = False,
+    terms: list[tuple[str, str]] | None = None,
+    seen_terms: set[str] | None = None,
+    strip_discrepancy: bool = False,
+) -> tuple[str, set[int], bool, int]:
     lines = body.split("\n")
     rendered: list[str] = []
     times: set[int] = set()
+    has_spoken_code = False
+    doubt_count = 0
+
+    in_fence_char: str | None = None
+    in_fence_len = 0
+    block_open = False
+    last_block_start: int | None = None
+    last_block_end: int | None = None
+    last_block_raw: list[str] = []
+    last_block_original: str = ""
+    last_block_doubts: list[tuple[str, str]] = []
+    last_block_kind: str | None = None  # "prose" or "forbidden"
+
     index = 0
     while index < len(lines):
         raw = lines[index]
         index += 1
+
+        fence = FENCE_RE.match(raw)
+        if in_fence_char is not None:
+            rendered.append(raw)
+            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+                in_fence_char = None
+                in_fence_len = 0
+                block_open = False
+            last_block_kind = "forbidden"
+            continue
+
+        if fence:
+            in_fence_char = fence[1][0]
+            in_fence_len = len(fence[1])
+            rendered.append(raw)
+            block_open = False
+            last_block_kind = "forbidden"
+            continue
+
         if not CALLOUT_START.match(raw.strip()):
             times.update(rules.delivery_times(raw))
             cleaned = remove_times(raw)
-            if cleaned or not raw:
+            if not raw.strip():
+                block_open = False
                 rendered.append(cleaned)
+                continue
+            if cleaned:
+                starts_list_item = bool(rules._LIST_ITEM.match(raw.strip()))
+                if not block_open or starts_list_item:
+                    block_open = True
+                    last_block_start = len(rendered)
+                    last_block_raw = [raw]
+                    last_block_doubts = []
+                else:
+                    last_block_raw.append(raw)
+                rendered.append(cleaned)
+                last_block_end = len(rendered)
+                block_slice = rendered[last_block_start:last_block_end]
+                last_block_original = "\n".join(block_slice)
+                last_block_kind = "forbidden" if _is_table_block(block_slice) else "prose"
             continue
 
+        block_open = False
         header = rules._CALLOUT.fullmatch(raw.strip())
         if header is None:
             raise RenderError(f"unknown explanation block: {raw.strip()}")
         kind, title = header.groups()
-        content = []
+        content: list[str] = []
         while index < len(lines):
             quoted = lines[index].strip()
             if not quoted.startswith(">") or CALLOUT_START.match(quoted):
@@ -97,26 +349,64 @@ def render_lines(body: str) -> tuple[str, set[int]]:
             index += 1
 
         if kind == "warning" and title == "字幕更正":
-            if rendered and index < len(lines) - 1:
-                if rendered[-1].strip() and lines[index].strip():
-                    rendered.append("")
-                elif not rendered[-1].strip() and not lines[index].strip():
-                    index += 1
+            index = _absorb_hidden_block(rendered, lines, index)
             continue
+
+        if kind == "warning" and title == DISCREPANCY_TITLE:
+            if not strip_discrepancy:
+                spoken, doubts = _parse_discrepancy_lines(content)
+                has_spoken_code = has_spoken_code or spoken
+                if doubts:
+                    if last_block_kind != "prose" or last_block_start is None or last_block_end is None:
+                        raise RenderError("存疑 entry must follow a non-callout paragraph or list item")
+                    raw_block_text = "\n".join(last_block_raw)
+                    for anchor, _ in doubts:
+                        if raw_block_text.count(anchor) != 1:
+                            raise RenderError(
+                                f"存疑 anchor {anchor!r} must occur exactly once verbatim without crossing ⏱"
+                            )
+                    last_block_doubts.extend(doubts)
+                    updated_block, generated_spans = _apply_doubt_notes(last_block_original, last_block_doubts)
+                    # Local invariant check: removing exact generated spans must restore original block verbatim.
+                    reconstructed: list[str] = []
+                    pos = 0
+                    for s_start, s_end in generated_spans:
+                        reconstructed.append(updated_block[pos:s_start])
+                        pos = s_end
+                    reconstructed.append(updated_block[pos:])
+                    if "".join(reconstructed) != last_block_original:
+                        raise RenderError("invariant #7 failed: generated doubt spans did not restore original block")
+                    rendered[last_block_start:last_block_end] = updated_block.split("\n")
+                    doubt_count += len(doubts)
+            index = _absorb_hidden_block(rendered, lines, index)
+            continue
+
         term = rules._TERM_TITLE.fullmatch(title)
         if kind == "note" and term:
             label = AI_CREDIT.sub("", remove_times(term[1])).strip()
+            body_text = " ".join(content)
+            if not inline_terms:
+                if terms is not None and seen_terms is not None:
+                    norm = " ".join(label.split()).casefold()
+                    if norm not in seen_terms:
+                        seen_terms.add(norm)
+                        terms.append((label, body_text))
+                index = _absorb_hidden_block(rendered, lines, index)
+                continue
+            display_label = _with_note_suffix(label)
         elif kind == "tip" and title in {"类比（Claude 补充）", "类比"}:
-            label = "打个比方"
+            display_label = "打个比方（注）"
+            body_text = " ".join(content)
         else:
             raise RenderError(f"unknown explanation block: {raw.strip()}")
+
         if rendered and rendered[-1].strip():
             rendered.append("")
-        rendered.append(f"> **{label}**：{' '.join(content)}")
+        rendered.append(f"> **{display_label}**：{body_text}")
         if index < len(lines) and lines[index].strip():
             rendered.append("")
 
-    return "\n".join(rendered), times
+    return "\n".join(rendered), times, has_spoken_code, doubt_count
 
 
 @dataclass
@@ -127,12 +417,30 @@ class Section:
     times: set[int]
 
 
-def render_body(body: str) -> str:
+def _render_body_details(
+    body: str,
+    *,
+    inline_terms: bool = False,
+    strip_discrepancy: bool = False,
+) -> tuple[str, bool, int]:
     headings = rules.markdown_headings(body)
     ends = [start for _, _, start, _ in headings[1:]] + [len(body)]
     sections: list[Section] = []
+    terms: list[tuple[str, str]] = []
+    seen_terms: set[str] = set()
+    has_spoken_code = False
+    doubt_count = 0
+
     for (level, title, _, heading_end), end in zip(headings, ends):
-        content, times = render_lines(body[heading_end:end])
+        content, times, spoken, doubts = render_lines(
+            body[heading_end:end],
+            inline_terms=inline_terms,
+            terms=terms,
+            seen_terms=seen_terms,
+            strip_discrepancy=strip_discrepancy,
+        )
+        has_spoken_code = has_spoken_code or spoken
+        doubt_count += doubts
         sections.append(Section(level, title, content, times | rules.delivery_times(title)))
 
     kept: list[Section] = []
@@ -141,7 +449,7 @@ def render_body(body: str) -> str:
         if has_child or not EMPTY_SECTION.fullmatch(section.body.strip()):
             kept.append(section)
 
-    parts = []
+    parts: list[str] = []
     for index, section in enumerate(kept):
         title = remove_times(section.title)
         if section.level == 3:
@@ -155,34 +463,38 @@ def render_body(body: str) -> str:
                 time_label = rules._fmt(start)
                 if end > start:
                     time_label += f"–{rules._fmt(end)}"
-                title += f"（{time_label}）"
+                title += f" · {time_label}"
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
         parts.extend((f"{'#' * section.level} {title}", content))
-    return "".join(parts).strip("\n")
+
+    rendered = "".join(parts).strip("\n")
+    if not inline_terms and terms:
+        glossary_lines = [GLOSSARY_HEADING, "", GLOSSARY_NOTICE, ""]
+        glossary_lines.extend(f"- **{label}**：{definition}" for label, definition in terms)
+        glossary = "\n".join(glossary_lines)
+        rendered = f"{rendered}\n\n{glossary}" if rendered else glossary
+    return rendered, has_spoken_code, doubt_count
 
 
-def _delivery_language(body: str, requested: str | None) -> str:
-    if requested in ("英文", "en"):
-        return "en"
-    if requested in ("中文", "中英文对照", "zh"):
-        return "zh"
-    parts: list[str] = []
-    offset = 0
-    for _, _, start, end in rules.markdown_headings(body):
-        parts.append(body[offset:start])
-        offset = end
-    parts.append(body[offset:])
-    prose = re.sub(r"(?m)^(?:[ \t]*>|本文略去[｜|]).*$", "", "\n".join(parts))
-    cjk, latin = rules._script_counts(prose)
-    return "en" if latin > 0 and cjk < 4 and cjk * 20 < latin else "zh"
+def render_body(body: str, *, inline_terms: bool = False) -> str:
+    rendered, _, _ = _render_body_details(body, inline_terms=inline_terms)
+    return rendered
 
 
-def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = False,
-                reading_level: str | None = None, delivery_language: str | None = None) -> bytes:
+def render_note(
+    note: bytes,
+    *,
+    keep_frontmatter: bool,
+    self_review: bool = False,
+    reading_level: str | None = None,
+    delivery_language: str | None = None,
+    inline_terms: bool = False,
+) -> bytes:
     if reading_level is not None and reading_level not in knowledge_note.READING_LEVELS:
         raise RenderError(f"invalid reading_level: {reading_level!r}")
+    _ = delivery_language  # Compatibility no-op; Phase 6 omits reading-level headers.
     text = note.decode("utf-8-sig")
     frontmatter = FRONTMATTER.match(text)
     if frontmatter is None:
@@ -196,29 +508,46 @@ def render_note(note: bytes, *, keep_frontmatter: bool, self_review: bool = Fals
                      if level == 2 and title == rules.EVIDENCE_HEADING), None)
     if evidence is None:
         raise RenderError("note.md is missing the 原文依据 section")
-    evidence_start, evidence_end = evidence
-    screen_quote = re.compile(r"^\s*>[ \t]+\[(?:\d+:)?\d{2,}:[0-5]\d\]\[画面\]", re.MULTILINE)
-    has_screen = bool(screen_quote.search(body, evidence_end))
+    evidence_start, _ = evidence
     body = body[:evidence_start]
     omission = OMISSION.search(body)
     if omission is None:
-        raise RenderError("note.md is missing the 本文略去 line")
+        if ANY_OMISSION_LINE.search(body):
+            raise RenderError("本文略去 must appear at the end before 原文依据")
+        prose_body = body
+        omission_text = ""
+    else:
+        prose_body = body[:omission.start()]
+        omission_text = omission[1].strip()
 
-    intro = ("未经独立复核" if self_review else None, INTRO, SCREEN_HINT if has_screen else None)
-    notices = ["说明：" + "；".join(part for part in intro if part is not None) + "。"]
-    if reading_level is not None:
-        prose = body[:omission.start()]
-        language = _delivery_language(prose, delivery_language)
-        notices.append(LEVEL_DESCRIPTIONS[language][reading_level])
-    markdown = "\n\n".join((
+    rendered_body, has_spoken_code, doubt_count = _render_body_details(
+        prose_body, inline_terms=inline_terms, strip_discrepancy=False
+    )
+    baseline_body, _, _ = _render_body_details(
+        prose_body, inline_terms=inline_terms, strip_discrepancy=True
+    )
+    stripped_rendered, n_rendered = DOUBT_NOTE_RE.subn("", rendered_body)
+    stripped_base, n_base = DOUBT_NOTE_RE.subn("", baseline_body)
+    if (n_rendered - n_base) != doubt_count or stripped_rendered != stripped_base:
+        raise RenderError("invariant #7 failed: stripping doubt notes did not match baseline body")
+
+    notice_parts = [
+        part for part in (
+            "未经独立复核" if self_review else None,
+            SPOKEN_CODE_NOTICE if has_spoken_code else None,
+        )
+        if part is not None
+    ]
+    blocks: list[str] = [
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
-        *notices,
-        render_body(body[:omission.start()]),
-        "---",
-        f"没写进来的部分：{omission[1]}",
-        OUTRO,
-    )) + "\n"
+    ]
+    if notice_parts:
+        blocks.append("说明：" + "；".join(notice_parts) + "。")
+    blocks.append(rendered_body)
+    if omission_text.casefold() not in EMPTY_OMISSION:
+        blocks.extend(("---", f"没写进来的部分：{omission_text}"))
+    markdown = "\n\n".join(blocks) + "\n"
     if "⏱" in markdown or "[!" in markdown:
         raise RenderError("reading copy still contains an evidence time marker or callout")
     if keep_frontmatter:
@@ -299,8 +628,16 @@ def owns_generated_output(output: Path, source: str) -> bool:
     return len(header) == 2 and header[0].startswith("# ") and f"[原视频]({source})" in header[1]
 
 
-def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, require_review: bool = False,
-               output_dir: Path | None = None, delivery_language: str | None = None) -> Path:
+def render_job(
+    job: Path,
+    output: Path | None,
+    *,
+    keep_frontmatter: bool,
+    require_review: bool = False,
+    output_dir: Path | None = None,
+    delivery_language: str | None = None,
+    inline_terms: bool = False,
+) -> Path:
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
@@ -354,8 +691,14 @@ def render_job(job: Path, output: Path | None, *, keep_frontmatter: bool, requir
             verify_note.check_closing_heading_pair(note, reading_level)
         except ValueError as exc:
             raise RenderError(str(exc)) from exc
-        markdown = render_note(note, keep_frontmatter=keep_frontmatter, self_review=self_review,
-                               reading_level=reading_level, delivery_language=delivery_language)
+        markdown = render_note(
+            note,
+            keep_frontmatter=keep_frontmatter,
+            self_review=self_review,
+            reading_level=reading_level,
+            delivery_language=delivery_language,
+            inline_terms=inline_terms,
+        )
         if output is None:
             output = reading_path(output_dir, job, note)
             check_destination(job, output)
@@ -414,14 +757,21 @@ def main(argv: list[str] | None = None) -> int:
     destination.add_argument("--output-dir", type=Path, help="Folder for a filename generated from the note properties")
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
     parser.add_argument("--language", choices=user_prefs.VALID_LANGUAGES, default=None,
-                        help="Delivery language for reading-level header")
+                        help="Delivery language (kept for CLI compatibility)")
     parser.add_argument("--require-review", action="store_true",
                         help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
+    parser.add_argument("--inline-terms", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
-        path = render_job(args.task_dir, args.output, keep_frontmatter=args.keep_frontmatter,
-                          require_review=args.require_review, output_dir=args.output_dir,
-                          delivery_language=args.language)
+        path = render_job(
+            args.task_dir,
+            args.output,
+            keep_frontmatter=args.keep_frontmatter,
+            require_review=args.require_review,
+            output_dir=args.output_dir,
+            delivery_language=args.language,
+            inline_terms=args.inline_terms,
+        )
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)
         return 1

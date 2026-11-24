@@ -1,5 +1,5 @@
 ---
-# expect: FAIL R14
+# expect: FAIL C04d
 # fixture_transcript: evals/corpus/pricing_en_timed.txt
 # fixture_duration: 200
 # fixture_lang: en
@@ -13,7 +13,6 @@ caption_kind: manual
 skill_version: fixture
 transcript_path: transcript.txt
 tags: [video-note]
-platform_title: Secret Banana Launchpad Weekly Digest
 ---
 
 ## 先记住一句话
@@ -26,19 +25,14 @@ The speaker discusses how to set a price for buyers.
 
 ## 主线论点
 
-Most founders set a public price after speaking with three buyers. ⏱ 00:00
+Most founders set a public price after speaking with 4 buyers. ⏱ 00:00
+
+> [!warning] 原文出入
+> 字幕写作 three buyers，实为 4 buyers。
 
 Ask three customers what they pay today before you publish a number. ⏱ 00:50
 
 Publish the first price only after those three conversations. ⏱ 01:40
-
-## 可复用做法
-
-本节没有补充中间部分之外的情况。
-
-## 翻车或别用
-
-本节没有补充中间部分之外的情况。
 
 ## 今天立刻动手一步
 

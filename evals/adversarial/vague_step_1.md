@@ -41,7 +41,7 @@ Publish the first price only after those three conversations. ⏱ 01:40
 
 ## 今天立刻动手一步
 
-The team should consider a careful option later. It can wait. ⏱ 00:25
+The team should consider a careful option later without any evidence link.
 
 本文略去｜无
 

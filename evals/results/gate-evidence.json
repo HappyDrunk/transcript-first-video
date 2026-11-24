@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-11-12T07:42:36Z",
+  "generated_at": "2026-11-24T08:40:43Z",
   "verifier": [
     {
       "id": "usable-en",
@@ -180,8 +180,7 @@
       "exit_code": 2,
       "allowed": false,
       "reasons": [
-        "R13 FAIL: missing 今天立刻动手一步",
-        "C04a FAIL: expected H2 sections in order: 先记住一句话 / 这场在谈什么、谁 / 主线论点 / 可复用做法 / 翻车或别用 / 今天立刻动手一步; expected 本文略去 on its own line after 今天立刻动手一步, before 原文依据",
+        "C04a FAIL: expected H2 sections in order: 先记住一句话 / 这场在谈什么、谁 / 主线论点 / 可复用做法 / 翻车或别用 / 今天立刻动手一步",
         "C04b FAIL: unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]"
       ],
       "naive_would_deposit": true,

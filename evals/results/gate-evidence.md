@@ -1,6 +1,6 @@
 # Gate evidence
 
-Generated 2026-11-12T07:42:36Z by `python3 scripts/run_evidence.py`.
+Generated 2026-11-24T08:40:43Z by `python3 scripts/run_evidence.py`.
 
 Two bars, both required. (A) No note without a usable transcript: the file has to exist and pass the quality gate. (B) A finished note has to analyze that transcript into reusable knowledge. The four sections are 问题与做法, 完整怎么做, 翻车或别用, and 今天立刻动手一步, and each one quotes a 40-character window of the transcript. A path, a status, or a quote with no analysis is refused.
 
@@ -33,7 +33,7 @@ Reasons:
 - `missing-path`: R01 FAIL: missing transcript path: evals/fixtures/does_not_exist.txt does not exist; R04 FAIL: quote is not verbatim for at least 40 characters: [00:00] Today we are repotting a root-bound pothos. Slide the plant out of the old pot and loosen th; quote is not verbatim for at least 40 characters: [00:30] Snip the black, mushy roots and keep the firm white ones. Put a handful of bark in the new p; quote is not verbatim for at least 40 characters: [01:00] Water until it runs out the bottom, then leave the pot in bright shade for three days. Do no; R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link; C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s; unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]
 - `missing-citation`: C04a FAIL: missing frontmatter properties: transcript_path; transcript_path must resolve to evals/fixtures/usable_en_timed_transcript.txt
 - `path-only`: R04 FAIL: 原文依据 needs at least one contiguous transcript quote; R13 FAIL: 今天立刻动手一步 needs a supporting ⏱ link; C04b FAIL: 主线论点: ⏱ 00:00 has no end quote within 15s; 主线论点: ⏱ 00:30 has no end quote within 15s; 主线论点: ⏱ 01:00 has no end quote within 15s; 可复用做法: ⏱ 00:30 has no end quote within 15s; 翻车或别用: ⏱ 01:00 has no end quote within 15s; 今天立刻动手一步: ⏱ 00:00 has no end quote within 15s
-- `quote-stub`: R13 FAIL: missing 今天立刻动手一步; C04a FAIL: expected H2 sections in order: 先记住一句话 / 这场在谈什么、谁 / 主线论点 / 可复用做法 / 翻车或别用 / 今天立刻动手一步; expected 本文略去 on its own line after 今天立刻动手一步, before 原文依据; C04b FAIL: unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]
+- `quote-stub`: C04a FAIL: expected H2 sections in order: 先记住一句话 / 这场在谈什么、谁 / 主线论点 / 可复用做法 / 翻车或别用 / 今天立刻动手一步; C04b FAIL: unused end quote [00:00]; unused end quote [00:30]; unused end quote [01:00]
 - `boilerplate-sections`: C04a FAIL: empty section: 主线论点; C04b FAIL: 主线论点: ⏱ 00:00 needs three shared content tokens; 主线论点: ⏱ 00:30 needs three shared content tokens; 主线论点: ⏱ 01:00 needs three shared content tokens
 
 ## Host deposit behavior
