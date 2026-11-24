@@ -460,9 +460,15 @@ class ReviewRound1RegressionTests(ReaderFixture):
         _, res_real = self.verify(prose_real + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose_real)
         self.assert_soft_warning(res_real, r"版本冲突", True)
 
-        # Backtick in backtick fence info string is NOT a fence opener
+        # Backtick in backtick fence info string is NOT a fence opener; NBSP is NOT a valid closing fence suffix
         self.assertIsNone(rules.match_fence_open("```python`"))
         self.assertIsNotNone(rules.match_fence_open("```python"))
+        self.assertFalse(rules.is_fence_close("```\u00a0", "`", 3))
+        self.assertTrue(rules.is_fence_close("``` \t", "`", 3))
+        # Second source cannot override sign mismatch (Bot−3 -> Bot3); fractional leading zeros stay distinct (0.05 != 0.5)
+        self.assertIsNotNone(rules._discrepancy_type1_laundering_issue("Bot\u22123", "Bot3", ("Bot3",)))
+        self.assertIsNotNone(rules._discrepancy_type1_laundering_issue("0.05", "0.5", ()))
+        self.assertIsNotNone(rules._discrepancy_type1_laundering_issue("3.05", "3.5", ()))
 
     def test_fence_grounding_does_not_stitch_correction_across_separate_quotes(self) -> None:
         q0 = "开场先说明 old api 的历史背景与兼容方式，请把本次运行的详细记录单独存档以便之后逐项核对结果。"

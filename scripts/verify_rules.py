@@ -353,7 +353,7 @@ def match_fence_open(raw: str) -> tuple[str, int, str] | None:
 
 def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
     m = _FENCE_OPEN.match(raw)
-    return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip() == "")
+    return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip(" \t\r") == "")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
@@ -562,7 +562,7 @@ def delivery_sections(body: str) -> list[DeliverySection]:
             section_body = _MARKDOWN_CODE_OR_COMMENT.sub(
                 lambda match: "" if match["comment"] else match[0], section_body
             )
-            has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
+            has_fence = any(match_fence_open(ln.lstrip(" \t")) is not None for ln in section_body.splitlines())
         contexts: list[str | None] = []
         fence_parents: dict[int, int | None] = {}
         prose, blocks, unclosed_fence = delivery_parts(
@@ -715,17 +715,15 @@ def _norm_ascii_digits(text: str) -> str:
 
 
 def _numeric_signature(text: str) -> list[tuple[str, ...]]:
-    normalized = _norm_ascii_digits(text)
     sigs: list[tuple[str, ...]] = []
-    # Recognize standalone minus (-3) AND Unicode minus after letters (X−3 -> normalized to X-3 when original had Unicode minus)
-    # To distinguish hyphenated product tags like GPT-3 (ASCII hyphen after letter) from Unicode minus X−3:
+    # Preserve standalone ASCII minus (-3) and Unicode minus (X−3), without turning hyphenated tags like GPT-3 negative.
     raw_marked = re.sub(r"[\u2212\uff0d]", " -", text)
     normalized = _norm_ascii_digits(raw_marked)
     for match in re.findall(r"(?<![A-Za-z0-9])-\d+(?:[._]\d+)*|\d+(?:[._]\d+)*", normalized):
         sign = "-" if match.startswith("-") else ""
         parts = re.split(r"[._]", match[1:] if sign else match)
-        norm = [part.lstrip("0") or "0" for part in parts]
-        if sign and any(part != "0" for part in norm):
+        norm = [parts[0].lstrip("0") or "0", *parts[1:]]
+        if sign and any(part.lstrip("0") for part in norm):
             norm[0] = "-" + norm[0]
         sigs.append(tuple(norm))
     return sigs
@@ -763,8 +761,6 @@ def _secondary_asr_variant(original: str, corrected: str) -> bool:
     if _numeric_signature(original) != _numeric_signature(corrected) or _expands_name_token(original, corrected):
         return False
     a, b = map(_normalized_correction, (original, corrected))
-    if a and len(b) - len(a) >= 3 and len(b) >= 1.5 * len(a):
-        return False
     distance = _levenshtein(a, b)
     return distance <= 4 and distance / max(len(a), len(b), 1) <= 0.50
 
@@ -789,7 +785,8 @@ def _discrepancy_type1_laundering_issue(
             and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == int(orig_nums[0][0]))
         )
         same_digits_backed = (
-            "".join(re.findall(r"\d", original)) == "".join(re.findall(r"\d", corrected))
+            "".join(re.findall(r"\d", _norm_ascii_digits(original))) == "".join(re.findall(r"\d", _norm_ascii_digits(corrected)))
+            and sum(s[0].startswith("-") for s in orig_nums) == sum(s[0].startswith("-") for s in corr_nums)
             and bool(orig_nums)
             and any(src and term_occurs(corrected, src) for src in second_sources)
         )
@@ -2630,12 +2627,13 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
         minor_norm = _norm_ascii_digits(minor).lstrip("0") or "0"
         key = base.rstrip("-_").casefold(), major_norm
         versions.setdefault(key, {}).setdefault(minor_norm, set()).add(match[0])
+    norm_discrepancies = [_norm_ascii_digits(line) for line in discrepancies]
     for minors in versions.values():
         uncovered = [
             surfaces for surfaces in minors.values()
             if not any(
-                re.search(rf"(?<![A-Za-z0-9_]){re.escape(surface)}(?![A-Za-z0-9_])", line, re.IGNORECASE)
-                for line in discrepancies for surface in surfaces
+                re.search(rf"(?<![A-Za-z0-9_]){re.escape(_norm_ascii_digits(surface))}(?![A-Za-z0-9_])", line, re.IGNORECASE)
+                for line in norm_discrepancies for surface in surfaces
             )
         ]
         if len(uncovered) >= 2:
