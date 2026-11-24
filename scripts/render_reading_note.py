@@ -31,7 +31,7 @@ TIME_GROUP = re.compile(
     rf"(?:[ \t]*{rules._DELIVERY_TIME.pattern})*(?P<after>[ \t]*)"
 )
 CALLOUT_START = re.compile(r"^>\s*\[!")
-AI_CREDIT = re.compile(r"[（(]Claude[ \t]+补充(?:[，,][ \t]*非视频内容)?[）)]")
+AI_CREDIT = rules._AI_CREDIT
 EMPTY_SECTION = re.compile(
     r"(?:不适用(?:（文稿中未出现意见分歧）|\(文稿中未出现意见分歧\))"
     r"|本节没有补充中间部分之外的情况)[。.]?"
@@ -42,7 +42,7 @@ DOUBT_NOTE_RE = re.compile(r"（存疑：[^）\n]+）")
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
-FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+FENCE_RE = rules._FENCE_OPEN
 INLINE_CODE_RE = re.compile(r"(`+)([^`\n]+?)\1")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 PAREN_SPAN_RE = re.compile(r"（[^）\n]*）|\([^)\n]*\)")
@@ -358,7 +358,10 @@ def render_lines(
                 has_spoken_code = has_spoken_code or spoken
                 if doubts:
                     if last_block_kind != "prose" or last_block_start is None or last_block_end is None:
-                        raise RenderError("存疑 entry must follow a non-callout paragraph or list item")
+                        raise RenderError(
+                            "存疑 entry must follow a non-callout paragraph or list item。"
+                            "请将含存疑的 原文出入 放在说明段落与代码块之间"
+                        )
                     raw_block_text = "\n".join(last_block_raw)
                     for anchor, _ in doubts:
                         if raw_block_text.count(anchor) != 1:
@@ -406,6 +409,8 @@ def render_lines(
         if index < len(lines) and lines[index].strip():
             rendered.append("")
 
+    if in_fence_char is not None:
+        raise RenderError("unclosed fenced code block")
     return "\n".join(rendered), times, has_spoken_code, doubt_count
 
 

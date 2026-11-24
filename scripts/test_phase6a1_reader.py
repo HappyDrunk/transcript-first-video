@@ -139,6 +139,11 @@ class FenceTests(ReaderFixture):
                     f"### 输出\n\n{lead}{self.FENCE}\n\n{self.PROSE}", self.QUOTE
                 )
                 self.assertIn("C04b", failed_ids(result), result["reasons"])
+        with self.subTest(lead="intervening uncited paragraph"):
+            _, result = self.verify(
+                f"### 输出\n\n{self.PROSE}\n\n这里是一段没有时间码的过渡句。\n\n{self.FENCE}", self.QUOTE
+            )
+            self.assertIn("C04b", failed_ids(result), result["reasons"])
 
     def test_t5_doubt_after_fence_explains_required_order(self) -> None:
         note, result = self.verify(f"{self.PROSE}\n\n{self.FENCE}\n\n{self.DOUBT}", self.QUOTE)
@@ -337,11 +342,11 @@ class ReadabilityTests(ReaderFixture):
 
     def test_chinese_prose_allows_names_code_links_and_translated_range(self) -> None:
         _, result = self.verify(
-            "比较 Vector Lab 和 Code Pilot。执行 `npm install foo bar`，"
+            "比较 Vector Lab 和 Code Pilot，示例句为“the quick brown fox”。执行 `npm install foo bar`，"
             "参照 [quite easy to explain](https://example.invalid/guide)。"
             "预计需要 5 到 10 年。 ⏱ 00:30\n\n"
             "```text\nquite easy to explain\n```",
-            BASE_QUOTE + "提到 Vector Lab、Code Pilot、npm install foo bar，"
+            BASE_QUOTE + "提到 Vector Lab、Code Pilot、the quick brown fox、npm install foo bar，"
             "并说 quite easy to explain，预计 5 to 10 years。",
         )
         with self.subTest(contract="phrase exemptions"):
