@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -33,12 +34,20 @@ SLIDE_GROUP_LEFT = 0.30
 SLIDE_GROUP_BOTTOM = 0.78
 SLIDE_GROUP_SIZE = (160, 90)
 SLIDE_GROUP_DIFFERENCE = 5.5
+SLIDE_TILE_GRID = (8, 8)
+SLIDE_TILE_DIFF_THRESHOLD = 12.0
+SLIDE_DYNAMIC_TILE_RATIO = 0.50
+SLIDE_DYNAMIC_MIN_PAIRS = 10
+SLIDE_DYNAMIC_MAX_MASKED_TILES = 4
+SLIDE_MAX_GROUP_FRAMES = 8
 SLIDE_COMMON_RATIO = 0.5
 NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
 NAMEPLATE_TIMEOUT = 120
 UNKNOWN_DURATION_TIMEOUT = 600
 SLIDE_MIN_FULL_BUDGET = 600
+SLIDE_MAX_FULL_BUDGET = 900
+SLIDE_OCR_FRAME_RATIO = 0.45
 AUTO_SAMPLE_TIMEOUT = 45
 AUTO_CALIBRATION_TIMEOUT = 30
 AUTO_BUDGET_HEADROOM = 0.70
@@ -136,8 +145,14 @@ def slide_full_budget(duration: float | None) -> float:
         and math.isfinite(duration)
         and duration > 0
     ):
-        return max(duration / 2, float(SLIDE_MIN_FULL_BUDGET))
+        return min(max(duration / 2, float(SLIDE_MIN_FULL_BUDGET)), float(SLIDE_MAX_FULL_BUDGET))
     return float(UNKNOWN_DURATION_TIMEOUT)
+
+
+def estimate_ocr_frames(intervals: int) -> int:
+    if intervals <= 0:
+        return 0
+    return min(intervals, max(1, math.ceil(intervals * SLIDE_OCR_FRAME_RATIO)))
 
 
 class Scan:
@@ -298,6 +313,10 @@ def _frames(scan: Scan, ffmpeg: str, video: Path, work: Path, mode: str) -> list
 
 
 def _gray_pixels(path: Path) -> bytes:
+    return _read_gray_png(path)[2]
+
+
+def _read_gray_png(path: Path) -> tuple[int, int, bytes]:
     """Read only the gray8, non-interlaced, unfiltered PNG emitted below."""
     png = path.read_bytes()
     if png[:8] != b"\x89PNG\r\n\x1a\n" or png[24:29] != b"\x08\x00\x00\x00\x00":
@@ -316,7 +335,52 @@ def _gray_pixels(path: Path) -> bytes:
     stride = width + 1
     if not width or not height or len(rows) != stride * height or any(rows[::stride]):
         raise ScreenError("slide thumbnail PNG has an unexpected row format")
-    return b"".join(rows[start + 1:start + stride] for start in range(0, len(rows), stride))
+    pixels = b"".join(rows[start + 1:start + stride] for start in range(0, len(rows), stride))
+    return width, height, pixels
+
+
+def _memory_thumbnail(path: Path, *, roi: bool = True) -> bytes | None:
+    try:
+        import cv2
+
+        image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        if image is not None:
+            if roi:
+                height, width = image.shape
+                crop_h, crop_x = int(height * SLIDE_GROUP_BOTTOM), int(width * SLIDE_GROUP_LEFT)
+                if crop_h <= 0 or crop_x >= width:
+                    return None
+                image = image[:crop_h, crop_x:]
+            return cv2.resize(image, SLIDE_GROUP_SIZE, interpolation=cv2.INTER_AREA).tobytes()
+    except Exception:
+        pass  # Optional decoder or individual image failed.
+    try:
+        from PIL import Image
+
+        with Image.open(path) as source:
+            image = source.convert("L")
+            if roi:
+                width, height = image.size
+                crop_h, crop_x = int(height * SLIDE_GROUP_BOTTOM), int(width * SLIDE_GROUP_LEFT)
+                if crop_h <= 0 or crop_x >= width:
+                    return None
+                image = image.crop((crop_x, 0, width, crop_h))
+            return image.resize(SLIDE_GROUP_SIZE, Image.Resampling.BOX).tobytes()
+    except Exception:
+        return None
+
+
+def _ffmpeg_thumbnail(scan: Scan, ffmpeg: str, frame: Frame, filters: str, step: str) -> bytes:
+    thumbnail = frame.path.with_name(f"{frame.path.stem}-group.png")
+    try:
+        scan.run([
+            ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
+            "-filter_threads", "1", "-i", str(frame.path), "-vf", filters,
+            "-frames:v", "1", "-threads", "1", "-pix_fmt", "gray", "-pred", "none", str(thumbnail),
+        ], step)
+        return _gray_pixels(thumbnail)
+    finally:
+        thumbnail.unlink(missing_ok=True)
 
 
 def _group_frames(scan: Scan, ffmpeg: str, frames: list[Frame]) -> list[list[Frame]]:
@@ -330,16 +394,9 @@ def _group_frames(scan: Scan, ffmpeg: str, frames: list[Frame]) -> list[list[Fra
         f":trunc(iw*{SLIDE_GROUP_LEFT}):0,scale={width}:{height}:flags=area"
     )
     for frame in frames:
-        thumbnail = frame.path.with_name(f"{frame.path.stem}-group.png")
-        try:
-            scan.run([
-                ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
-                "-filter_threads", "1", "-i", str(frame.path), "-vf", filters,
-                "-frames:v", "1", "-threads", "1", "-pix_fmt", "gray", "-pred", "none", str(thumbnail),
-            ], "slide grouping")
-            pixels = _gray_pixels(thumbnail)
-        finally:
-            thumbnail.unlink(missing_ok=True)
+        pixels = _memory_thumbnail(frame.path)
+        if pixels is None:
+            pixels = _ffmpeg_thumbnail(scan, ffmpeg, frame, filters, "slide grouping")
         if previous is not None and len(previous) != len(pixels):
             raise ScreenError("slide thumbnail dimensions changed during grouping")
         difference = (
@@ -354,13 +411,131 @@ def _group_frames(scan: Scan, ffmpeg: str, frames: list[Frame]) -> list[list[Fra
     return groups
 
 
+def _full_thumbnail(scan: Scan, ffmpeg: str, frame: Frame) -> tuple[int, int, bytes] | None:
+    width, height = SLIDE_GROUP_SIZE
+    pixels = _memory_thumbnail(frame.path, roi=False)
+    if pixels is None:
+        try:
+            source_width, source_height, source = _read_gray_png(frame.path)
+        except (ScreenError, OSError):
+            try:
+                pixels = _ffmpeg_thumbnail(
+                    scan, ffmpeg, frame, f"format=gray,scale={width}:{height}:flags=area",
+                    "slide representative thumbnails",
+                )
+            except ScreenTimeout:
+                raise
+            except (ScreenError, OSError, subprocess.SubprocessError):
+                return None
+        else:
+            if (source_width, source_height) == (width, height):
+                pixels = source
+            else:
+                # Box average each source region, using one pixel for an upscaled axis.
+                columns = [(x * source_width // width, (x + 1) * source_width // width)
+                           for x in range(width)]
+                resized = bytearray()
+                for y in range(height):
+                    top = y * source_height // height
+                    bottom = max(top + 1, (y + 1) * source_height // height)
+                    for left, right in columns:
+                        right = max(left + 1, right)
+                        total = sum(sum(source[row * source_width + left:row * source_width + right])
+                                    for row in range(top, bottom))
+                        resized.append(round(total / ((bottom - top) * (right - left))))
+                pixels = bytes(resized)
+    return (width, height, pixels) if pixels is not None and len(pixels) == width * height else None
+
+
+def _tile_differences(
+    left: tuple[int, int, bytes], right: tuple[int, int, bytes],
+) -> tuple[float, ...]:
+    width, height, first = left
+    second = right[2]
+    rows, columns = SLIDE_TILE_GRID
+    bounds = [
+        (r * height // rows, (r + 1) * height // rows, c * width // columns, (c + 1) * width // columns)
+        for r in range(rows) for c in range(columns)
+    ]
+    try:
+        import numpy as np
+    except ImportError:
+        diff = [abs(a - b) for a, b in zip(first, second)]
+        return tuple(
+            sum(sum(diff[y * width + x0:y * width + x1]) for y in range(y0, y1))
+            / ((y1 - y0) * (x1 - x0))
+            for y0, y1, x0, x1 in bounds
+        )
+    first_signed = np.frombuffer(first, dtype=np.uint8).astype(np.int16)
+    diff = np.abs(first_signed - np.frombuffer(second, dtype=np.uint8)).reshape(height, width)
+    return tuple(float(diff[y0:y1, x0:x1].mean()) for y0, y1, x0, x1 in bounds)
+
+
+def _select_representative_frames(
+    scan: Scan, ffmpeg: str, groups: list[list[Frame]],
+) -> tuple[list[list[Frame]], int]:
+    thumbnails = {}
+    tile_count = math.prod(SLIDE_TILE_GRID)
+    hits = [0] * tile_count
+    pairs = 0
+    for index, group in enumerate(groups):
+        if len(group) <= 2:
+            continue
+        grids = []
+        for frame in group:
+            thumbnail = _full_thumbnail(scan, ffmpeg, frame)
+            if thumbnail is None:
+                break
+            grids.append(thumbnail)
+            scan.remaining()
+        if len(grids) != len(group):
+            continue
+        thumbnails[index] = grids
+        for first, second in zip(grids, grids[1:]):
+            pairs += 1
+            for tile, difference in enumerate(_tile_differences(first, second)):
+                hits[tile] += difference >= SLIDE_TILE_DIFF_THRESHOLD
+
+    dynamic = {
+        tile for tile, count in enumerate(hits)
+        if pairs >= SLIDE_DYNAMIC_MIN_PAIRS and count > SLIDE_DYNAMIC_TILE_RATIO * pairs
+    }
+    active = [tile for tile in range(tile_count) if tile not in dynamic]
+    selected, frames_capped = [], 0
+    for index, group in enumerate(groups):
+        if index not in thumbnails:
+            selected.append(group)
+            continue
+        if len(dynamic) > SLIDE_DYNAMIC_MAX_MASKED_TILES:
+            selected.append([group[0], group[-1]])
+            continue
+        grids = thumbnails[index]
+        chosen = [group[0]]
+        last = grids[0]
+        for frame, grid in zip(group[1:-1], grids[1:-1]):
+            differences = _tile_differences(last, grid)
+            if max(differences[tile] for tile in active) >= SLIDE_TILE_DIFF_THRESHOLD:
+                chosen.append(frame)
+                last = grid
+        if group[-1] != chosen[-1]:
+            chosen.append(group[-1])
+        if len(chosen) > SLIDE_MAX_GROUP_FRAMES:
+            frames_capped += len(chosen) - SLIDE_MAX_GROUP_FRAMES
+            middle = chosen[1:-1]
+            slots = SLIDE_MAX_GROUP_FRAMES - 2
+            chosen = [chosen[0], *(middle[round(i * (len(middle) - 1) / (slots - 1))]
+                                   for i in range(slots)), chosen[-1]]
+        selected.append(chosen)
+    return selected, frames_capped
+
+
 def _rapidocr(mode: str):
     os.environ.setdefault("OPENCV_FOR_THREADS_NUM", "1")
     from rapidocr import RapidOCR
 
     # The package defaults to CPU ONNX Runtime and ships the corresponding models.
     params = {
-        "EngineConfig.onnxruntime.intra_op_num_threads": min(8, os.cpu_count() or 1),
+        "EngineConfig.onnxruntime.intra_op_num_threads": min(4, os.cpu_count() or 1),
         "EngineConfig.onnxruntime.inter_op_num_threads": 1,
     }
     if mode == "nameplate":
@@ -503,7 +678,8 @@ def _calibrate_full_scan(
     intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
     extract_seconds = decode_seconds * intervals
     group_seconds = group_per_frame * intervals
-    ocr_seconds = mean_read_frame * intervals
+    ocr_frames = estimate_ocr_frames(intervals)
+    ocr_seconds = mean_read_frame * ocr_frames
     return {
         "intervals": intervals,
         "download_seconds": round(download_seconds, 3),
@@ -513,6 +689,8 @@ def _calibrate_full_scan(
         "group_seconds_per_frame": round(group_per_frame, 6),
         "group_seconds": round(group_seconds, 3),
         "read_frame_seconds": round(mean_read_frame, 6),
+        "ocr_frames_estimated": ocr_frames,
+        "ocr_frame_ratio_assumed": SLIDE_OCR_FRAME_RATIO,
         "ocr_seconds": round(ocr_seconds, 3),
         "estimated_total_seconds": round(download_seconds + extract_seconds + group_seconds + ocr_seconds, 3),
     }
@@ -713,6 +891,29 @@ def _nameplate(lines: list[Line]) -> list[Line]:
     return [line for line in lines if line in selected]
 
 
+def _memory_half(path: Path):
+    try:
+        import cv2
+
+        image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        if image is not None:
+            height, width = image.shape[:2]
+            return cv2.resize(image, (max(1, width // 2), max(1, height // 2)), interpolation=cv2.INTER_AREA)
+    except Exception:
+        pass  # Optional decoder or individual image failed.
+    try:
+        from PIL import Image
+
+        with Image.open(path) as source:
+            width, height = source.size
+            image = source.convert("RGB").resize((max(1, width // 2), max(1, height // 2)), Image.Resampling.BOX)
+            with io.BytesIO() as encoded:
+                image.save(encoded, format="PNG")
+                return encoded.getvalue()
+    except Exception:
+        return None
+
+
 def _read_frame(
     scan: Scan, ffmpeg: str, ocr, mode: str, crop: str, frame: Frame,
 ) -> list[tuple[Line, bool]]:
@@ -728,10 +929,17 @@ def _read_frame(
     original = transform(frame.path, "original", crop) if crop else frame.path
     passes = []
     for size in (1, 2):
-        path = original if size == 1 else transform(original, "half", "scale=iw/2:ih/2")
-        result = scan.recognize(ocr, path.read_bytes())
-        if size == 2:
-            path.unlink()
+        if size == 1:
+            image = original.read_bytes()
+        else:
+            image = _memory_half(original)
+            if image is None:
+                path = transform(original, "half", "scale=iw/2:ih/2")
+                try:
+                    image = path.read_bytes()
+                finally:
+                    path.unlink()
+        result = scan.recognize(ocr, image)
         lines = []
         for box, text, score in zip(result.boxes if result.boxes is not None else (),
                                     result.txts or (), result.scores or ()):
@@ -935,14 +1143,25 @@ def extract(
             frames = _frames(scan, ffmpeg, video, work, mode)
             video.unlink()
             groups = _group_frames(scan, ffmpeg, frames) if mode == "slides" else None
+            ocr_frames = frames
+            if groups is not None:
+                frames_capped = 0
+                if len(groups) > 1 or (groups and len(groups[0]) > SLIDE_MAX_GROUP_FRAMES):
+                    groups, frames_capped = _select_representative_frames(scan, ffmpeg, groups)
+                ocr_frames = [frame for group in groups for frame in group]
+                if len(groups) == 1 and len(frames) >= 3 and len(ocr_frames) < 3:
+                    groups[0].insert(1, frames[len(frames) // 2])
+                    ocr_frames = groups[0]
+                status.update(frames_extracted=len(frames), frames_ocred=len(ocr_frames),
+                              frames_capped=frames_capped)
             ocr = scan.recognize(_rapidocr, mode)
             results, read_times = [], []
-            for frame in frames:
+            for frame in ocr_frames:
                 started = time.monotonic()
                 results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
                 read_times.append(time.monotonic() - started)
                 if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
-                    remaining_frames = len(frames) - len(read_times)
+                    remaining_frames = len(ocr_frames) - len(read_times)
                     if remaining_frames > 0:
                         mean_read = sum(read_times) / len(read_times)
                         remaining_needed = mean_read * remaining_frames
@@ -956,7 +1175,7 @@ def extract(
                                 f"exceeds remaining budget ({left:.1f}s)."
                             )
             references = _write_evidence(
-                staged, frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
+                staged, ocr_frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
             )
             if groups is not None:
                 status["slide_count"] = len(groups)

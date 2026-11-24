@@ -529,7 +529,7 @@ class AutoScreenBudgetTests(unittest.TestCase):
         expected_transcript = transcript.read_bytes()
         stale_screen = self.job / "screen.txt"
 
-        for seconds_per_call in (5.0, 3.0):
+        for seconds_per_call in (5.0, 4.0):
             with self.subTest(seconds_per_call=seconds_per_call):
                 stale_screen.write_bytes(b"stale screen evidence\n")
 
@@ -596,17 +596,17 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.host(0.70, mode="off")
         transcript = self.job / "transcript.txt"
         expected_transcript = transcript.read_bytes()
-        # 14s download plus 134 frames at (0.85 + 0.05 + 2.36)s exceeds 374.15s.
+        # 14s download, 134 extraction/grouping intervals and 61 OCR frames exceed 420s.
         calibration = SimpleNamespace(filesize=30_000_000, decode=0.85, grouping=0.05,
-                                      first_pass=1.50, half_transform=0.06, second_pass=0.80)
+                                      first_pass=2.60, half_transform=0.06, second_pass=2.40)
         with patch.object(screen_ocr, "_measure_download_seconds", create=True, return_value=14.0):
             result, sample, extract = self.host(0.70, sample_decode=1.8, calibration=calibration)
 
         sample.assert_called_once()
         self.assertEqual(extract.call_count, 0)
         screen = self.assert_timeout_fallback(result)
-        self.assertGreater(screen["estimated_seconds"], 374.15)
-        self.assertGreater(screen["sample"]["calibration"]["estimated_total_seconds"], 374.15)
+        self.assertGreater(screen["estimated_seconds"], 420.0)
+        self.assertGreater(screen["sample"]["calibration"]["estimated_total_seconds"], 420.0)
         self.assertEqual(transcript.read_bytes(), expected_transcript)
         self.assertFalse((self.job / "screen.txt").exists())
 
@@ -633,7 +633,7 @@ class AutoScreenBudgetTests(unittest.TestCase):
         # remaining calibration budget before Scan.run returns.
         calibration = SimpleNamespace(filesize=30_000_000, decode=31.0, grouping=0.05,
                                       first_pass=0.5, half_transform=0.05, second_pass=0.5)
-        for seconds_per_call, sample_decode, state in ((0.2, 0.2, "ready"), (0.8, 3.6, "fallback")):
+        for seconds_per_call, sample_decode, state in ((0.2, 0.2, "ready"), (0.8, 6.0, "fallback")):
             with self.subTest(state=state):
                 with (
                     patch.object(screen_ocr, "_measure_download_seconds", return_value=14.0) as download,
@@ -832,24 +832,26 @@ class AutoScreenBudgetTests(unittest.TestCase):
         self.assertIn("(estimated unknown)", notices[0])
 
     def expected_sample_estimate(self, sample):
-        seconds_per_interval = (
-            sample["mean_frame_ocr_seconds"] * screen_ocr.SLIDE_OCR_PASSES
-            + sample["mean_sample_extract_seconds"]
+        intervals = math.ceil(self.DURATION / screen_ocr.SLIDE_INTERVAL)
+        return round(
+            sample["mean_sample_extract_seconds"] * intervals
+            + sample["mean_frame_ocr_seconds"] * screen_ocr.SLIDE_OCR_PASSES
+            * screen_ocr.estimate_ocr_frames(intervals),
+            3,
         )
-        return round(seconds_per_interval * math.ceil(self.DURATION / screen_ocr.SLIDE_INTERVAL), 3)
 
     def test_auto_skips_when_sample_extract_plus_ocr_exceeds_safe_budget(self):
-        # (1.8s extraction + 1.6s OCR) * 125 = 425s, above the 350s safe budget.
-        result, sample, extract = self.host(0.8, sample_decode=3.6)
+        # Extraction at 3s over 125 intervals plus OCR at 1.6s over 57 frames exceeds 420s.
+        result, sample, extract = self.host(0.8, sample_decode=6.0)
 
         sample.assert_called_once()
         self.assertEqual(extract.call_count, 0)
         screen = self.assert_timeout_fallback(result)
-        self.assertGreater(screen["estimated_seconds"], 350)
+        self.assertGreater(screen["estimated_seconds"], 420.0)
 
     def test_auto_fast_machine_one_hour_slide_video_is_not_skipped(self):
         self.DURATION = 3600
-        # 20s download plus 450 frames at (0.25 + 0.02 + 0.52)s fits within 1260s.
+        # 20s download, 450 extraction/grouping intervals and 203 OCR frames fit within 630s.
         calibration = SimpleNamespace(filesize=120_000_000, decode=0.25, grouping=0.02,
                                       first_pass=0.30, half_transform=0.02, second_pass=0.20)
         with patch.object(screen_ocr, "_measure_download_seconds", create=True, return_value=20.0) as download:

@@ -138,7 +138,8 @@ class SlideGroupingTests(unittest.TestCase):
         group_frames = getattr(screen_ocr, "_group_frames", None)
         self.assertIsNotNone(group_frames, "screen extraction has no pixel-based slide grouping")
         scan = screen_ocr.Scan("slides", 800)
-        with patch.object(scan, "run", side_effect=transform):
+        with patch.object(scan, "run", side_effect=transform), \
+             patch.object(screen_ocr, "_memory_thumbnail", return_value=None):
             groups = group_frames(scan, "ffmpeg", frames)
         self.assertEqual([[frame.seconds for frame in group] for group in groups],
                          [[0, 8], [16, 24], [32, 40]])
