@@ -22,6 +22,7 @@ OVERLAP = rules.QUOTE_WINDOW
 MIN_HITS = 3
 HIT_RATE_NUMERATOR = 9
 HIT_RATE_DENOMINATOR = 10
+# Phase 6A calibrated S01 constants (locked after offline dry-run distribution sweep).
 OVERLAP_TOLERANCE = 1.5
 VIRTUAL_WINDOW_MIN_SECONDS = 240.0
 VIRTUAL_WINDOW_RATIO = 0.05

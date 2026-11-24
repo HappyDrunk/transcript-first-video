@@ -350,13 +350,15 @@ _CODE_KEYWORDS = {
     "main", "init", "echo", "cd", "ls", "cat", "rm", "cp", "mv", "mkdir", "pwd",
     "python", "python3", "pip", "git", "bash", "sh", "node", "npm", "uv",
 }
-MAX_CLUSTER_ANCHORS = 3
-MAX_SLICE_CHARS = 220
-MAX_TAIL_CHARS = 80
-MAX_LEAD_CHARS = 120
-MAX_TERM_SENTENCES = 2
-MAX_TERM_CHARS = 120
-MAX_DOUBT_CHARS = 50
+# Phase 6A calibrated thresholds (locked after offline dry-run distribution sweep).
+MAX_CLUSTER_ANCHORS = 3          # P95 = 3 anchors/cluster (WARN when exceeded)
+MAX_SLICE_CHARS = 220            # P90 = 214 chars/slice excluding code (WARN when exceeded)
+MAX_TAIL_CHARS = 80              # Unlinked fact-free tail exemption cap
+MAX_LEAD_CHARS = 120             # Unlinked fact-free lead-in paragraph exemption cap
+MAX_TERM_SENTENCES = 2           # Hard FAIL cap per term block
+MAX_TERM_CHARS = 120             # Hard FAIL cap per term block (P90 = 69, Max = 90)
+TERM_COUNT_WARN_THRESHOLD = 12   # Soft WARN for glossary density (bidirectional review)
+MAX_DOUBT_CHARS = 50             # Hard FAIL cap per 原文出入 Type-3 explanation
 EDIT_DISTANCE_MAX_RATIO = 0.45
 EDIT_DISTANCE_MAX_CHARS = 3
 _NAMED_ZH_TERM = re.compile(
@@ -2267,6 +2269,14 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
 def warnings(ctx: RuleContext) -> list[str]:
     result: list[str] = []
     blocks = [block for section in ctx.sections for block in section.blocks]
+    term_blocks = [
+        block for block in blocks
+        if (m := _CALLOUT.fullmatch(block[0])) is not None and m[1] == "note" and _TERM_TITLE.fullmatch(m[2])
+    ]
+    if len(term_blocks) > TERM_COUNT_WARN_THRESHOLD:
+        result.append(
+            f"术语数 WARN: 全篇共 {len(term_blocks)} 条术语块（建议 ≤{TERM_COUNT_WARN_THRESHOLD} 条，请复核精简）"
+        )
     for spoken_raw, code_part in spoken_code_entries(blocks):
         if _spoken_code_readback_mismatch(spoken_raw, code_part):
             result.append(f"原文出入 WARN: 口述代码反向读回不一致 ({spoken_raw!r} vs {code_part!r})")

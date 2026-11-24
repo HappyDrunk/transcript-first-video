@@ -473,6 +473,39 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
             ver = verify_note.verify(job / "transcript.txt", zh_note, expected_lang="zh", job=True)
             self.assertTrue(ver["allowed"], ver["reasons"])
 
+    def test_locked_phase6_calibration_constants_and_term_count_warn(self) -> None:
+        self.assertEqual(rules.MAX_CLUSTER_ANCHORS, 3)
+        self.assertEqual(rules.MAX_SLICE_CHARS, 220)
+        self.assertEqual(rules.MAX_TAIL_CHARS, 80)
+        self.assertEqual(rules.MAX_LEAD_CHARS, 120)
+        self.assertEqual(rules.MAX_TERM_SENTENCES, 2)
+        self.assertEqual(rules.MAX_TERM_CHARS, 120)
+        self.assertEqual(rules.TERM_COUNT_WARN_THRESHOLD, 12)
+        self.assertEqual(rules.MAX_DOUBT_CHARS, 50)
+        self.assertEqual(cov.OVERLAP_TOLERANCE, 1.5)
+        self.assertEqual(cov.VIRTUAL_WINDOW_MIN_SECONDS, 240.0)
+        self.assertEqual(cov.VIRTUAL_WINDOW_RATIO, 0.05)
+
+        terms = [f"Term{i}" for i in range(13)]
+        quotes = [
+            ("00:20", "First our compiler pipeline parses Term0, checks Term1, optimizes Term2, schedules Term3, and validates Term4 before emitting bytecode."),
+            ("01:00", "Next the runtime layer initializes Term5, allocates Term6, monitors Term7, and balances Term8 across worker pools smoothly."),
+            ("02:00", "Finally observability aggregates Term9, traces Term10, audits Term11, and alerts on Term12 whenever latency exceeds budget."),
+        ]
+        transcript = "\n".join(f"[{s}] {t}" for s, t in quotes) + "\n"
+        term_blocks = "\n\n".join(f"> [!note] 术语：{t}\n> 简短术语定义。" for t in terms)
+        note = _build_note(
+            f"## 主线论点\n\n系统依次介绍关键概念。 ⏱ 00:20 ⏱ 01:00 ⏱ 02:00\n\n{term_blocks}",
+            quotes,
+            include_closings=False,
+            omission=None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp), "term-warn", note, transcript)
+            ver = verify_note.verify(job / "transcript.txt", note, expected_lang="en", job=True)
+            self.assertTrue(ver["allowed"], ver["reasons"])
+            self.assertTrue(any("术语数 WARN" in w for w in ver["warnings"]), ver["warnings"])
+
 
 if __name__ == "__main__":
     unittest.main()
