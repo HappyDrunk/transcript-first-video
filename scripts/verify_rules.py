@@ -336,7 +336,9 @@ _CORRECTION_QUOTES = "`“”「」\""
 DISCREPANCY_TITLE = "原文出入"
 _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
-_DISCREPANCY_NAME = re.compile(r"人名转写[｜|]\s*「([A-Za-z][A-Za-z .'-]*)」")
+_DISCREPANCY_NAME = re.compile(
+    r"人名转写[｜|]\s*「([A-Za-z\u00C0-\u024F](?:[A-Za-z\u00C0-\u024F .'-]*[A-Za-z\u00C0-\u024F])?)」"
+)
 _AI_CREDIT = re.compile(r"[（(](?:Claude|整理者|AI)[ \t]*补充(?:[，,][ \t]*非视频内容)?[）)]")
 _FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
@@ -916,7 +918,10 @@ def _name_transcription_issue(name: str, preceding: str | None) -> str | None:
         return f"原文出入 人名转写限一至四个词: {name!r}"
     if preceding and any(
         not _overlaps_forbidden_inline_span(preceding, match.start(), match.end())
-        for match in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", preceding)
+        for match in re.finditer(
+            rf"(?<![A-Za-z0-9_\u00C0-\u024F'-]){re.escape(name)}(?![A-Za-z0-9_\u00C0-\u024F'-])",
+            preceding,
+        )
     ):
         return None
     return f"原文出入 人名转写须逐字出现在前一段的代码和链接之外: {name!r}"
@@ -2329,7 +2334,7 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                             if offset is None:
                                 pattern = re.escape(term)
                                 if kind == "number":
-                                    pattern = rf"(?<![\d.]){pattern}(?![\d.])"
+                                    pattern = rf"(?<![\d.]){pattern}(?!(?:\d|\.\d))"
                                 match = re.search(pattern, unit_text, re.IGNORECASE)
                                 position = match.start() if match else 0
                             else:
@@ -2445,11 +2450,11 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
         block_contexts=block_contexts,
         second_sources=second_sources,
     )
-    if any("（注：" in text for text in _body_prose(ctx)):
+    if any("（注：" in _INLINE_CODE.sub(" ", text) for text in _body_prose(ctx)):
         issues.append("正文不得手写 （注：；请在术语块填写短释")
     issues.extend(
         "版本冲突 " + message + "，请用 原文出入 行型 3 登记说明"
-        for cited, message in _version_conflicts(ctx, blocks) if cited
+        for hard_fail, message in _version_conflicts(ctx, blocks) if hard_fail
     )
     searchable = [
         (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
@@ -2631,19 +2636,41 @@ def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
         for line in lines if _DISCREPANCY_TYPE3.fullmatch(line)
     )
     covered = _version_groups(explanations)
-    cited = _version_groups("\n".join(quote.text for quote in ctx.valid_quotes))
+    # Hard-FAIL ONLY when a specific claim writes a version whose own linked quotes
+    # lack that version while containing a different minor version of the same entity
+    # (avoids deadlocking legitimate comparisons like "Tool1.2 is faster than Tool1.1").
+    contradicted_keys: set[tuple[str, str]] = set()
+    valid = ctx.valid_quotes
+    for section in ctx.sections:
+        for index, claim in enumerate(section.prose):
+            if index in section.fence_parents:
+                continue
+            slices, _ = _split_time_clusters(claim)
+            for unit_text, unit_times in (slices or [(claim, set())]):
+                if not unit_times:
+                    continue
+                linked = [q for stamp in sorted(unit_times) for q in match_link(stamp, valid)[0]]
+                if not linked:
+                    continue
+                unit_vers = _version_groups(prose_without_times(unit_text))
+                linked_vers = _version_groups("\n".join(q.text for q in linked))
+                for key, minors in unit_vers.items():
+                    q_minors = linked_vers.get(key, {}).keys()
+                    if q_minors and any(m not in q_minors for m in minors):
+                        contradicted_keys.add(key)
+
     for key, minors in _version_groups(prose).items():
         uncovered = minors.keys() - covered.get(key, {}).keys()
         if len(uncovered) >= 2:
             surfaces = sorted(set().union(*(minors[minor] for minor in uncovered)))
             yield (
-                len(uncovered & cited.get(key, {}).keys()) >= 2,
+                key in contradicted_keys,
                 "同一实体存在未登记原文出入的版本不一致: " + "、".join(surfaces),
             )
 
 
-_PERCENTAGE = re.compile(r"(?<![\d.])([+-]?\d+(?:\.\d+)?)\s*[%％]")
-_PERCENT_RANGE = re.compile(r"\s*[–\-~至到]\s*")
+_PERCENTAGE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[%％]")
+_PERCENT_RANGE = re.compile(r"\s*[–\-~～至到]\s*")
 _SCREEN_ASSIGNMENT = re.compile(
     r"^[ \t]*(?:\[\d{2}:\d{2}(?::\d{2})?\]\[画面\??\]\s*)?([A-Za-z][A-Za-z0-9_]{0,15})\s*=",
     re.MULTILINE,

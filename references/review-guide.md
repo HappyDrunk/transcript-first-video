@@ -21,7 +21,7 @@ Report only located, evidenced issues. Do not repeat mechanical checks or add un
   1. Type 1 (`字幕/画面写作 A，实为 B`): confirm the context uniquely identifies the intended term, including for phonetic ASR errors resolved from speech alone. Check for changed numbers or versions and unsupported name completion.
   2. Type 2 (`口述代码`): verify the reconstructed code matches spoken words without inventing parameters or APIs.
   3. Type 3 (`存疑`): check for overuse and downgradeable phonetic ASR typos. Confirm each remaining entry reflects a real conflict or missing detail, uses a neutral anchor, and preserves uncertainty.
-  4. For `版本冲突`, classify it as `误报` only if cited quotes prove both refer to the same version. Otherwise require a reader-facing Type 3 `原文出入` explanation.
+  4. For `版本冲突`, classify it as `误报` only if cited quotes prove the speaker is intentionally comparing or contrasting distinct versions (such as an upgrade); if one entity is given conflicting versions (such as title vs. config), require a reader-facing Type 3 `原文出入` explanation.
 - Reject unexplained code identifiers and screen numbers without clear labels (标签). Check units, comparison targets, and conditions against the image.
 - Find prose commentary about how the writer prepared, checked, or selected material. Preserve reader-facing scope/uncertainty notes (such as `存疑`, "视频未展开", "视频未给出完整命令") and source attribution.
 

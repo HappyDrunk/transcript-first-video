@@ -333,7 +333,7 @@ class ReadabilityTests(ReaderFixture):
                 middle = prose + " ⏱ 00:30"
                 if explained:
                     middle += "\n\n" + _discrepancy(f"存疑｜「{a}」｜字幕另一次写作 {b}")
-                quote = BASE_QUOTE + (f"先记录 {a}，并保存运行记录。" if expected else prose)
+                quote = BASE_QUOTE + prose
                 _, result = self.verify(middle, quote)
                 self.assert_soft_warning(result, r"版本.*(?:冲突|不一致)|(?:冲突|不一致).*版本", expected)
 
@@ -458,19 +458,18 @@ class ReviewRound1RegressionTests(ReaderFixture):
         _, res_eq = self.verify(prose_eq + " ⏱ 00:30", BASE_QUOTE + prose_eq)
         self.assert_soft_warning(res_eq, r"版本冲突", False)
 
-        # Unrelated Other_Widget1.1 in 原文出入 must NOT suppress Widget1.1 vs Widget1.2 conflict;
-        # when both variants are cited in quotes, version conflict upgrades to FAIL.
+        # Legitimate comparison (both Widget1.1 and Widget1.2 appear in linked quote) stays soft WARN, NOT blocking FAIL!
         prose_real = "先看 Widget1.1，再看 Widget1.2，并提到 Other_Widget1.1。"
         callout = _discrepancy("存疑｜「Other_Widget1.1」｜另一个组件")
         _, res_real = self.verify(prose_real + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose_real)
-        self.assertFalse(res_real["allowed"], res_real["reasons"])
-        self.assertTrue(any("版本冲突" in r for r in res_real["reasons"]), res_real["reasons"])
+        self.assertTrue(res_real["allowed"], res_real["reasons"])
+        self.assert_soft_warning(res_real, r"版本冲突", True)
 
-        # When only one variant is backed by quotes, version conflict stays a soft WARN (non-blocking).
+        # Contradictory citation: claim says Widget1.2 while linked quote only says Widget1.1 -> blocking FAIL!
         prose_one_cited = "先看 Widget1.1，再看 Widget1.2，最后保存运行记录。"
         _, res_one = self.verify(prose_one_cited + " ⏱ 00:30", BASE_QUOTE + "先看 Widget1.1，最后保存运行记录。")
-        self.assertTrue(res_one["allowed"], res_one["reasons"])
-        self.assert_soft_warning(res_one, r"版本冲突", True)
+        self.assertFalse(res_one["allowed"], res_one["reasons"])
+        self.assertTrue(any("版本冲突" in r for r in res_one["reasons"]), res_one["reasons"])
 
         # Backtick in backtick fence info string is NOT a fence opener; NBSP is NOT a valid closing fence suffix
         self.assertIsNone(rules.match_fence_open("```python`"))
@@ -505,12 +504,12 @@ class ReviewRound1RegressionTests(ReaderFixture):
         )
         self.assertTrue(result["allowed"], result["reasons"])
 
-    def test_three_minor_versions_partially_explained_still_fails_when_cited(self) -> None:
+    def test_three_minor_versions_partially_explained_still_warns_on_comparison(self) -> None:
         prose = "先看 Widget1.1，再看 Widget1.2，最后看 Widget1.3。"
         callout = _discrepancy("存疑｜「Widget1.2」｜仅核对了这一条")
         _, result = self.verify(prose + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose)
-        self.assertFalse(result["allowed"], result["reasons"])
-        self.assertTrue(any("版本冲突" in r for r in result["reasons"]), result["reasons"])
+        self.assertTrue(result["allowed"], result["reasons"])
+        self.assert_soft_warning(result, r"版本冲突", True)
 
     # --- Phase 6A.1 R2 RED tests ---
 
@@ -680,11 +679,67 @@ class ReviewRound1RegressionTests(ReaderFixture):
         )
         self.assert_soft_warning(res_dup, r"做法重复", True)
 
-        # Inline-code version variant (`Widget1_1`) vs prose (`Widget1.2`) both cited -> FAIL
+        # Inline-code version variant (`Widget1_1`) vs prose (`Widget1.2`): both cited -> soft WARN;
+        # contradictory quote (only Widget1_1 cited while prose adds Widget1.2) -> blocking FAIL.
         q_ver = BASE_QUOTE + " 标题是 Widget1.2，配置字段写成 Widget1_1。"
-        _, res_ver = self.verify("先看 Widget1.2，配置文件里写的是 `Widget1_1`。 ⏱ 00:30", q_ver)
-        self.assertFalse(res_ver["allowed"], res_ver["reasons"])
-        self.assertTrue(any("版本冲突" in r for r in res_ver["reasons"]), res_ver["reasons"])
+        _, res_ver = self.verify("先核对缓存并运行脚本，看 Widget1.2，配置文件里写的是 `Widget1_1`。 ⏱ 00:30", q_ver)
+        self.assertTrue(res_ver["allowed"], res_ver["reasons"])
+        self.assert_soft_warning(res_ver, r"版本冲突", True)
+        _, res_ver_fail = self.verify(
+            "先核对缓存并运行脚本，看 Widget1.2，配置文件里写的是 `Widget1_1`。 ⏱ 00:30",
+            BASE_QUOTE + " 配置字段写成 Widget1_1。",
+        )
+        self.assertFalse(res_ver_fail["allowed"], res_ver_fail["reasons"])
+        self.assertTrue(any("版本冲突" in r for r in res_ver_fail["reasons"]), res_ver_fail["reasons"])
+
+        # Regression checks for Claude + Codex R2 review findings:
+        # 1. Literal parenthetical `（存疑：缓存）` + `短释` must NOT break invariant #7
+        lit_q = BASE_QUOTE + " 这里写作（存疑：缓存）。"
+        lit_m = (
+            "先核对缓存并运行脚本，这里写作（存疑：缓存）。 ⏱ 00:30\n\n"
+            "> [!note] 术语：缓存\n"
+            "> 短释：临时保存数据\n"
+            "> 加速重复读取的临时存储。"
+        )
+        lit_note, lit_res = self.verify(lit_m, lit_q)
+        self.assertTrue(lit_res["allowed"], lit_res["reasons"])
+        lit_reading = render_reading_note.render_note(lit_note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        self.assertIn("缓存（注：临时保存数据）", lit_reading)
+        self.assertIn("（存疑：缓存）", lit_reading)
+
+        # 2. Full-width range `78%～78.3%` must NOT trigger 约数并列 WARN
+        _, res_fw = self.verify("先核对缓存并运行脚本，前馈层比例在 78%～78.3% 之间。 ⏱ 00:30", BASE_QUOTE + " 78% 78.3%")
+        self.assert_soft_warning(res_fw, r"约数并列", False)
+
+        # 3. Literal inline code `` `（注：` `` must NOT fail manual-note check
+        _, res_code_note = self.verify("先核对缓存并运行脚本，不要手写 `（注：` 标记。 ⏱ 00:30", BASE_QUOTE)
+        self.assertTrue(res_code_note["allowed"], res_code_note["reasons"])
+
+        # 4. Partial surname `Jordan Kay` must NOT match `Jordan Kay-Smith`; accented `José Müller` passes
+        _, res_partial = self.verify(
+            "先核对缓存并运行脚本，提到 Jordan Kay-Smith。 ⏱ 00:30\n\n> [!warning] 原文出入\n> 人名转写｜「Jordan Kay」",
+            BASE_QUOTE + " Jordan Kay-Smith",
+        )
+        self.assertFalse(res_partial["allowed"], res_partial["reasons"])
+        _, res_accent = self.verify(
+            "先核对缓存并运行脚本，提到 José Müller。 ⏱ 00:30\n\n> [!warning] 原文出入\n> 人名转写｜「José Müller」",
+            BASE_QUOTE + " José Müller",
+        )
+        self.assertTrue(res_accent["allowed"], res_accent["reasons"])
+
+        # 5. Gloss alias `relu` must NOT match inside `my_relu`; missing alias skips inline gloss cleanly
+        no_hit_q = BASE_QUOTE + " 这里提到 my_relu 和 relu。"
+        no_hit_m = (
+            "先核对缓存并运行脚本，这里只提 my_relu。 ⏱ 00:30\n\n"
+            "> [!note] 术语：relu\n"
+            "> 短释：把负数归零\n"
+            "> 常见激活函数。"
+        )
+        no_hit_note, no_hit_res = self.verify(no_hit_m, no_hit_q)
+        self.assertTrue(no_hit_res["allowed"], no_hit_res["reasons"])
+        no_hit_reading = render_reading_note.render_note(no_hit_note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        self.assertNotIn("（注：", no_hit_reading)
+        self.assertIn("常见激活函数。", no_hit_reading)
 
         # Screen assignment `[00:30][画面] r3 = calc()` + unintroduced prose mention `R3` -> 标识符未铺垫 WARN
         ident_note = (
@@ -768,6 +823,17 @@ class ReviewRound1RegressionTests(ReaderFixture):
             self.assertNotEqual(p3.returncode, 0)
             st3 = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(st3["repair_rounds"], 2, st3)
+
+            # Non-canonical --note PATH submission must NEVER evade repair_rounds accounting
+            alt = Path(tmp) / "alt_bad.md"
+            alt.write_text("bad note via --note path\n", encoding="utf-8")
+            p4 = subprocess.run(
+                [sys.executable, str(SCRIPTS / "verify_note.py"), "--job", str(job), "--note", str(alt), "--json"],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertNotEqual(p4.returncode, 0)
+            st4 = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(st4["repair_rounds"], 3, st4)
 
     def test_r2_doc_size_caps_and_required_rules(self) -> None:
         root = SCRIPTS.parent

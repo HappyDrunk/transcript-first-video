@@ -573,13 +573,17 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
     return data
 
 
-def _record_failure(data: dict, reasons: list[str], *, inputs: dict, review: bool = False) -> bool:
+def _record_failure(
+    data: dict, reasons: list[str], *, gate_snapshots: dict[str, dict], review: bool = False,
+) -> bool:
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
         rounds = 0
     data["repair_rounds"] = rounds + 1
     data["failure_lines"] = reasons
-    data["last_failed_inputs"] = inputs
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    recorded.update(gate_snapshots)
+    data["last_failed_by_gate"] = recorded
     if review:
         data["review"]["failures"] += 1
     review_failed = review and data["review"]["failures"] >= 2
@@ -622,7 +626,7 @@ def resume_job(job: Path) -> None:
     history = list(status.pop("previous_attempts", []))
     root = {key: value for key, value in status.items()
             if key not in {"note_digest", "verifier", "coverage", "review", "review_rounds", "reason",
-                           "issues", "failure_lines", "last_failed_inputs"}}
+                           "issues", "failure_lines", "last_failed_inputs", "last_failed_by_gate"}}
     root.update(status="transcript_ready", finished=False, locked=False, next_step="write-note",
                 edit_rounds=0, repair_rounds=0, previous_attempts=[*history, status])
     write_job_status(job, root)
@@ -632,12 +636,18 @@ def record_gate_result(
     job: Path, gate: str, allowed: bool, reasons: list[str], *, inputs: dict | None = None,
     coverage: dict | None = None, review: bool = False, c04c: list[dict] | None = None,
     review_error: ValueError | None = None, note_inputs: dict | None = None,
+    checked_digest: str | None = None,
 ) -> dict:
     """Persist a single submission, optionally containing both gate results."""
     data = read_job_status(job)
     skill_version = current_skill_version()
-    gate_key = "joint" if coverage is not None else gate
-    failed_inputs = {**(note_inputs or inputs or job_inputs(job)), "skill_version": skill_version, "gate": gate_key}
+    verify_allowed = allowed
+    coverage_allowed = coverage["ok"] if coverage is not None else (allowed if gate == "coverage" else None)
+    effective_digest = checked_digest if checked_digest is not None else (inputs.get("note") if inputs is not None else None)
+    canonical_snapshot = (
+        {**inputs, "skill_version": skill_version, "review": bool(review), "checked_digest": effective_digest}
+        if inputs is not None else None
+    )
     submission_reasons = reasons
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
@@ -650,37 +660,61 @@ def record_gate_result(
         data["next_step"] = "write-note"
     if gate == "verify":
         data["verifier"] = {
-            "allowed": allowed,
+            "allowed": verify_allowed,
             "checked_inputs": note_inputs or inputs,
             "at": datetime.now(timezone.utc).isoformat(),
             "skill_version": skill_version,
-            "inputs": inputs if allowed else None,
+            "inputs": inputs if verify_allowed else None,
             "c04c": c04c or [],
             "c04c_sha256": c04c_review.digest(c04c or []),
             **({"reasons": reasons} if reasons else {}),
         }
         data["coverage"] = {
-            "allowed": False, "reasons": ["coverage pending" if allowed else "verify failed"],
+            "allowed": False, "reasons": ["coverage pending" if verify_allowed else "verify failed"],
         }
     if coverage is not None:
         data["coverage"] = {
             "allowed": coverage["ok"], "reasons": coverage["reasons"], "checked_inputs": note_inputs or inputs,
             "inputs": inputs if coverage["ok"] else None,
         }
-        allowed = allowed and coverage["ok"]
+        allowed = verify_allowed and coverage["ok"]
         reasons = reasons + coverage["reasons"]
     elif gate == "coverage":
         data["coverage"] = {"allowed": allowed, "reasons": reasons, "checked_inputs": inputs,
                             "inputs": inputs if allowed else None}
+
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    if gate == "verify" and verify_allowed:
+        recorded.pop("verify", None)
+    if coverage_allowed is True:
+        recorded.pop("coverage", None)
+
+    failing_gates: list[str] = []
+    if gate == "verify" and not verify_allowed:
+        failing_gates.append("verify")
+    if coverage_allowed is False:
+        failing_gates.append("coverage")
+
     if not allowed:
-        if data.get("last_failed_inputs") == failed_inputs:
+        gate_snapshots = (
+            {g: canonical_snapshot for g in failing_gates}
+            if canonical_snapshot is not None else {}
+        )
+        is_unchanged = (
+            canonical_snapshot is not None
+            and bool(failing_gates)
+            and all(recorded.get(g) == canonical_snapshot for g in failing_gates)
+        )
+        if is_unchanged:
             submission_reasons.append(UNCHANGED_FAILURE_NOTICE)
-            if coverage is not None:
+            if gate == "verify" and not verify_allowed:
                 data["verifier"]["reasons"] = submission_reasons
-        elif _record_failure(data, reasons, inputs=failed_inputs, review=review):
+        elif _record_failure(data, reasons, gate_snapshots=gate_snapshots, review=review):
             stop_for_user(job, data, REPAIR_LIMIT_MESSAGE, note_inputs or inputs)
     else:
-        data.pop("last_failed_inputs", None)
+        data["last_failed_by_gate"] = recorded
+        if not recorded:
+            data.pop("last_failed_by_gate", None)
     if allowed and (gate == "coverage" or coverage is not None) and inputs is not None:
         verifier = data.get("verifier") or {}
         if (
@@ -758,11 +792,15 @@ def apply_no_extractable(
         "skill_version": current_skill_version(),
         "reasons": [reason],
     }
-    failed_inputs = {**inputs, "skill_version": data["verifier"]["skill_version"], "gate": "no_extractable"}
-    if data.get("last_failed_inputs") == failed_inputs:
+    failed_snapshot = {**inputs, "skill_version": data["verifier"]["skill_version"], "review": bool(review)}
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    if recorded.get("no_extractable") == failed_snapshot:
         reasons.append(UNCHANGED_FAILURE_NOTICE)
     else:
-        _record_failure(data, [reason, *coverage_reasons], inputs=failed_inputs, review=review)
+        _record_failure(
+            data, [reason, *coverage_reasons],
+            gate_snapshots={"no_extractable": failed_snapshot}, review=review,
+        )
     write_job_status(job, data)
     return data
 
@@ -870,6 +908,7 @@ def check_job_submission(
             job, "verify", result["allowed"], result["reasons"],
             inputs=inputs if canonical_note else None, coverage=coverage, review=review,
             c04c=result.get("c04c"), review_error=review_error, note_inputs=inputs,
+            checked_digest=_note_digest(note) if note is not None else None,
         )
     if coverage is not None:
         coverage["finished"] = status["finished"]

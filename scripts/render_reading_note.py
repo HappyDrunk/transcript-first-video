@@ -203,8 +203,7 @@ def _resolve_doubt_insertion(block_text: str, anchor: str, explanation: str) -> 
     end = start + len(anchor)
     if _overlaps_forbidden_span(block_text, start, end):
         raise RenderError(f"存疑 anchor {anchor!r} must not fall inside code or link")
-    position = end if end == len(block_text) else _sentence_insertion_index(block_text, end)
-    return position, f"（存疑：{explanation}）"
+    return _sentence_insertion_index(block_text, end), f"（存疑：{explanation}）"
 
 
 def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
@@ -212,19 +211,34 @@ def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
     return f"{block_text[:insert_at]}{annotation}{block_text[insert_at:]}"
 
 
-def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str]:
+def _alias_pattern(alias: str) -> str:
+    pattern = rules._term_pattern(alias)
+    if alias.isascii() and re.match(r"^[A-Za-z0-9_]", alias):
+        pattern = rf"(?<![A-Za-z0-9_]){pattern}"
+    if alias.isascii() and re.search(r"[A-Za-z0-9_]$", alias):
+        pattern = rf"{pattern}(?![A-Za-z0-9_])"
+    return pattern
+
+
+def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:
     aliases = sorted({part.strip() for part in rules._TERM_ALIAS_SEPARATOR.split(label) if part.strip()},
                      key=lambda alias: (-len(alias), alias))
-    matches = (
-        (match.start(), -len(match[0]), match.end())
-        for alias in aliases
-        for match in re.finditer(rules._term_pattern(alias), block_text,
-                                 re.IGNORECASE | re.ASCII if alias.isascii() else 0)
-        if not _overlaps_forbidden_span(block_text, match.start(), match.end())
-    )
-    first = min(matches, default=None)
-    position = first[2] if first else _sentence_insertion_index(block_text, len(block_text))
-    return position, f"（注：{gloss}）"
+    protected_all = _protected_spans(block_text, include_parens=True)
+    matches = []
+    any_occurrence = False
+    for alias in aliases:
+        flags = re.IGNORECASE | re.ASCII if alias.isascii() else 0
+        for match in re.finditer(_alias_pattern(alias), block_text, flags):
+            any_occurrence = True
+            start, end = match.start(), match.end()
+            if not any(s < end and start < e for s, e in protected_all):
+                matches.append((start, -len(match[0]), end))
+    if matches:
+        first = min(matches)
+        return first[2], f"（注：{gloss}）"
+    if any_occurrence:
+        return _sentence_insertion_index(block_text, len(block_text)), f"（注：{gloss}）"
+    return None
 
 
 def _apply_annotations(
@@ -233,7 +247,11 @@ def _apply_annotations(
     """Resolve annotations against the original block and track their exact output spans."""
     if len(doubts) == 1 and gloss is None:
         anchor, explanation = doubts[0]
-        return _insert_doubt_note(block_text, anchor, explanation)
+        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+        updated = _insert_doubt_note(block_text, anchor, explanation)
+        if updated[:insert_at] + updated[insert_at + len(annotation):] != block_text:
+            raise RenderError("invariant #7 failed: generated doubt span did not restore original block")
+        return updated
     resolved = [_resolve_doubt_insertion(block_text, anchor, explanation) for anchor, explanation in doubts]
     if gloss is not None:
         resolved.insert(0, gloss)
@@ -429,10 +447,12 @@ def render_lines(
                         and len(inline_glosses) < 8 and last_block_gloss is None
                         and last_block_kind == "prose" and last_block_start is not None):
                     gloss = glosses[0]
-                    last_block_gloss = _resolve_gloss_insertion(last_block_original, label, gloss)
-                    updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
-                    rendered[last_block_start:last_block_end] = updated_block.split("\n")
-                    inline_glosses.append(gloss)
+                    resolved_gloss = _resolve_gloss_insertion(last_block_original, label, gloss)
+                    if resolved_gloss is not None:
+                        last_block_gloss = resolved_gloss
+                        updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
+                        rendered[last_block_start:last_block_end] = updated_block.split("\n")
+                        inline_glosses.append(gloss)
                 if terms is not None and seen_terms is not None:
                     norm = " ".join(label.split()).casefold()
                     if norm not in seen_terms:
