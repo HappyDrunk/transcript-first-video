@@ -338,12 +338,16 @@ def render_lines(
         if header is None:
             raise RenderError(f"unknown explanation block: {raw.strip()}")
         kind, title = header.groups()
+        raw_content: list[str] = []
         content: list[str] = []
         while index < len(lines):
             quoted = lines[index].strip()
             if not quoted.startswith(">") or CALLOUT_START.match(quoted):
                 break
-            cleaned = AI_CREDIT.sub("", remove_times(quoted[1:])).strip()
+            raw_line = remove_times(quoted[1:]).strip()
+            if raw_line:
+                raw_content.append(raw_line)
+            cleaned = AI_CREDIT.sub("", raw_line).strip()
             if cleaned:
                 content.append(cleaned)
             index += 1
@@ -354,7 +358,7 @@ def render_lines(
 
         if kind == "warning" and title == DISCREPANCY_TITLE:
             if not strip_discrepancy:
-                spoken, doubts = _parse_discrepancy_lines(content)
+                spoken, doubts = _parse_discrepancy_lines(raw_content)
                 has_spoken_code = has_spoken_code or spoken
                 if doubts:
                     if last_block_kind != "prose" or last_block_start is None or last_block_end is None:
@@ -488,6 +492,25 @@ def render_body(body: str, *, inline_terms: bool = False) -> str:
     return rendered
 
 
+def _outside_fences(text: str) -> str:
+    kept: list[str] = []
+    in_fence_char: str | None = None
+    in_fence_len = 0
+    for raw in text.splitlines():
+        fence = FENCE_RE.match(raw)
+        if in_fence_char is not None:
+            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+                in_fence_char = None
+                in_fence_len = 0
+            continue
+        if fence:
+            in_fence_char = fence[1][0]
+            in_fence_len = len(fence[1])
+            continue
+        kept.append(raw)
+    return "\n".join(kept)
+
+
 def render_note(
     note: bytes,
     *,
@@ -516,14 +539,30 @@ def render_note(
     evidence_start, _ = evidence
     body = body[:evidence_start]
     omission = OMISSION.search(body)
+    if omission is not None:
+        in_f_ch: str | None = None
+        in_f_len = 0
+        for ln in body[:omission.start()].splitlines():
+            fm = FENCE_RE.match(ln)
+            if in_f_ch is not None:
+                if fm and fm[1][0] == in_f_ch and len(fm[1]) >= in_f_len and ln[fm.end():].strip() == "":
+                    in_f_ch = None
+                    in_f_len = 0
+            elif fm:
+                in_f_ch = fm[1][0]
+                in_f_len = len(fm[1])
+        if in_f_ch is not None:
+            omission = None
     if omission is None:
-        if ANY_OMISSION_LINE.search(body):
+        if ANY_OMISSION_LINE.search(_outside_fences(body)):
             raise RenderError("本文略去 must appear at the end before 原文依据")
         prose_body = body
         omission_text = ""
     else:
         prose_body = body[:omission.start()]
         omission_text = omission[1].strip()
+        if ANY_OMISSION_LINE.search(_outside_fences(prose_body)):
+            raise RenderError("本文略去 must appear at the end before 原文依据")
 
     rendered_body, has_spoken_code, doubt_count = _render_body_details(
         prose_body, inline_terms=inline_terms, strip_discrepancy=False
@@ -553,7 +592,7 @@ def render_note(
     if omission_text.casefold() not in EMPTY_OMISSION:
         blocks.extend(("---", f"没写进来的部分：{omission_text}"))
     markdown = "\n\n".join(blocks) + "\n"
-    if "⏱" in markdown or "[!" in markdown:
+    if "⏱" in markdown or "[!" in _outside_fences(markdown):
         raise RenderError("reading copy still contains an evidence time marker or callout")
     if keep_frontmatter:
         original = frontmatter[0]

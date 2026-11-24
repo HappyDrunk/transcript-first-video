@@ -218,9 +218,9 @@ _ACCELERATOR_HOUR = re.compile(r"(?<![A-Za-z0-9])(GPU|vCPU)h(?![A-Za-z0-9])", re
 _COMPOUND_NAME_BOUNDARY = re.compile(r"(?<=[a-z])(?=[A-Z])")
 _INLINE_CODE = re.compile(r"(?<!`)(?P<ticks>`+)(?!`)[^\n]+?(?<!`)(?P=ticks)(?!`)")
 _FENCED_CODE = re.compile(
-    r"^[ \t]*(?P<fence>(?P<marker>`|~)(?P=marker){2,})(?!(?P=marker))"
+    r"^ {0,3}(?P<fence>(?P<marker>`|~)(?P=marker){2,})(?!(?P=marker))"
     r"(?:(?<=`)[^`\n]*|(?<=~)[^\n]*)(?=\n|\Z)"
-    r"(?:\n.*?(?:^[ \t]*(?P=fence)(?P=marker)*[ \t]*\r?$|\Z)|\Z)",
+    r"(?:\n.*?(?:^ {0,3}(?P=fence)(?P=marker)*[ \t]*\r?$|\Z)|\Z)",
     re.MULTILINE | re.DOTALL,
 )
 _URL = re.compile(r"https?://[^\s`<>。！？、，；）]+", re.IGNORECASE)
@@ -336,7 +336,7 @@ DISCREPANCY_TITLE = "原文出入"
 _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
 _AI_CREDIT = re.compile(r"[（(](?:Claude|整理者|AI)[ \t]*补充(?:[，,][ \t]*非视频内容)?[）)]")
-_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
@@ -683,11 +683,16 @@ def _levenshtein(left: str, right: str) -> int:
     return prev[-1]
 
 
-def _numeric_signature(text: str) -> list[tuple[int, ...]]:
-    return [
-        tuple(int(part) for part in re.split(r"[._]", match))
-        for match in re.findall(r"\d+(?:[._]\d+)*", text)
-    ]
+def _numeric_signature(text: str) -> list[tuple[str, ...]]:
+    sigs: list[tuple[str, ...]] = []
+    for match in re.findall(r"(?<![A-Za-z0-9])-\d+(?:[._]\d+)*|\d+(?:[._]\d+)*", text):
+        sign = "-" if match.startswith("-") else ""
+        parts = re.split(r"[._]", match[1:] if sign else match)
+        norm = [part.lstrip("0") or "0" for part in parts]
+        if sign and any(part != "0" for part in norm):
+            norm[0] = "-" + norm[0]
+        sigs.append(tuple(norm))
+    return sigs
 
 
 def _expands_name_token(original: str, corrected: str) -> bool:
@@ -712,6 +717,10 @@ def _normalized_correction(text: str) -> str:
 
 
 def _secondary_asr_variant(original: str, corrected: str) -> bool:
+    # Only allow single-token established targets (e.g. "chache BT" -> "ChatGPT"),
+    # never multi-word personal-name swaps or signed number changes.
+    if len(corrected.split()) != 1:
+        return False
     if _numeric_signature(original) != _numeric_signature(corrected) or _expands_name_token(original, corrected):
         return False
     a, b = map(_normalized_correction, (original, corrected))
@@ -732,9 +741,11 @@ def _discrepancy_type1_laundering_issue(
         homophone_ok = (
             len(orig_nums) == 1
             and len(orig_nums[0]) == 1
+            and orig_nums[0][0].isdigit()
+            and len(orig_nums[0][0]) <= 3
             and not corr_nums
             and bool(re.search(rf"(?<![A-Za-z0-9_.\-]){orig_nums[0][0]}(?![A-Za-z0-9_.\-])", original))
-            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0][0])
+            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == int(orig_nums[0][0]))
         )
         same_digits_backed = (
             "".join(re.findall(r"\d", original)) == "".join(re.findall(r"\d", corrected))
@@ -2170,7 +2181,8 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     cursor = 0
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
-    corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
+    speech_correction_pairs = caption_corrections(blocks, ctx.speech)
+    corrections = [corrected for _, corrected in speech_correction_pairs]
     screen_corrections = caption_corrections(blocks, "", tuple(quote.text for quote in valid if quote.screen))
     spoken_code_pairs = spoken_code_entries(blocks)
 
@@ -2235,9 +2247,11 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                                      if any(term_occurs(original, line) for line in screen_excerpts)]
                 speech_corrections = corrections
                 if is_fence:
-                    speech_corrections = [corrected for _, corrected in caption_corrections(blocks, "\n".join(
-                        quote.text for quote in evidence if not quote.screen
-                    ))]
+                    speech_excerpts = [quote.text for quote in evidence if not quote.screen]
+                    speech_corrections = [
+                        corrected for original, corrected in speech_correction_pairs
+                        if any(term_occurs(original, line) for line in speech_excerpts)
+                    ]
                 source = excerpts + speech_corrections + local_corrections
                 prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(unit_text))
                 if parent == _C04_START[1]:
@@ -2568,14 +2582,18 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
         if not any(noun[:length] in earlier for length in range(len(noun), 1, -1)):
             result.append(f"序数未铺垫 WARN: 正文首次直接出现“{match[0]}”，前文未铺垫“{noun}”{review}")
 
-    versions: dict[tuple[str, int], dict[int, set[str]]] = {}
+    versions: dict[tuple[str, str], dict[str, set[str]]] = {}
     for match in _VERSIONED_ENTITY.finditer(text):
         base, major, minor = match.groups()
-        key = base.rstrip("-_").casefold(), int(major)
-        versions.setdefault(key, {}).setdefault(int(minor), set()).add(match[0])
+        key = base.rstrip("-_").casefold(), major.lstrip("0") or "0"
+        versions.setdefault(key, {}).setdefault(minor.lstrip("0") or "0", set()).add(match[0])
     for minors in versions.values():
-        surfaces = sorted(set().union(*minors.values()))
-        if len(minors) >= 2 and not any(term_occurs(surface, line) for line in discrepancies for surface in surfaces):
+        uncovered = [
+            surfaces for surfaces in minors.values()
+            if not any(term_occurs(surface, line) for line in discrepancies for surface in surfaces)
+        ]
+        if len(uncovered) >= 2:
+            surfaces = sorted(set().union(*uncovered))
             result.append("版本冲突 WARN: 同一实体存在未登记原文出入的版本不一致: " + "、".join(surfaces) + review)
 
     language_parts = [_MARKDOWN_LINK_SPAN.sub(" | ", part) for part in language_parts]

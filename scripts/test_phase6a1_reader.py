@@ -406,5 +406,73 @@ class DocumentationTests(unittest.TestCase):
                 self.assertIsNotNone(re.search(pattern, doc), contract)
 
 
+class ReviewRound1RegressionTests(ReaderFixture):
+    def test_fence_literal_callout_and_omission_marker_render_cleanly(self) -> None:
+        fence = '```python\nprint("[!test")\n# 本文略去｜literal\n```'
+        note, result = self.verify(
+            f"先核对缓存。 ⏱ 00:30\n\n{fence}",
+            BASE_QUOTE + '代码示例 print("[!test") 与 本文略去｜literal。',
+        )
+        note_no_omit = note.replace("\n\n本文略去｜无", "")
+        result2 = verify_note.verify(self.job / "transcript.txt", note_no_omit, expected_lang="zh", job=True)
+        self.assertTrue(result["allowed"], result["reasons"])
+        self.assertTrue(result2["allowed"], result2["reasons"])
+        reading = _render(note_no_omit)
+        self.assertIn('print("[!test")', reading)
+
+    def test_discrepancy_payload_not_stripped_by_ai_credit(self) -> None:
+        callout = _discrepancy("存疑｜「缓存」｜(AI补充)")
+        note, result = self.verify(f"先核对缓存。 ⏱ 00:30\n\n{callout}")
+        self.assertTrue(result["allowed"], result["reasons"])
+        reading = _render(note)
+        self.assertIn("缓存（存疑：(AI补充)）", reading)
+
+    def test_secondary_asr_rejects_multiword_surname_swap_and_sign_change(self) -> None:
+        cases = (
+            (("Anna Shaw", "Anna Shah"), ("Anna Wu", "Anna Shah")),
+            (("Ali Shaw 3", "Ali Shah 3"), ("Ali Wu -3", "Ali Shah 3")),
+        )
+        for pair1, pair2 in cases:
+            with self.subTest(pair2=pair2):
+                c1 = _discrepancy(f"字幕写作 {pair1[0]}，实为 {pair1[1]}。")
+                c2 = _discrepancy(f"字幕写作 {pair2[0]}，实为 {pair2[1]}。")
+                _, result = self.verify(
+                    f"核对缓存并记录 {pair1[1]}。 ⏱ 00:30\n\n{c1}\n\n"
+                    f"继续记录 {pair2[1]}。 ⏱ 01:30\n\n{c2}",
+                    BASE_QUOTE + f" 提到 {pair1[0]}。",
+                    later=[("01:30", f"保存本次运行的详细记录，方便之后逐项核对，并提到 {pair2[0]}。")],
+                )
+                self.assertIn("C04d", failed_ids(result), result["reasons"])
+
+    def test_fence_grounding_does_not_stitch_correction_across_separate_quotes(self) -> None:
+        q0 = "开场先说明 old api 的历史背景与兼容方式，请把本次运行的详细记录单独存档以便之后逐项核对结果。"
+        q1 = "先单独核对缓存并运行脚本，最后检查并保存记录以便复核全部流程，这段原话的结尾是 old"
+        q2 = "api 是独立另一条引文的开头，请保存本次运行的详细记录方便之后逐项核对全部结果。"
+        callout = _discrepancy("字幕写作 old api，实为 old_api。")
+        fence = "```python\nold_api()\n```"
+        middle = (
+            "开场说明 old_api 的历史背景与兼容方式，并单独存档详细记录。 ⏱ 00:10\n\n"
+            f"核对缓存、运行脚本并保存本次运行的详细记录以便逐项核对结果。 ⏱ 00:30 ⏱ 01:30\n\n{fence}\n\n{callout}"
+        )
+        _, result = self.verify(middle, q1, later=[("00:10", q0), ("01:30", q2)])
+        self.assertTrue(result["allowed"], result["reasons"])
+        terms = {finding["term"] for finding in result["c04c"]}
+        self.assertIn("old_api", terms, result["c04c"])
+
+    def test_huge_version_digits_do_not_crash_warnings(self) -> None:
+        huge = "v" + ("9" * 4305) + ".2"
+        _, result = self.verify(
+            f"核对缓存并记录 {huge} 版本。 ⏱ 00:30",
+            BASE_QUOTE + f" 记录 {huge} 版本。",
+        )
+        self.assertTrue(result["allowed"], result["reasons"])
+
+    def test_three_minor_versions_partially_explained_still_warns(self) -> None:
+        prose = "先看 Widget1.1，再看 Widget1.2，最后看 Widget1.3。"
+        callout = _discrepancy("存疑｜「Widget1.2」｜仅核对了这一条")
+        _, result = self.verify(prose + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose)
+        self.assert_soft_warning(result, r"版本冲突", True)
+
+
 if __name__ == "__main__":
     unittest.main()
