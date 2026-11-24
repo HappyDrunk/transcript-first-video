@@ -266,7 +266,7 @@ class ReadingLevelStateTests(JobCase):
         self.assertEqual(self.bind_review().get("reading_level"), "concise")
         second = self.render(require_review=True)
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
-        self.assertIn(CONCISE_ZH, self.output.read_text(encoding="utf-8"))
+        self.assertIn(CONCISE_H2, self.output.read_text(encoding="utf-8"))
 
 
 class ClosingTests(JobCase):
@@ -570,15 +570,15 @@ class ReadingHeaderTests(unittest.TestCase):
 
     def test_merged_intro_combinations(self):
         for self_review, screen, expected in (
-            (False, False, INTRO),
-            (False, True, "说明：竖线行是 AI 补充解释；标明来自画面的内容由机器识别，可能有误差。"),
-            (True, False, "说明：未经独立复核；竖线行是 AI 补充解释。"),
-            (True, True, "说明：未经独立复核；竖线行是 AI 补充解释；标明来自画面的内容由机器识别，可能有误差。"),
+            (False, False, []),
+            (False, True, []),
+            (True, False, ["说明：未经独立复核。"]),
+            (True, True, ["说明：未经独立复核。"]),
         ):
             with self.subTest(self_review=self_review, screen=screen):
                 note = NOTE + "> [00:20][画面] Label the envelope\n" if screen else NOTE
                 paragraphs = self.render(note, self_review=self_review)
-                self.assertEqual(paragraphs[2:], [expected])
+                self.assertEqual(paragraphs[2:], expected)
 
     def test_reading_level_localizes_to_prose_not_template_headings(self):
         english = FRONTMATTER + """
@@ -600,23 +600,20 @@ Label one envelope with its planting month. ⏱ 00:20
 
 > [00:20] Write the planting month on the outside of each envelope before putting it away.
 """
-        for note, level, expected in (
-            (NOTE, "plain", PLAIN_ZH),
-            (concise_note(), "concise", CONCISE_ZH),
-            (english, "plain", "Reading level: Plain — terms and background are explained."),
-            (english.replace(PLAIN_H2, CONCISE_H2), "concise",
-             "Reading level: Concise — assumes relevant background; only uncommon terms are explained."),
+        for note, level in (
+            (NOTE, "plain"),
+            (concise_note(), "concise"),
+            (english, "plain"),
+            (english.replace(PLAIN_H2, CONCISE_H2), "concise"),
         ):
-            with self.subTest(level=level, paragraph=expected):
+            with self.subTest(level=level):
                 paragraphs = self.render(note, reading_level=level)
-                self.assertEqual(len(paragraphs), 4, paragraphs)
-                self.assertEqual(paragraphs[3], expected)
+                self.assertEqual(len(paragraphs), 2, paragraphs)
 
     def test_language_inference_ignores_setext_template_headings(self):
-        for level, heading, chinese, english in (
-            ("plain", PLAIN_H2, PLAIN_ZH, "Reading level: Plain — terms and background are explained."),
-            ("concise", CONCISE_H2, CONCISE_ZH,
-             "Reading level: Concise — assumes relevant background; only uncommon terms are explained."),
+        for level, heading in (
+            ("plain", PLAIN_H2),
+            ("concise", CONCISE_H2),
         ):
             note = (
                 f"{FRONTMATTER}\n{FIRST_H2[3:]}\n---\n\n"
@@ -627,11 +624,10 @@ Label one envelope with its planting month. ⏱ 00:20
                 "本文略去｜无\n\n## 原文依据\n\n"
                 "> [00:20] Write the planting month on the outside of each envelope before putting it away.\n"
             )
-            for language, expected in ((None, english), ("中文", chinese)):
+            for language in (None, "中文"):
                 with self.subTest(reading_level=level, delivery_language=language):
                     paragraphs = self.render(note, reading_level=level, delivery_language=language)
-                    self.assertEqual(len(paragraphs), 4, paragraphs)
-                    self.assertEqual(paragraphs[3], expected)
+                    self.assertEqual(len(paragraphs), 2, paragraphs)
 
     def test_latin_majority_bilingual_prose_uses_chinese_fourth_paragraph(self):
         prose = (
@@ -643,32 +639,30 @@ Label one envelope with its planting month. ⏱ 00:20
         )
         self.assertGreater(len(re.findall(r"[A-Za-z]", prose)), len(re.findall(r"[\u4e00-\u9fff]", prose)))
 
-        for level, heading, chinese, english in (
-            ("plain", PLAIN_H2, PLAIN_ZH, "Reading level: Plain — terms and background are explained."),
-            ("concise", CONCISE_H2, CONCISE_ZH,
-             "Reading level: Concise — assumes relevant background; only uncommon terms are explained."),
+        for level, heading in (
+            ("plain", PLAIN_H2),
+            ("concise", CONCISE_H2),
         ):
             takeaway, application = prose.split("\n\n")
             note = (
                 f"{FRONTMATTER}\n{FIRST_H2}\n\n{takeaway}\n\n{heading}\n\n{application}\n\n"
                 "本文略去｜无\n\n## 原文依据\n\n> [00:20] Arrange the envelopes in planting order.\n"
             )
-            for language, expected in ((None, chinese), ("英文", english), ("中英文对照", chinese), ("中文", chinese)):
+            for language in (None, "英文", "中英文对照", "中文"):
                 with self.subTest(reading_level=level, delivery_language=language):
                     paragraphs = self.render(note, reading_level=level, delivery_language=language)
-                    self.assertEqual(len(paragraphs), 4, paragraphs)
-                    self.assertEqual(paragraphs[3], expected)
+                    self.assertEqual(len(paragraphs), 2, paragraphs)
 
     def test_legacy_header_has_three_paragraphs_and_no_system_wording(self):
         reading = render_reading_note.render_note(NOTE.encode(), keep_frontmatter=False, reading_level=None).decode()
-        self.assertEqual(len(header_paragraphs(reading)), 3)
+        self.assertEqual(len(header_paragraphs(reading)), 2)
         for wording in ("旧任务", "切换", "讲解方式", "Reading level"):
             self.assertNotIn(wording, reading)
 
     def test_missing_metadata_preserves_second_paragraph(self):
         note = NOTE.replace("channel: 合成园艺课堂", 'channel: ""').replace("published: 2026-04-08", 'published: ""')
         paragraphs = self.render(note, reading_level="plain")
-        self.assertEqual(paragraphs[1:], [f"— · — · [原视频]({SOURCE})", INTRO, PLAIN_ZH])
+        self.assertEqual(paragraphs[1:], [f"— · — · [原视频]({SOURCE})"])
 
 
 class ReadingOwnershipTests(JobCase):
@@ -710,11 +704,7 @@ class ReadingOwnershipTests(JobCase):
         frontmatter = FRONTMATTER.replace("type: 访谈", "type: 讲座")
         self.write_note(f"{frontmatter}\n{prose}\n\n本文略去｜{evidence}")
 
-        for language, expected in (
-            (None, PLAIN_ZH),
-            ("中英文对照", PLAIN_ZH),
-            ("英文", "Reading level: Plain — terms and background are explained."),
-        ):
+        for language in (None, "中英文对照", "英文"):
             with self.subTest(language=language):
                 self.output.unlink(missing_ok=True)
                 options = ("--language", language) if language else ()
@@ -722,8 +712,7 @@ class ReadingOwnershipTests(JobCase):
                 self.assertNotIn("language", self.status())
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 paragraphs = header_paragraphs(self.output.read_text(encoding="utf-8"))
-                self.assertEqual(len(paragraphs), 4, paragraphs)
-                self.assertEqual(paragraphs[3], expected)
+                self.assertEqual(len(paragraphs), 2, paragraphs)
 
     def assert_automatic_overwrite(self, *options):
         self.set_status(reading_level="plain", reading_level_source="request")
@@ -735,7 +724,8 @@ class ReadingOwnershipTests(JobCase):
         path = files[0]
         plain = path.read_text(encoding="utf-8")
         self.assertEqual(plain.startswith(FRONTMATTER), bool(options))
-        self.assertEqual(header_paragraphs(plain)[3:], [PLAIN_ZH])
+        self.assertIn(PLAIN_H2, plain)
+        self.assertNotIn(CONCISE_H2, plain)
 
         second = self.render(*options, automatic=True, require_review=True)
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
@@ -748,7 +738,8 @@ class ReadingOwnershipTests(JobCase):
         self.assertEqual(third.returncode, 0, third.stdout + third.stderr)
         concise = path.read_text(encoding="utf-8")
         self.assertEqual(concise.startswith(FRONTMATTER), bool(options))
-        self.assertEqual(header_paragraphs(concise)[3:], [CONCISE_ZH])
+        self.assertIn(CONCISE_H2, concise)
+        self.assertNotIn(PLAIN_H2, concise)
         self.assertEqual(list(path.parent.glob("*.md")), [path])
 
         unrelated = f"# Unrelated memo\n\nPrivate notes.\n\nSee [原视频]({SOURCE}) in the reference list.\n"
