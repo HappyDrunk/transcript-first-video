@@ -431,6 +431,9 @@ class ReviewRound1RegressionTests(ReaderFixture):
         cases = (
             (("Anna Shaw", "Anna Shah"), ("Anna Wu", "Anna Shah")),
             (("Ali Shaw 3", "Ali Shah 3"), ("Ali Wu -3", "Ali Shah 3")),
+            (("Bot 3", "Bot3"), ("Bot -3", "Bot3")),
+            (("Bot 3", "Bot3"), ("Bot\u22123", "Bot3")),
+            (("ABCDEFGH", "ABCDEFGHI"), ("AB CDE", "ABCDEFGHI")),
         )
         for pair1, pair2 in cases:
             with self.subTest(pair2=pair2):
@@ -440,9 +443,26 @@ class ReviewRound1RegressionTests(ReaderFixture):
                     f"核对缓存并记录 {pair1[1]}。 ⏱ 00:30\n\n{c1}\n\n"
                     f"继续记录 {pair2[1]}。 ⏱ 01:30\n\n{c2}",
                     BASE_QUOTE + f" 提到 {pair1[0]}。",
-                    later=[("01:30", f"保存本次运行的详细记录，方便之后逐项核对，并提到 {pair2[0]}。")],
+                    later=[("01:30", f"保存本次运行的详细记录，方便之后逐项核对全部输出与日志结果，并提到 {pair2[0]}。")],
                 )
                 self.assertIn("C04d", failed_ids(result), result["reasons"])
+
+    def test_unicode_digits_and_identifier_boundary_in_version_check(self) -> None:
+        # Unicode full-width digits ０３ == 3 and Widget1.２ == Widget1.2 (no false conflict)
+        self.assertEqual(rules._numeric_signature("０３"), rules._numeric_signature("3"))
+        prose_eq = "先看 Widget1.２，再看 Widget1.2。"
+        _, res_eq = self.verify(prose_eq + " ⏱ 00:30", BASE_QUOTE + prose_eq)
+        self.assert_soft_warning(res_eq, r"版本冲突", False)
+
+        # Unrelated Other_Widget1.1 in 原文出入 must NOT suppress Widget1.1 vs Widget1.2 conflict
+        prose_real = "先看 Widget1.1，再看 Widget1.2，并提到 Other_Widget1.1。"
+        callout = _discrepancy("存疑｜「Other_Widget1.1」｜另一个组件")
+        _, res_real = self.verify(prose_real + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose_real)
+        self.assert_soft_warning(res_real, r"版本冲突", True)
+
+        # Backtick in backtick fence info string is NOT a fence opener
+        self.assertIsNone(rules.match_fence_open("```python`"))
+        self.assertIsNotNone(rules.match_fence_open("```python"))
 
     def test_fence_grounding_does_not_stitch_correction_across_separate_quotes(self) -> None:
         q0 = "开场先说明 old api 的历史背景与兼容方式，请把本次运行的详细记录单独存档以便之后逐项核对结果。"

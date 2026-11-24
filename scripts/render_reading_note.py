@@ -292,19 +292,18 @@ def render_lines(
         raw = lines[index]
         index += 1
 
-        fence = FENCE_RE.match(raw)
         if in_fence_char is not None:
             rendered.append(raw)
-            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+            if rules.is_fence_close(raw, in_fence_char, in_fence_len):
                 in_fence_char = None
                 in_fence_len = 0
                 block_open = False
             last_block_kind = "forbidden"
             continue
 
-        if fence:
-            in_fence_char = fence[1][0]
-            in_fence_len = len(fence[1])
+        opened = rules.match_fence_open(raw)
+        if opened is not None:
+            in_fence_char, in_fence_len, _ = opened
             rendered.append(raw)
             block_open = False
             last_block_kind = "forbidden"
@@ -497,15 +496,14 @@ def _outside_fences(text: str) -> str:
     in_fence_char: str | None = None
     in_fence_len = 0
     for raw in text.splitlines():
-        fence = FENCE_RE.match(raw)
         if in_fence_char is not None:
-            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+            if rules.is_fence_close(raw, in_fence_char, in_fence_len):
                 in_fence_char = None
                 in_fence_len = 0
             continue
-        if fence:
-            in_fence_char = fence[1][0]
-            in_fence_len = len(fence[1])
+        opened = rules.match_fence_open(raw)
+        if opened is not None:
+            in_fence_char, in_fence_len, _ = opened
             continue
         kept.append(raw)
     return "\n".join(kept)
@@ -543,14 +541,14 @@ def render_note(
         in_f_ch: str | None = None
         in_f_len = 0
         for ln in body[:omission.start()].splitlines():
-            fm = FENCE_RE.match(ln)
             if in_f_ch is not None:
-                if fm and fm[1][0] == in_f_ch and len(fm[1]) >= in_f_len and ln[fm.end():].strip() == "":
+                if rules.is_fence_close(ln, in_f_ch, in_f_len):
                     in_f_ch = None
                     in_f_len = 0
-            elif fm:
-                in_f_ch = fm[1][0]
-                in_f_len = len(fm[1])
+            else:
+                opened = rules.match_fence_open(ln)
+                if opened is not None:
+                    in_f_ch, in_f_len, _ = opened
         if in_f_ch is not None:
             omission = None
     if omission is None:

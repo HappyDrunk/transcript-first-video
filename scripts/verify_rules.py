@@ -337,6 +337,23 @@ _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
 _AI_CREDIT = re.compile(r"[（(](?:Claude|整理者|AI)[ \t]*补充(?:[，,][ \t]*非视频内容)?[）)]")
 _FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+
+
+def match_fence_open(raw: str) -> tuple[str, int, str] | None:
+    """CommonMark fence opener (0-3 spaces; backtick info string forbids backticks)."""
+    m = _FENCE_OPEN.match(raw)
+    if m is None:
+        return None
+    marker = m[1]
+    rest = raw[m.end():]
+    if marker[0] == "`" and "`" in rest:
+        return None
+    return marker[0], len(marker), rest
+
+
+def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
+    m = _FENCE_OPEN.match(raw)
+    return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip() == "")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
@@ -440,21 +457,20 @@ def delivery_parts(
             list_forms.append(False)
 
     for raw in body.splitlines():
-        fence = _FENCE_OPEN.match(raw)
         if in_fence_char is not None:
             fence_lines.append(raw)
-            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+            if is_fence_close(raw, in_fence_char, in_fence_len):
                 flush_fence()
                 fence_lines = []
                 in_fence_char = None
                 in_fence_len = 0
                 last_context = None
             continue
-        if fence:
+        opened = match_fence_open(raw)
+        if opened is not None:
             block = None
             flush_paragraph()
-            in_fence_char = fence[1][0]
-            in_fence_len = len(fence[1])
+            in_fence_char, in_fence_len, _ = opened
             fence_lines = [raw]
             last_context = None
             continue
@@ -541,10 +557,12 @@ def delivery_sections(body: str) -> list[DeliverySection]:
     for index, (level, heading, _, end) in enumerate(headings):
         section_body = body[end : starts[index + 1]]
         list_forms = [] if heading == CONCISE_ACTION_HEADING else None
+        has_fence = False
         if list_forms is not None:
             section_body = _MARKDOWN_CODE_OR_COMMENT.sub(
                 lambda match: "" if match["comment"] else match[0], section_body
             )
+            has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
         contexts: list[str | None] = []
         fence_parents: dict[int, int | None] = {}
         prose, blocks, unclosed_fence = delivery_parts(
@@ -552,7 +570,7 @@ def delivery_sections(body: str) -> list[DeliverySection]:
         )
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
         sections.append(DeliverySection(
-            level, heading, prose, blocks, mixed_list, bool(fence_parents),
+            level, heading, prose, blocks, mixed_list, has_fence or bool(fence_parents),
             tuple(contexts), fence_parents, unclosed_fence,
         ))
     return sections
@@ -683,9 +701,27 @@ def _levenshtein(left: str, right: str) -> int:
     return prev[-1]
 
 
+def _norm_ascii_digits(text: str) -> str:
+    out: list[str] = []
+    for ch in text:
+        if ch in "\u2212\u2013\u2014\uff0d":
+            out.append("-")
+        elif ch.isdigit():
+            d = unicodedata.digit(ch, None)
+            out.append(str(d) if d is not None else ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def _numeric_signature(text: str) -> list[tuple[str, ...]]:
+    normalized = _norm_ascii_digits(text)
     sigs: list[tuple[str, ...]] = []
-    for match in re.findall(r"(?<![A-Za-z0-9])-\d+(?:[._]\d+)*|\d+(?:[._]\d+)*", text):
+    # Recognize standalone minus (-3) AND Unicode minus after letters (X−3 -> normalized to X-3 when original had Unicode minus)
+    # To distinguish hyphenated product tags like GPT-3 (ASCII hyphen after letter) from Unicode minus X−3:
+    raw_marked = re.sub(r"[\u2212\uff0d]", " -", text)
+    normalized = _norm_ascii_digits(raw_marked)
+    for match in re.findall(r"(?<![A-Za-z0-9])-\d+(?:[._]\d+)*|\d+(?:[._]\d+)*", normalized):
         sign = "-" if match.startswith("-") else ""
         parts = re.split(r"[._]", match[1:] if sign else match)
         norm = [part.lstrip("0") or "0" for part in parts]
@@ -709,6 +745,9 @@ def _expands_name_token(original: str, corrected: str) -> bool:
                 and len(new_clean) >= 1.5 * len(old_clean)
             ):
                 return True
+    a, b = map(_normalized_correction, (original, corrected))
+    if a and a != b and len(b) - len(a) >= 3 and len(b) >= 1.5 * len(a):
+        return True
     return False
 
 
@@ -718,12 +757,14 @@ def _normalized_correction(text: str) -> str:
 
 def _secondary_asr_variant(original: str, corrected: str) -> bool:
     # Only allow single-token established targets (e.g. "chache BT" -> "ChatGPT"),
-    # never multi-word personal-name swaps or signed number changes.
+    # never multi-word personal-name swaps, signed number changes, or whole-word expansions.
     if len(corrected.split()) != 1:
         return False
     if _numeric_signature(original) != _numeric_signature(corrected) or _expands_name_token(original, corrected):
         return False
     a, b = map(_normalized_correction, (original, corrected))
+    if a and len(b) - len(a) >= 3 and len(b) >= 1.5 * len(a):
+        return False
     distance = _levenshtein(a, b)
     return distance <= 4 and distance / max(len(a), len(b), 1) <= 0.50
 
@@ -2585,12 +2626,17 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
     versions: dict[tuple[str, str], dict[str, set[str]]] = {}
     for match in _VERSIONED_ENTITY.finditer(text):
         base, major, minor = match.groups()
-        key = base.rstrip("-_").casefold(), major.lstrip("0") or "0"
-        versions.setdefault(key, {}).setdefault(minor.lstrip("0") or "0", set()).add(match[0])
+        major_norm = _norm_ascii_digits(major).lstrip("0") or "0"
+        minor_norm = _norm_ascii_digits(minor).lstrip("0") or "0"
+        key = base.rstrip("-_").casefold(), major_norm
+        versions.setdefault(key, {}).setdefault(minor_norm, set()).add(match[0])
     for minors in versions.values():
         uncovered = [
             surfaces for surfaces in minors.values()
-            if not any(term_occurs(surface, line) for line in discrepancies for surface in surfaces)
+            if not any(
+                re.search(rf"(?<![A-Za-z0-9_]){re.escape(surface)}(?![A-Za-z0-9_])", line, re.IGNORECASE)
+                for line in discrepancies for surface in surfaces
+            )
         ]
         if len(uncovered) >= 2:
             surfaces = sorted(set().union(*uncovered))
