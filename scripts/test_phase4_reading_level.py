@@ -1016,10 +1016,10 @@ class ExampleTests(unittest.TestCase):
         bullet = re.search(r"(?m)^- \*\*解释留用的技术要素。\*\*.*$", delivery)
         self.assertIsNotNone(bullet, "Missing technical-elements bullet")
         guidance = bullet[0]
-        plain = re.search(r"通俗版(?:(?!精炼版).)*?(?:任何|所有|每个)术语", guidance)
+        plain = re.search(r"通俗版(?:(?!精炼版).)*?(?:陌生术语|影响理解)", guidance)
         concise = re.search(r"精炼版((?:(?!通俗版).)*)", guidance)
         checks = {
-            "Universal term callouts must be scoped to 通俗版": plain is not None,
+            "Bounded term guidance must be scoped to 通俗版": plain is not None,
             "精炼版 must limit required explanations to the four categories in review-guide.md": (
                 concise is not None
                 and re.search(r"只|仅", concise[1]) is not None

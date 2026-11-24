@@ -8,17 +8,23 @@ Only after verify and coverage pass on the same inputs, give the evidence note, 
 
 Report only located, evidenced issues. Do not repeat mechanical checks or add unrelated preferences.
 
-- Compare every claim with evidence for negation, order, conditions, and causal direction. Check whether an analogy adds an unsupported conclusion. For `今天立刻动手一步`, ensure the reader can act with the stated prerequisites.
-- Find repeated passages and cases where speech and screen duplicate a point; preserve useful differences in precision or scope.
-- In interviews, verify who proposed, summarized, or opposed each point. The opening explains roles and missing speaker labels. Mark host views, extra numbers, and disagreements where they occur.
-- Check retained lists for missing items. Read omitted units for core claims, steps, or supporting numbers. Locate useful screen-only tables or lists absent from both the note and a distinct selection decision. A slide row alone does not prove its content was considered.
-- List essential terms and basic words used technically without explanation at first use. In Chinese prose, flag untranslated phrases that obstruct understanding while preserving useful original-language parentheses, proper names, and code. If a speaker's definition differs from a verifiable standard definition, ensure the difference and attribution are clear.
-- For screen-only numbers, inspect the image for units, comparison targets, and conditions. Check compatibility with the note and speech; remove unsupported or contradicted uses.
-- Find prose commentary about preparing, checking, or selecting material, including wording missed by C04d. Preserve source attribution, technical recognition discussion, and marked caption corrections.
+- Compare every claim with evidence for negation, order, conditions, and causal direction (especially across merged multi-sentence paragraphs). For `今天立刻动手一步` (when present), ensure the reader can act with the stated prerequisites.
+- Find repeated passages and cases where speech and screen duplicate a point; preserve useful differences in precision or scope. Verify scope/region/version prerequisites appear upfront rather than buried at the end.
+- In interviews, verify who proposed, summarized, or opposed each point. Check that every person named in the video title is accounted for in the body, with no silent "default to guest" attribution when speaker labels are absent.
+- Check retained lists and tutorial/hands-on code blocks for missing items or omitted runnable commands (without inventing missing parameters—state when the video omits them). Read omitted units for core claims, steps, or supporting numbers. Locate useful screen-only tables or lists absent from both the note and a distinct selection decision.
+- **Bidirectional terminology & readability review**:
+  1. Flag essential terms missing explanation at first technical use (see reading-level section below).
+  2. **Also flag excess/noise**: too many `术语` entries (target ≤12 entries, ≤60 chars each), glossary entries that merely parrot the prose, video facts (numbers/names/causality) smuggled into `术语` blocks instead of prose, and noisy English parentheses (such as `50%（50%）`, common words, or broken ASR fragments). Keep only essential proper names, search terms, and code.
+- **Review `原文出入` direction and neutrality**:
+  1. Type 1 (`字幕/画面写作 A，实为 B`): confirm it is a genuine typo/casing fix, not silently washing over a version/number conflict or unverified name completion.
+  2. Type 2 (`口述代码`): verify the reconstructed code matches spoken words without inventing parameters or APIs.
+  3. Type 3 (`存疑`): confirm each entry reflects a real source conflict or missing detail, stays neutral without picking sides, and is not used as an escape hatch for unverified claims.
+- For screen-only numbers, inspect the image for units, comparison targets, and conditions; remove unsupported or contradicted uses.
+- Find prose commentary about how the writer prepared, checked, or selected material. Preserve reader-facing scope/uncertainty notes (such as `存疑`, "视频未展开", "视频未给出完整命令") and source attribution.
 
 Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.
 
-- Plain and legacy use `## 未解释的术语和基础词`. Check essential terms, abbreviations, and basic words at first technical use. A bare abbreviation or expansion needs a plain explanation of its local meaning.
+- Plain and legacy use `## 未解释的术语和基础词`. Check essential terms, abbreviations, and basic words at first technical use (without pushing redundant entries beyond the glossary budget).
 - Concise uses `## 精炼版也必须解释的词`. 逐节只查四类：`视频自造`、`冷门专名`、首次出现且需要解释的`缩写`、讲者用法与`通行定义`不一致的词（`W8`）。`PR、CTO、LLM、IDE、JVM` 在常规用法下不必标出。
 
 In either section, write one bullet per unexplained term in exact `词 | 首次出现的小节 | 原句` format, quoting the first-use sentence verbatim. If empty after checking every section, write exactly `已逐节查过，没有`. Include these findings in the same batch.
