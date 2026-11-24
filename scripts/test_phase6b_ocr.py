@@ -41,24 +41,33 @@ class SlideBudgetTest(unittest.TestCase):
         self.assertEqual(result["state"], "ready")
         return result["sample"]
 
-    def test_85_minute_calibrated_scan_fits_safe_budget(self):
-        duration = 5082
+    def calibrate(self, duration, crop=""):
         scan = Mock()
         with tempfile.TemporaryDirectory() as tmp, \
+             patch.dict(ocr.os.environ, {"TFV_SLIDE_CROP": crop}), \
              patch.object(ocr, "Scan", return_value=scan), \
              patch.object(ocr, "_measure_download_seconds", return_value=35.0), \
              patch.object(ocr, "_frames"), patch.object(ocr, "_group_frames"), \
              patch.object(ocr, "_read_frame"), \
              patch.object(ocr.time, "monotonic", side_effect=[0, 0.10, 0, 0.04, 0, 1.7, 0, 1.7]):
-            calibration = ocr._calibrate_full_scan(
+            return ocr._calibrate_full_scan(
                 "ffmpeg", Mock(), {"url": "https://example.com/video"}, duration, 0, "", Path(tmp),
             )
+
+    def test_85_minute_calibrated_scan_fits_safe_budget(self):
+        duration = 5082
+        calibration = self.calibrate(duration)
         self.assertEqual(calibration["ocr_frame_ratio_assumed"], 0.45)
         self.assertEqual(calibration["ocr_frames_estimated"], 287)
         sample = self.auto_result(duration, calibration=calibration, calibration_status="calibrated")
         self.assertEqual(sample["calibration_status"], "calibrated")
         self.assertEqual(sample["estimated_seconds"], 599.22)
         self.assertLessEqual(sample["estimated_seconds"], 630.0)
+
+    def test_crop_calibration_estimates_ocr_for_every_interval(self):
+        calibration = self.calibrate(60, crop="0,0,0.5,0.5")
+        self.assertEqual(calibration["ocr_frame_ratio_assumed"], 1.0)
+        self.assertEqual(calibration["ocr_frames_estimated"], calibration["intervals"])
 
     def test_effective_intervals_use_representative_frame_estimate(self):
         sample = self.auto_result(800, calibration={
@@ -253,7 +262,7 @@ class RepresentativeFramesTest(unittest.TestCase):
                  patch.object(ocr, "_full_thumbnail", create=True, return_value=pixels), \
                  patch.object(ocr, "AUTO_LIVE_OVERRUN_MIN_FRAMES", 2), \
                  patch.object(ocr.time, "monotonic", side_effect=range(20)), \
-                 patch.object(ocr, "_read_frame", side_effect=lambda *args: [
+                 patch.object(ocr, "_read_frame", side_effect=lambda *args, **kwargs: [
                      (ocr.Line(args[-1].path.stem, 0, 0, 10, 10, 99), True)
                  ]):
                 status = ocr.extract(staged, "slides", "source", ["yt-dlp"], 60, list, True)
@@ -279,7 +288,7 @@ class FrameTimeoutTest(unittest.TestCase):
             video.touch()
             groups = [frames[i:i + group_size] for i in range(0, count, group_size)]
 
-            def read_frame(*args):
+            def read_frame(*args, frame_deadline):
                 frame = args[-1]
                 if frames.index(frame) in skipped:
                     raise error("test deadline expired")
@@ -373,7 +382,7 @@ class FrameTimeoutTest(unittest.TestCase):
         self.assert_observability(status, 10, 10, [])
 
     def test_single_group_keeps_nine_frames_for_watermark_majority(self):
-        def reader(scan, ffmpeg, engine, mode, crop, frame):
+        def reader(scan, ffmpeg, engine, mode, crop, frame, *, frame_deadline):
             lines = [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
             if frame.seconds < 5:
                 lines.append((ocr.Line("Fixed watermark", 0, 100, 90, 10, 99), True))
@@ -409,7 +418,7 @@ class FrameTimeoutTest(unittest.TestCase):
             threads.append(thread)
             return thread
 
-        def reader(scan, ffmpeg, engine, mode, crop, frame):
+        def reader(scan, ffmpeg, engine, mode, crop, frame, *, frame_deadline):
             if frame.seconds >= 1:
                 self.assertIs(engine, second)
                 self.assertTrue(threads[1].is_alive())
@@ -418,7 +427,7 @@ class FrameTimeoutTest(unittest.TestCase):
                     self.assertFalse(slots.acquire(blocking=False))
                 finally:
                     slots.release()
-            scan.recognize(engine, frame_deadline=ocr.time.monotonic() + 30)
+            scan.recognize(engine, frame_deadline=frame_deadline)
             return [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
 
         with patch.object(ocr, "_OCR_SLOTS", slots), \
@@ -439,6 +448,62 @@ class FrameTimeoutTest(unittest.TestCase):
         self.assertFalse(any(thread.is_alive() for thread in threads))
         for _ in range(2):
             self.assertTrue(slots.acquire(blocking=False))
+
+    def test_recreation_blocked_by_held_slots_skips_frame_and_recovery_shares_deadline(self):
+        deadlines = []
+
+        def reader(scan, ffmpeg, engine, mode, crop, frame, *, frame_deadline):
+            deadlines.append(frame_deadline)
+            if frame.seconds < 1:
+                raise ocr.FrameTimeout("test deadline expired")
+            return [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
+
+        with patch.object(ocr, "_OCR_SLOTS") as slots, \
+             patch.object(ocr.Scan, "recognize", autospec=True, side_effect=ocr.Scan.recognize) as recognize:
+            # The retired worker holds the available slots during the first recreation.
+            slots.acquire.side_effect = [True, False, True]
+            status, attempts, _ = self.run_scan([], count=3, reader=reader)
+        self.assertEqual(status["state"], "ready", status)
+        self.assertEqual(attempts, 2)
+        self.assert_observability(status, 3, 1, [0, 1])
+        initial, blocked, recovered = recognize.call_args_list
+        self.assertEqual(initial.kwargs, {})
+        self.assertGreater(blocked.kwargs["frame_deadline"], 0)
+        self.assertEqual(recovered.kwargs["frame_deadline"], deadlines[-1])
+
+    def test_late_success_raises_frame_timeout(self):
+        for worker in ("subprocess", "recognize"):
+            with self.subTest(worker=worker), \
+                 patch.object(ocr.time, "monotonic", return_value=0) as clock, \
+                 patch.object(ocr.subprocess, "run") as run, \
+                 patch.object(ocr, "_OCR_SLOTS"), patch.object(ocr, "Thread"), \
+                 patch.object(ocr, "Future") as future:
+                scan = ocr.Scan("slides", None)
+
+                def complete_late(*args, **kwargs):
+                    clock.return_value = 2
+                    return SimpleNamespace(returncode=0)
+
+                run.side_effect = future.return_value.result.side_effect = complete_late
+                with self.assertRaisesRegex(ocr.FrameTimeout, "RapidOCR timed out"):
+                    if worker == "subprocess":
+                        scan.run(["ffmpeg"], "transform", frame_deadline=1)
+                    else:
+                        scan.recognize(Mock(), frame_deadline=1)
+
+    def test_crop_timeout_cleans_partial_original(self):
+        def partial_transform(args, *unused, **kwargs):
+            Path(args[-1]).touch()
+            raise ocr.FrameTimeout("test deadline expired")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = ocr.Frame(Path(tmp) / "frame.png", 0)
+            frame.path.touch()
+            scan = Mock()
+            scan.run.side_effect = partial_transform
+            with self.assertRaises(ocr.FrameTimeout):
+                ocr._read_frame(scan, "ffmpeg", Mock(), "slides", "crop=10:10", frame)
+            self.assertEqual(list(Path(tmp).iterdir()), [frame.path])
 
     def test_total_budget_and_nameplate_timeouts_are_not_skipped(self):
         for mode, error in (("slides", ocr.ScreenTimeout), ("nameplate", ocr.FrameTimeout)):

@@ -206,6 +206,10 @@ class Scan:
             raise ScreenTimeout(f"{step} timed out") from exc
         except OSError as exc:
             raise ScreenError(f"{step} unavailable: {exc.strerror or exc}") from exc
+        if frame_deadline is not None:
+            self.remaining()
+            if time.monotonic() > frame_deadline:
+                raise FrameTimeout("RapidOCR timed out")
         if result.returncode:
             lines = (result.stderr or result.stdout).splitlines()
             detail = lines[-1].strip() if lines else f"exit {result.returncode}"
@@ -280,6 +284,8 @@ class Scan:
                 raise ScreenDependencyError(str(exc)) from exc
             raise ScreenError(f"RapidOCR failed: {exc}") from exc
         self.remaining()
+        if frame_deadline is not None and time.monotonic() > frame_deadline:
+            raise FrameTimeout("RapidOCR timed out")
         return result
 
 
@@ -725,7 +731,8 @@ def _calibrate_full_scan(
     intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
     extract_seconds = decode_seconds * intervals
     group_seconds = group_per_frame * intervals
-    ocr_frames = estimate_ocr_frames(intervals)
+    ratio = 1.0 if crop else SLIDE_OCR_FRAME_RATIO
+    ocr_frames = intervals if crop else estimate_ocr_frames(intervals)
     ocr_seconds = mean_read_frame * ocr_frames
     return {
         "intervals": intervals,
@@ -737,7 +744,7 @@ def _calibrate_full_scan(
         "group_seconds": round(group_seconds, 3),
         "read_frame_seconds": round(mean_read_frame, 6),
         "ocr_frames_estimated": ocr_frames,
-        "ocr_frame_ratio_assumed": SLIDE_OCR_FRAME_RATIO,
+        "ocr_frame_ratio_assumed": ratio,
         "ocr_seconds": round(ocr_seconds, 3),
         "estimated_total_seconds": round(download_seconds + extract_seconds + group_seconds + ocr_seconds, 3),
     }
@@ -963,8 +970,10 @@ def _memory_half(path: Path):
 
 def _read_frame(
     scan: Scan, ffmpeg: str, ocr, mode: str, crop: str, frame: Frame,
+    *, frame_deadline: float | None = None,
 ) -> list[tuple[Line, bool]]:
-    frame_deadline = time.monotonic() + SLIDE_FRAME_TIMEOUT_SECONDS
+    if frame_deadline is None:
+        frame_deadline = time.monotonic() + SLIDE_FRAME_TIMEOUT_SECONDS
 
     def transform(source: Path, name: str, filters: str) -> Path:
         path = frame.path.with_name(f"{frame.path.stem}-{name}.png")
@@ -975,9 +984,12 @@ def _read_frame(
         ], f"FFmpeg {name} transform", frame_deadline=frame_deadline)
         return path
 
-    original = transform(frame.path, "original", crop) if crop else frame.path
+    original = frame.path
     passes = []
     try:
+        if crop:
+            cropped_path = frame.path.with_name(f"{frame.path.stem}-original.png")
+            original = transform(frame.path, "original", crop)
         for size in (1, 2):
             if size == 1:
                 image = original.read_bytes()
@@ -1000,8 +1012,8 @@ def _read_frame(
                     lines.append(Line(text, left, top, right - left, bottom - top, float(score) * 100))
             passes.append(lines)
     finally:
-        if original != frame.path:
-            original.unlink(missing_ok=True)
+        if crop:
+            cropped_path.unlink(missing_ok=True)
     return _agree(passes, nameplate=mode == "nameplate")
 
 
@@ -1225,14 +1237,17 @@ def extract(
                 ocr_frames = frames
 
             with measure_stage("ocr"):
-                ocr = None
+                ocr = scan.recognize(_rapidocr, mode)
                 results, read_times = [], []
                 for frame in ocr_frames:
-                    if ocr is None:
-                        ocr = scan.recognize(_rapidocr, mode)
-                    started = time.monotonic()
                     try:
-                        results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
+                        started = time.monotonic()
+                        frame_deadline = started + SLIDE_FRAME_TIMEOUT_SECONDS
+                        if ocr is None:
+                            ocr = scan.recognize(_rapidocr, mode, frame_deadline=frame_deadline)
+                        results.append(_read_frame(
+                            scan, ffmpeg, ocr, mode, crop, frame, frame_deadline=frame_deadline,
+                        ))
                     except FrameTimeout as exc:
                         ocr = None
                         if mode != "slides":

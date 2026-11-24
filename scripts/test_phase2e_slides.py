@@ -167,7 +167,7 @@ class SlideGroupingTests(unittest.TestCase):
                 image_frames.append(screen_ocr.Frame(path, index * 8))
             return image_frames
 
-        def read_frame(scan, ffmpeg, ocr, mode, crop, frame):
+        def read_frame(scan, ffmpeg, ocr, mode, crop, frame, *, frame_deadline):
             group = image_frames.index(frame) // 2
             lines = [recognized(f"Page detail {group + 1}", 300)]
             if group < 2:
