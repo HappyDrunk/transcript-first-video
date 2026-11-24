@@ -17,6 +17,7 @@ import zlib
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import Future
+from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from itertools import groupby
@@ -40,6 +41,10 @@ SLIDE_DYNAMIC_TILE_RATIO = 0.50
 SLIDE_DYNAMIC_MIN_PAIRS = 10
 SLIDE_DYNAMIC_MAX_MASKED_TILES = 4
 SLIDE_MAX_GROUP_FRAMES = 8
+SLIDE_FRAME_TIMEOUT_SECONDS = 30
+SLIDE_FRAME_TIMEOUT_MAX_CONSECUTIVE = 3
+SLIDE_FRAME_TIMEOUT_MAX_RATIO = 0.10
+SLIDE_FRAME_TIMEOUT_MIN_SKIPPED = 3
 SLIDE_COMMON_RATIO = 0.5
 NAMEPLATE_INTERVAL = 2
 NAMEPLATE_SECONDS = 180
@@ -94,6 +99,10 @@ class ScreenError(Exception):
 
 
 class ScreenTimeout(ScreenError):
+    pass
+
+
+class FrameTimeout(ScreenTimeout):
     pass
 
 
@@ -158,11 +167,18 @@ def estimate_ocr_frames(intervals: int) -> int:
 class Scan:
     def __init__(self, mode: str, duration: float | None, *, budget: float | None = None):
         self.started = time.monotonic()
+        self.started_wall = time.time()
         full_budget = NAMEPLATE_TIMEOUT if mode == "nameplate" else slide_full_budget(duration)
         self.budget = full_budget if budget is None else budget
 
+    def wall_elapsed(self) -> float:
+        return max(0.0, time.time() - self.started_wall)
+
+    def elapsed(self) -> float:
+        return max(time.monotonic() - self.started, self.wall_elapsed())
+
     def remaining(self) -> float:
-        left = self.budget - (time.monotonic() - self.started)
+        left = self.budget - self.elapsed()
         if left <= 0:
             raise ScreenTimeout("screen OCR timed out")
         return left
@@ -211,9 +227,17 @@ class Scan:
     def recognize(self, operation, *args):
         # Native inference can outlive its deadline. Keep it off the caller
         # thread and use bytes so it cannot race temporary-file cleanup.
-        deadline = time.monotonic() + min(30, self.remaining())
+        left = self.remaining()
+        frame_limit = min(SLIDE_FRAME_TIMEOUT_SECONDS, left)
+        deadline = time.monotonic() + frame_limit
+
+        def timeout_error() -> ScreenTimeout:
+            if self.budget - self.elapsed() <= 0 or left <= SLIDE_FRAME_TIMEOUT_SECONDS:
+                return ScreenTimeout("screen OCR timed out")
+            return FrameTimeout("RapidOCR timed out")
+
         if not _OCR_SLOTS.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise ScreenTimeout("RapidOCR timed out")
+            raise timeout_error()
         future = Future()
 
         def run():
@@ -222,6 +246,8 @@ class Scan:
             except Exception as exc:
                 future.set_exception(exc)
             finally:
+                # Timed-out native workers hold their slots until completion.
+                # A wedged engine can therefore trip the consecutive-frame breaker.
                 _OCR_SLOTS.release()
 
         try:
@@ -232,7 +258,7 @@ class Scan:
         try:
             result = future.result(timeout=max(0, deadline - time.monotonic()))
         except TimeoutError as exc:
-            raise ScreenTimeout("RapidOCR timed out") from exc
+            raise timeout_error() from exc
         except Exception as exc:
             if isinstance(exc, ModuleNotFoundError):
                 raise ScreenDependencyError(str(exc)) from exc
@@ -1132,6 +1158,23 @@ def extract(
     scan = Scan(mode, duration)
     versions: dict[str, str] = {}
     status: dict = {"mode": mode, "versions": versions}
+    consecutive_timeouts = 0
+    skipped_timestamps: list[float] = []
+    stage_seconds: dict[str, float] = {}
+    ocr_frames = []
+    frames_capped = 0
+
+    @contextmanager
+    def measure_stage(stage: str):
+        started = time.perf_counter()
+        started_wall = time.time()
+        try:
+            yield
+        finally:
+            stage_seconds[stage] = round(max(
+                time.perf_counter() - started, time.time() - started_wall, 0.0,
+            ), 3)
+
     try:
         ffmpeg = scan.probe(versions)
         crop = _crop(mode)
@@ -1139,41 +1182,62 @@ def extract(
             raise ScreenError("yt-dlp missing")
         with tempfile.TemporaryDirectory(prefix="ocr-", dir=staged) as temp:
             work = Path(temp)
-            video = _download(scan, [*download_command, *download_options()], source, work)
-            frames = _frames(scan, ffmpeg, video, work, mode)
-            video.unlink()
-            groups = _group_frames(scan, ffmpeg, frames) if mode == "slides" else None
-            ocr_frames = frames
-            if groups is not None:
-                frames_capped = 0
-                if len(groups) > 1 or (groups and len(groups[0]) > SLIDE_MAX_GROUP_FRAMES):
-                    groups, frames_capped = _select_representative_frames(scan, ffmpeg, groups)
-                ocr_frames = [frame for group in groups for frame in group]
-                if len(groups) == 1 and len(frames) >= 3 and len(ocr_frames) < 3:
-                    groups[0].insert(1, frames[len(frames) // 2])
-                    ocr_frames = groups[0]
-                status.update(frames_extracted=len(frames), frames_ocred=len(ocr_frames),
-                              frames_capped=frames_capped)
-            ocr = scan.recognize(_rapidocr, mode)
-            results, read_times = [], []
-            for frame in ocr_frames:
-                started = time.monotonic()
-                results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
-                read_times.append(time.monotonic() - started)
-                if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
-                    remaining_frames = len(ocr_frames) - len(read_times)
-                    if remaining_frames > 0:
-                        mean_read = sum(read_times) / len(read_times)
-                        remaining_needed = mean_read * remaining_frames
-                        left = scan.remaining()
-                        if remaining_needed > left:
-                            status["overrun_aborted"] = True
-                            status["estimated_remaining_seconds"] = round(remaining_needed, 3)
-                            status["remaining_budget_seconds"] = round(left, 3)
-                            raise ScreenTimeout(
-                                f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
-                                f"exceeds remaining budget ({left:.1f}s)."
-                            )
+            with measure_stage("download"):
+                video = _download(scan, [*download_command, *download_options()], source, work)
+            with measure_stage("extract"):
+                frames = _frames(scan, ffmpeg, video, work, mode)
+                status["frames_extracted"] = len(frames)
+                video.unlink()
+            groups = None
+            if mode == "slides":
+                with measure_stage("group"):
+                    groups = _group_frames(scan, ffmpeg, frames)
+                    if len(groups) > 1 or (groups and len(groups[0]) > SLIDE_MAX_GROUP_FRAMES):
+                        groups, frames_capped = _select_representative_frames(scan, ffmpeg, groups)
+                    ocr_frames = [frame for group in groups for frame in group]
+                    if len(groups) == 1 and len(frames) >= 3 and len(ocr_frames) < 3:
+                        groups[0].insert(1, frames[len(frames) // 2])
+                        ocr_frames = groups[0]
+            else:
+                ocr_frames = frames
+
+            with measure_stage("ocr"):
+                ocr = scan.recognize(_rapidocr, mode)
+                results, read_times = [], []
+                for frame in ocr_frames:
+                    started = time.monotonic()
+                    try:
+                        results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
+                    except FrameTimeout as exc:
+                        if mode != "slides":
+                            raise
+                        scan.remaining()
+                        consecutive_timeouts += 1
+                        skipped_timestamps.append(round(frame.seconds, 3))
+                        results.append([])
+                        skipped = len(skipped_timestamps)
+                        if consecutive_timeouts >= SLIDE_FRAME_TIMEOUT_MAX_CONSECUTIVE or (
+                            skipped >= SLIDE_FRAME_TIMEOUT_MIN_SKIPPED
+                            and skipped / len(ocr_frames) > SLIDE_FRAME_TIMEOUT_MAX_RATIO
+                        ):
+                            raise ScreenTimeout("Too many slide frames timed out") from exc
+                        continue
+                    consecutive_timeouts = 0
+                    read_times.append(time.monotonic() - started)
+                    if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
+                        remaining_frames = len(ocr_frames) - len(results)
+                        if remaining_frames > 0:
+                            mean_read = sum(read_times) / len(read_times)
+                            remaining_needed = mean_read * remaining_frames
+                            left = scan.remaining()
+                            if remaining_needed > left:
+                                status["overrun_aborted"] = True
+                                status["estimated_remaining_seconds"] = round(remaining_needed, 3)
+                                status["remaining_budget_seconds"] = round(left, 3)
+                                raise ScreenTimeout(
+                                    f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
+                                    f"exceeds remaining budget ({left:.1f}s)."
+                                )
             references = _write_evidence(
                 staged, ocr_frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
             )
@@ -1186,5 +1250,9 @@ def extract(
     except (OSError, ScreenError) as exc:
         status.update(state="fallback", reason=str(exc), failure=failure_result(exc))
     status.update(elapsed_seconds=round(time.monotonic() - scan.started, 3),
-                  timeout_seconds=scan.budget)
+                  wall_elapsed_seconds=round(scan.wall_elapsed(), 3),
+                  timeout_seconds=scan.budget, stage_seconds=stage_seconds,
+                  frames_ocred=len(ocr_frames) - len(skipped_timestamps),
+                  frames_skipped_timeout=len(skipped_timestamps),
+                  skipped_timestamps=skipped_timestamps, frames_capped=frames_capped)
     return status

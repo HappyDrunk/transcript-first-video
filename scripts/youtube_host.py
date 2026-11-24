@@ -1277,7 +1277,12 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             )
         if result.get("state") == "ready":
             return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
-        screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
+        observability = (
+            "versions", "elapsed_seconds", "wall_elapsed_seconds", "timeout_seconds",
+            "stage_seconds", "frames_extracted", "frames_ocred", "frames_skipped_timeout",
+            "frames_capped", "skipped_timestamps",
+        )
+        screen.update({key: result[key] for key in observability if key in result})
         fallback = _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
         if result.get("overrun_aborted"):
             rem_est = result.get("estimated_remaining_seconds")

@@ -33,6 +33,8 @@ jobs:
         run: python3 scripts/test_phase6_render_contract.py
       - name: Phase 6 validator and coverage upgrades
         run: python3 scripts/test_phase6_validator.py
+      - name: Phase 6B long-video OCR speedup and fault tolerance
+        run: python3 scripts/test_phase6b_ocr.py
       - name: Read-only speech quote extraction
         run: python3 scripts/test_extract_quote.py
       - name: Resumable stop and C04c review

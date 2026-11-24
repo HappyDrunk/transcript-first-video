@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import screen_ocr as ocr
 import youtube_host
 
@@ -176,6 +178,7 @@ class RepresentativeFramesTest(unittest.TestCase):
             video = staged / "video"
             video.touch()
             scan = Mock(started=0, budget=100)
+            scan.wall_elapsed.return_value = 0.0
             scan.remaining.return_value = 2.5
             pixels = thumbnail()
             with patch.object(ocr, "Scan", return_value=scan), \
@@ -196,4 +199,122 @@ class RepresentativeFramesTest(unittest.TestCase):
                 "[00:00][幻灯片 1] f0.png", "[00:00][画面] f0", "[00:16][画面] f2",
                 "[00:24][幻灯片 2] f3.png", "[00:24][画面] f3", "[00:40][画面] f5",
             ])
+
+
+class FrameTimeoutTest(unittest.TestCase):
+    def run_scan(self, skipped, *, count=10, mode="slides", through_host=False,
+                 error=ocr.FrameTimeout):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+            staged = Path(tmp)
+            frames = [ocr.Frame(staged / f"f{i}.png", i + 0.12345) for i in range(count)]
+            for frame in frames:
+                frame.path.touch()
+            video = staged / "video"
+            video.touch()
+            groups = [frames[i:i + 5] for i in range(0, count, 5)]
+
+            def read_frame(*args):
+                frame = args[-1]
+                if frames.index(frame) in skipped:
+                    raise error("test deadline expired")
+                return [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
+
+            with patch.object(ocr.Scan, "probe", return_value="ffmpeg"), \
+                 patch.object(ocr.Scan, "recognize"), \
+                 patch.object(ocr, "_download", return_value=video), \
+                 patch.object(ocr, "_frames", return_value=frames), \
+                 patch.object(ocr, "_group_frames", return_value=groups), \
+                 patch.object(ocr, "_select_representative_frames", return_value=(groups, 0)), \
+                 patch.object(ocr, "_read_frame", side_effect=read_frame) as read:
+                if through_host:
+                    status = youtube_host._screen_result(staged, mode, "source", ["yt-dlp"], 60)
+                else:
+                    status = ocr.extract(staged, mode, "source", ["yt-dlp"], 60, list)
+            return status, read.call_count
+
+    def assert_observability(self, status, count, skipped):
+        self.assertEqual(set(status["stage_seconds"]), {"download", "extract", "group", "ocr"})
+        self.assertTrue(all(seconds >= 0 for seconds in status["stage_seconds"].values()))
+        self.assertGreaterEqual(status["wall_elapsed_seconds"], 0)
+        self.assertEqual(status["frames_extracted"], count)
+        self.assertEqual(status["frames_ocred"], count - len(skipped))
+        self.assertEqual(status["frames_skipped_timeout"], len(skipped))
+        self.assertEqual(status["skipped_timestamps"], [i + 0.123 for i in skipped])
+        self.assertEqual(status["frames_capped"], 0)
+
+    def test_single_timeout_skips_even_the_first_frame_of_a_group(self):
+        for skipped in ([0], [6]):
+            with self.subTest(skipped=skipped):
+                status, attempts = self.run_scan(skipped)
+                self.assertEqual(status["state"], "ready", status)
+                self.assertEqual(attempts, 10)
+                self.assert_observability(status, 10, skipped)
+
+    def test_consecutive_breaker_preserves_observability_in_host_fallback(self):
+        for through_host in (False, True):
+            with self.subTest(through_host=through_host):
+                # Three skips are exactly 10%, so only the consecutive limit trips.
+                skipped = [0, 1, 2]
+                status, attempts = self.run_scan(skipped, count=30, through_host=through_host)
+                self.assertEqual(status["state"], "fallback")
+                self.assertEqual(status["result" if through_host else "failure"], "timeout")
+                self.assertEqual(attempts, 3)
+                self.assert_observability(status, 30, skipped)
+
+    def test_ratio_breaker_requires_three_nonconsecutive_timeouts(self):
+        for skipped, state, attempts in (([0, 2], "ready", 10), ([0, 2, 4], "fallback", 5)):
+            with self.subTest(skipped=skipped):
+                status, actual_attempts = self.run_scan(skipped)
+                self.assertEqual(status["state"], state, status)
+                if state == "fallback":
+                    self.assertEqual(status["failure"], "timeout")
+                self.assertEqual(actual_attempts, attempts)
+                self.assert_observability(status, 10, skipped)
+
+    def test_total_budget_and_nameplate_timeouts_are_not_skipped(self):
+        for mode, error in (("slides", ocr.ScreenTimeout), ("nameplate", ocr.FrameTimeout)):
+            with self.subTest(mode=mode):
+                status, attempts = self.run_scan([0], mode=mode, error=error)
+                self.assertEqual(status["state"], "fallback")
+                self.assertEqual(status["failure"], "timeout")
+                self.assertEqual(attempts, 1)
+                self.assertEqual(status["frames_skipped_timeout"], 0)
+                self.assertEqual(status["skipped_timestamps"], [])
+
+    def test_worker_deadlines_distinguish_frame_cap_and_scan_budget(self):
+        for slot_available in (False, True):
+            for budget, wall_jump, expected in (
+                (30, 0, ocr.ScreenTimeout),
+                (31, 0, ocr.FrameTimeout),
+                (31, 1800, ocr.ScreenTimeout),
+            ):
+                with self.subTest(slot_available=slot_available, budget=budget, wall_jump=wall_jump):
+                    with patch.object(ocr.time, "monotonic", return_value=0), \
+                         patch.object(ocr.time, "time", side_effect=[0, 0, wall_jump]), \
+                         patch.object(ocr, "_OCR_SLOTS") as slots, \
+                         patch.object(ocr, "Thread"), patch.object(ocr, "Future") as future:
+                        slots.acquire.return_value = slot_available
+                        future.return_value.result.side_effect = TimeoutError
+                        scan = ocr.Scan("slides", None, budget=budget)
+                        with self.assertRaises(expected) as raised:
+                            scan.recognize(Mock())
+                        self.assertIs(type(raised.exception), expected)
+                        slots.acquire.assert_called_once_with(timeout=30)
+
+    def test_wall_clock_jump_aborts_or_clamps(self):
+        with patch.object(ocr.time, "monotonic", return_value=0), \
+             patch.object(ocr.time, "time", return_value=100) as wall:
+            scan = ocr.Scan("slides", None)
+            wall.return_value = 40
+            self.assertEqual(scan.wall_elapsed(), 0)
+            self.assertEqual(scan.remaining(), scan.budget)
+            wall.return_value = 1900
+            self.assertEqual(scan.wall_elapsed(), 1800)
+            with self.assertRaises(ocr.ScreenTimeout) as raised:
+                scan.recognize(Mock())
+            self.assertIs(type(raised.exception), ocr.ScreenTimeout)
+
+
+if __name__ == "__main__":
+    unittest.main()
 
