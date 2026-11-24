@@ -220,6 +220,17 @@ def _alias_pattern(alias: str) -> str:
     return pattern
 
 
+def _in_unclosed_paren(text: str, pos: int) -> bool:
+    line_start = text.rfind("\n", 0, pos) + 1
+    depth = 0
+    for ch in text[line_start:pos]:
+        if ch in "（(":
+            depth += 1
+        elif ch in "）)" and depth > 0:
+            depth -= 1
+    return depth > 0
+
+
 def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:
     aliases = sorted({part.strip() for part in rules._TERM_ALIAS_SEPARATOR.split(label) if part.strip()},
                      key=lambda alias: (-len(alias), alias))
@@ -229,8 +240,10 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
     for alias in aliases:
         flags = re.IGNORECASE | re.ASCII if alias.isascii() else 0
         for match in re.finditer(_alias_pattern(alias), block_text, flags):
-            any_occurrence = True
             start, end = match.start(), match.end()
+            if _in_unclosed_paren(block_text, start):
+                continue
+            any_occurrence = True
             if not any(s < end and start < e for s, e in protected_all):
                 matches.append((start, -len(match[0]), end))
     if matches:

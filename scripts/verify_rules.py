@@ -2656,7 +2656,8 @@ def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
                 linked_vers = _version_groups("\n".join(q.text for q in linked))
                 for key, minors in unit_vers.items():
                     q_minors = linked_vers.get(key, {}).keys()
-                    if q_minors and any(m not in q_minors for m in minors):
+                    uncovered_unit = minors.keys() - covered.get(key, {}).keys()
+                    if q_minors and any(m not in q_minors for m in uncovered_unit):
                         contradicted_keys.add(key)
 
     for key, minors in _version_groups(prose).items():
@@ -2669,7 +2670,7 @@ def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
             )
 
 
-_PERCENTAGE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[%％]")
+_PERCENTAGE = re.compile(r"(?<![\d.])([+-]?\d+(?:\.\d+)?)\s*[%％]")
 _PERCENT_RANGE = re.compile(r"\s*[–\-~～至到]\s*")
 _SCREEN_ASSIGNMENT = re.compile(
     r"^[ \t]*(?:\[\d{2}:\d{2}(?::\d{2})?\]\[画面\??\]\s*)?([A-Za-z][A-Za-z0-9_]{0,15})\s*=",
@@ -2685,6 +2686,7 @@ def _reader_r2_warnings(ctx: RuleContext):
         if any(
             ("." in left[1]) != ("." in right[1])
             and not _PERCENT_RANGE.fullmatch(clean[left.end():right.start()])
+            and not (right[1].startswith("-") and clean[left.end():right.start()].strip() == "")
             and 0 < abs(float(left[1]) - float(right[1])) <= 1.0
             for index, left in enumerate(percentages) for right in percentages[index + 1:]
         ):

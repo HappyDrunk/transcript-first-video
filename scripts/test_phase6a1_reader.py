@@ -707,9 +707,24 @@ class ReviewRound1RegressionTests(ReaderFixture):
         self.assertIn("缓存（注：临时保存数据）", lit_reading)
         self.assertIn("（存疑：缓存）", lit_reading)
 
-        # 2. Full-width range `78%～78.3%` must NOT trigger 约数并列 WARN
+        # 2. Full-width range `78%～78.3%` and opposite-sign `-78%` vs `+78.3%` must NOT trigger 约数并列 WARN
         _, res_fw = self.verify("先核对缓存并运行脚本，前馈层比例在 78%～78.3% 之间。 ⏱ 00:30", BASE_QUOTE + " 78% 78.3%")
         self.assert_soft_warning(res_fw, r"约数并列", False)
+        _, res_sign = self.verify("先核对缓存并运行脚本，降幅 -78%，增幅 +78.3%。 ⏱ 00:30", BASE_QUOTE + " -78% +78.3%")
+        self.assert_soft_warning(res_sign, r"约数并列", False)
+
+        # 2b. Multiline literal `（存疑：缓存\n继续）` + `短释` must NOT break invariant #7
+        ml_q = BASE_QUOTE + " 这里写作（存疑：缓存 继续）。"
+        ml_m = (
+            "先核对缓存并运行脚本，这里写作（存疑：缓存\n继续）。 ⏱ 00:30\n\n"
+            "> [!note] 术语：缓存\n"
+            "> 短释：临时保存数据\n"
+            "> 加速重复读取的临时存储。"
+        )
+        ml_note, ml_res = self.verify(ml_m, ml_q)
+        self.assertTrue(ml_res["allowed"], ml_res["reasons"])
+        ml_reading = render_reading_note.render_note(ml_note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        self.assertIn("缓存（注：临时保存数据）", ml_reading)
 
         # 3. Literal inline code `` `（注：` `` must NOT fail manual-note check
         _, res_code_note = self.verify("先核对缓存并运行脚本，不要手写 `（注：` 标记。 ⏱ 00:30", BASE_QUOTE)
@@ -824,7 +839,7 @@ class ReviewRound1RegressionTests(ReaderFixture):
             st3 = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(st3["repair_rounds"], 2, st3)
 
-            # Non-canonical --note PATH submission must NEVER evade repair_rounds accounting
+            # Non-canonical --note PATH submission counts once, then repeating the EXACT same --note PATH is idempotent
             alt = Path(tmp) / "alt_bad.md"
             alt.write_text("bad note via --note path\n", encoding="utf-8")
             p4 = subprocess.run(
@@ -834,6 +849,26 @@ class ReviewRound1RegressionTests(ReaderFixture):
             self.assertNotEqual(p4.returncode, 0)
             st4 = json.loads((job / "status.json").read_text(encoding="utf-8"))
             self.assertEqual(st4["repair_rounds"], 3, st4)
+
+            # Alternating A -> B -> A must NEVER evade repair_rounds (fresh job)
+            job2 = Path(tmp) / "job2"
+            job2.mkdir()
+            (job2 / "transcript.txt").write_text("[00:30] " + BASE_QUOTE + "\n", encoding="utf-8")
+            (job2 / "selection.md").write_text("00:00–01:00 | 核心步骤 | 留 | 主干\n", encoding="utf-8")
+            (job2 / "status.json").write_text((job / "status.json").read_text(encoding="utf-8"), encoding="utf-8")
+            st_init = json.loads((job2 / "status.json").read_text(encoding="utf-8"))
+            for k in ("repair_rounds", "edit_rounds", "note_digest", "verifier", "coverage", "failure_lines", "last_failed_by_gate", "issues", "reason"):
+                st_init.pop(k, None)
+            st_init.update(status="transcript_ready", next_step="write-note", finished=False, locked=False)
+            (job2 / "status.json").write_text(json.dumps(st_init, ensure_ascii=False), encoding="utf-8")
+            for idx, txt in enumerate(("bad A\n", "bad B\n", "bad A\n"), 1):
+                (job2 / "note.md").write_text(txt, encoding="utf-8")
+                subprocess.run(
+                    [sys.executable, str(SCRIPTS / "verify_note.py"), "--job", str(job2), "--json"],
+                    capture_output=True, text=True, encoding="utf-8",
+                )
+                st_ab = json.loads((job2 / "status.json").read_text(encoding="utf-8"))
+                self.assertEqual(st_ab["repair_rounds"], idx, (idx, st_ab))
 
     def test_r2_doc_size_caps_and_required_rules(self) -> None:
         root = SCRIPTS.parent
