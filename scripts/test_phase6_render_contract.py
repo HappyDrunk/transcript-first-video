@@ -322,14 +322,15 @@ class Phase6RendererContractTests(unittest.TestCase):
             + "## 这场在谈什么、谁\n\n合成园艺课堂说明索引和配置流程。\n\n"
             + "## 主线论点\n\n"
             + "- 保留索引。 ⏱ 00:20\n"
-            + "- 更新索引，参考 [说明](https://example.test/?mode=full) 与 `config_mode`。 ⏱ 00:20 ⏱ 00:25\n\n"
+            + "- 更新索引并核对本地完整配置说明，参考 [说明](https://example.test/a(b)?mode=full) 与 `config_mode`。 ⏱ 00:20 ⏱ 00:25\n\n"
             + "> [!warning] 原文出入\n"
             + "> 存疑｜「索引」｜第二项索引位置待核实\n\n"
             + "甲采用乙方案。 ⏱ 01:00\n\n"
             + "> [!warning] 原文出入\n"
-            + "> 存疑｜「甲」｜乙仍待确认\n"
+            + "> 存疑｜「甲」｜乙仍待确认\n\n"
+            + "> [!warning] 原文出入\n"
             + "> 存疑｜「乙」｜出处不清\n\n"
-            + "这一步（存疑：旧说法。仍待确认）照常执行。 ⏱ 02:00\n\n"
+            + "这一步（存疑：旧说法（含内层。注）仍待确认）照常执行。 ⏱ 02:00\n\n"
             + "> [!warning] 原文出入\n"
             + "> 存疑｜「这一步」｜新说明\n\n"
             + "## 原文依据\n"
@@ -361,13 +362,20 @@ class Phase6RendererContractTests(unittest.TestCase):
                 self.assertTrue(ver["allowed"], ver["reasons"])
                 covered = cov.check_job(job)
                 self.assertTrue(covered["ok"], covered["reasons"])
+                published = Path(tmp) / "published-screen.md"
+                render_reading_note.render_job(job, published, keep_frontmatter=False)
+                published_text = published.read_text(encoding="utf-8")
+                self.assertIn(
+                    "- 更新索引并核对本地完整配置说明，参考 [说明](https://example.test/a(b)?mode=full) 与 `config_mode`（存疑：第二项索引位置待核实）。",
+                    published_text,
+                )
             for inline_terms in (False, True):
                 reading = render_reading_note.render_note(
                     note.encode("utf-8"), keep_frontmatter=False, inline_terms=inline_terms
                 ).decode("utf-8")
-                self.assertIn("- 更新索引，参考 [说明](https://example.test/?mode=full) 与 `config_mode`（存疑：第二项索引位置待核实）。", reading)
+                self.assertIn("- 更新索引并核对本地完整配置说明，参考 [说明](https://example.test/a(b)?mode=full) 与 `config_mode`（存疑：第二项索引位置待核实）。", reading)
                 self.assertIn("甲采用乙方案（存疑：乙仍待确认）（存疑：出处不清）。", reading)
-                self.assertIn("这一步（存疑：旧说法。仍待确认）照常执行（存疑：新说明）。", reading)
+                self.assertIn("这一步（存疑：旧说法（含内层。注）仍待确认）照常执行（存疑：新说明）。", reading)
                 self.assertNotIn("⏱", reading)
                 self.assertNotIn("[!", reading)
 

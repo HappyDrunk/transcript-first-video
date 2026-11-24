@@ -688,7 +688,7 @@ def _discrepancy_type1_laundering_issue(
             len(orig_nums) == 1
             and len(orig_nums[0]) == 1
             and not corr_nums
-            and bool(re.search(rf"(?<![A-Za-z0-9]){orig_nums[0][0]}(?![A-Za-z0-9])", original))
+            and bool(re.search(rf"(?<![A-Za-z0-9_.\-]){orig_nums[0][0]}(?![A-Za-z0-9_.\-])", original))
             and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0][0])
         )
         same_digits_backed = (
@@ -740,11 +740,44 @@ def _term_sentences(text: str) -> list[str]:
     return parts
 
 
+def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | None:
+    depth = 0
+    pos = start
+    length = len(text)
+    while pos < length:
+        ch = text[pos]
+        if ch == "\n":
+            return None
+        if ch == "\\":
+            pos += 2
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
 def _overlaps_forbidden_inline_span(text: str, start: int, end: int) -> bool:
-    for pattern in (_INLINE_CODE, _MARKDOWN_LINK_SPAN):
-        for match in pattern.finditer(text):
-            if start < match.end() and end > match.start():
-                return True
+    for match in _INLINE_CODE.finditer(text):
+        if start < match.end() and end > match.start():
+            return True
+    pos = 0
+    length = len(text)
+    while pos < length:
+        if text[pos] == "[":
+            label_end = _scan_balanced(text, pos, "[", "]")
+            if label_end is not None and label_end < length and text[label_end] == "(":
+                dest_end = _scan_balanced(text, label_end, "(", ")")
+                if dest_end is not None:
+                    if start < dest_end and end > pos:
+                        return True
+                    pos = dest_end
+                    continue
+        pos += 1
     return False
 
 
@@ -807,13 +840,12 @@ def _spoken_code_readback_mismatch(spoken_raw: str, code_part: str) -> bool:
     if idents:
         for ident in idents:
             ident_tokens = _code_to_spoken_tokens(ident)
-            if ident_tokens and len(ident_tokens & spoken_tokens) / len(ident_tokens) < 0.5:
+            if ident_tokens and not (ident_tokens <= spoken_tokens):
                 return True
     code_tokens = _code_to_spoken_tokens(code_part)
     if not code_tokens:
         return False
-    overlap = len(code_tokens & spoken_tokens) / len(code_tokens)
-    return overlap < 0.7
+    return not (code_tokens <= spoken_tokens)
 
 
 def caption_corrections(
@@ -1637,15 +1669,18 @@ def _code_ident_grounded(
     ident: str,
     sources: list[str],
     spoken_code_pairs: list[tuple[str, str]],
+    *,
+    slice_excerpts: list[str] | None = None,
 ) -> bool:
+    spoken_scope = sources if slice_excerpts is None else slice_excerpts
     for spoken_raw, code_part in spoken_code_pairs:
         if not term_occurs(ident, code_part):
             continue
-        if not any(term_occurs(spoken_raw, src) for src in sources):
+        if not any(term_occurs(spoken_raw, src) for src in spoken_scope):
             continue
         ident_tokens = _code_to_spoken_tokens(ident)
         spoken_tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", spoken_raw) if len(tok) >= 2}
-        if not ident_tokens or (len(ident_tokens & spoken_tokens) / len(ident_tokens) >= 0.5):
+        if not ident_tokens or (ident_tokens <= spoken_tokens):
             return True
     if any(term_occurs(ident, src) for src in sources):
         return True
@@ -2122,7 +2157,12 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                                 missing_names.difference_update(expanded.split())
                 missing_code = {
                     ident for ident in _extract_code_identifiers(prose)
-                    if not _code_ident_grounded(ident, source, spoken_code_pairs)
+                    if not _code_ident_grounded(
+                        ident,
+                        source,
+                        spoken_code_pairs,
+                        slice_excerpts=excerpts if unit_times else [],
+                    )
                 }
                 supported_originals = set()
                 original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]

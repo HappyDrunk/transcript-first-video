@@ -508,7 +508,7 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
 
     def test_review_round1_validator_and_s01_regressions(self) -> None:
         quotes = [
-            ("00:20", "We run load config on version v1.10 and v10 during startup checks cleanly."),
+            ("00:20", "We run load local config on version v1.10, v10, and v_10 during startup checks cleanly."),
             ("01:00", "The second stage writes metrics to local disk after validating the active schema."),
             ("02:00", "The third stage closes connections and prints a clean exit summary to stdout."),
         ]
@@ -516,11 +516,12 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            # BLOCKING-5: v1.10 -> v1.1 and v10 -> Ten must fail under both 原文出入 and legacy 字幕更正
+            # BLOCKING-5 & R2-BLOCKING-4: v1.10 -> v1.1, v10 -> Ten, and v_10 -> vTen must all fail C04d
             for header, orig, corr in (
                 ("> [!warning] 原文出入", "v1.10", "v1.1"),
                 ("> [!warning] 字幕更正", "v1.10", "v1.1"),
                 ("> [!warning] 原文出入", "v10", "Ten"),
+                ("> [!warning] 原文出入", "v_10", "vTen"),
             ):
                 with self.subTest(header=header, orig=orig, corr=corr):
                     bad = _build_note(
@@ -534,13 +535,13 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
                     ver = verify_note.verify(job / "transcript.txt", bad, expected_lang="en", job=True)
                     self.assertIn("C04d", failed_ids(ver), ver["reasons"])
 
-            # BLOCKING-7: Type 2 cannot smuggle wipe_cache() or ground an unrelated slice
+            # BLOCKING-7 & R2-BLOCKING-1: Type 2 cannot smuggle partial tokens (secret) or ground unrelated/uncited slices
             smuggle = _build_note(
                 "## 主线论点\n\n"
-                "先调用 `load_config()` 与 `wipe_cache()`。 ⏱ 00:20\n\n"
+                "先调用 `load_local_config()` 与 `load_local_secret_config()`。 ⏱ 00:20\n\n"
                 "> [!warning] 原文出入\n"
-                "> 口述代码｜load config｜`load_config(); wipe_cache()`\n\n"
-                "另一片无关引文又调用 `load_config()`。 ⏱ 01:00\n\n"
+                "> 口述代码｜load local config｜`load_local_config(); load_local_secret_config()`\n\n"
+                "另一片无关引文又调用 `load_local_config()`。 ⏱ 01:00\n\n"
                 "最后关闭连接并汇总。 ⏱ 02:00",
                 quotes,
                 include_closings=False,
@@ -549,8 +550,8 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
             job_s = _write_job(root, "smuggle", smuggle, transcript)
             ver_s = verify_note.verify(job_s / "transcript.txt", smuggle, expected_lang="en", job=True)
             code_hits = [r["term"] for r in ver_s["c04c"] if r["kind"] == "code"]
-            self.assertIn("wipe_cache", code_hits, ver_s["c04c"])
-            self.assertIn("load_config", code_hits, ver_s["c04c"])  # unrelated slice 01:00!
+            self.assertIn("load_local_secret_config", code_hits, ver_s["c04c"])
+            self.assertIn("load_local_config", code_hits, ver_s["c04c"])  # unrelated slice 01:00!
             self.assertTrue(any("口述代码反向读回不一致" in w for w in ver_s["warnings"]), ver_s["warnings"])
 
             # BLOCKING-8: Unlinked short paragraph AFTER cited paragraphs MUST FAIL C04b

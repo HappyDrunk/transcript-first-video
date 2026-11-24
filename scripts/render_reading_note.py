@@ -85,9 +85,49 @@ def _is_table_block(block_lines: list[str]) -> bool:
     return len(block_lines) >= 2 and any(TABLE_SEP_RE.fullmatch(line) for line in block_lines)
 
 
+def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | None:
+    depth = 0
+    pos = start
+    length = len(text)
+    while pos < length:
+        ch = text[pos]
+        if ch == "\n":
+            return None
+        if ch == "\\":
+            pos += 2
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return pos + 1
+        pos += 1
+    return None
+
+
 def _protected_spans(text: str, *, include_parens: bool = False) -> list[tuple[int, int]]:
-    patterns = (INLINE_CODE_RE, MARKDOWN_LINK_RE, PAREN_SPAN_RE) if include_parens else (INLINE_CODE_RE, MARKDOWN_LINK_RE)
-    spans = [(m.start(), m.end()) for pat in patterns for m in pat.finditer(text)]
+    spans: list[tuple[int, int]] = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(text)]
+    # Balanced Markdown links: [label](dest with balanced (parens))
+    length = len(text)
+    pos = 0
+    while pos < length:
+        if text[pos] == "[":
+            label_end = _scan_balanced(text, pos, "[", "]")
+            if label_end is not None and label_end < length and text[label_end] == "(":
+                dest_end = _scan_balanced(text, label_end, "(", ")")
+                if dest_end is not None:
+                    spans.append((pos, dest_end))
+                    pos = dest_end
+                    continue
+        if include_parens and text[pos] in "（(":
+            close_ch = "）" if text[pos] == "（" else ")"
+            paren_end = _scan_balanced(text, pos, text[pos], close_ch)
+            if paren_end is not None:
+                spans.append((pos, paren_end))
+                pos = paren_end
+                continue
+        pos += 1
     spans.sort()
     return spans
 
@@ -219,6 +259,8 @@ def render_lines(
     last_block_start: int | None = None
     last_block_end: int | None = None
     last_block_raw: list[str] = []
+    last_block_original: str = ""
+    last_block_doubts: list[tuple[str, str]] = []
     last_block_kind: str | None = None  # "prose" or "forbidden"
 
     index = 0
@@ -257,11 +299,13 @@ def render_lines(
                     block_open = True
                     last_block_start = len(rendered)
                     last_block_raw = [raw]
+                    last_block_doubts = []
                 else:
                     last_block_raw.append(raw)
                 rendered.append(cleaned)
                 last_block_end = len(rendered)
                 block_slice = rendered[last_block_start:last_block_end]
+                last_block_original = "\n".join(block_slice)
                 last_block_kind = "forbidden" if _is_table_block(block_slice) else "prose"
             continue
 
@@ -292,24 +336,24 @@ def render_lines(
                     if last_block_kind != "prose" or last_block_start is None or last_block_end is None:
                         raise RenderError("存疑 entry must follow a non-callout paragraph or list item")
                     raw_block_text = "\n".join(last_block_raw)
-                    block_text = "\n".join(rendered[last_block_start:last_block_end])
                     for anchor, _ in doubts:
                         if raw_block_text.count(anchor) != 1:
                             raise RenderError(
                                 f"存疑 anchor {anchor!r} must occur exactly once verbatim without crossing ⏱"
                             )
-                    updated_block, generated_spans = _apply_doubt_notes(block_text, doubts)
-                    # Local invariant check: removing exact generated spans must restore block_text verbatim.
+                    last_block_doubts.extend(doubts)
+                    updated_block, generated_spans = _apply_doubt_notes(last_block_original, last_block_doubts)
+                    # Local invariant check: removing exact generated spans must restore original block verbatim.
                     reconstructed: list[str] = []
                     pos = 0
                     for s_start, s_end in generated_spans:
                         reconstructed.append(updated_block[pos:s_start])
                         pos = s_end
                     reconstructed.append(updated_block[pos:])
-                    if "".join(reconstructed) != block_text:
+                    if "".join(reconstructed) != last_block_original:
                         raise RenderError("invariant #7 failed: generated doubt spans did not restore original block")
                     rendered[last_block_start:last_block_end] = updated_block.split("\n")
-                    doubt_count += len(generated_spans)
+                    doubt_count += len(doubts)
             index = _absorb_hidden_block(rendered, lines, index)
             continue
 
