@@ -1,7 +1,9 @@
 import sys
 import tempfile
 import unittest
+from concurrent.futures import Future
 from pathlib import Path
+from threading import BoundedSemaphore, Event, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -89,7 +91,7 @@ class InMemoryFramesTest(unittest.TestCase):
         scan = Mock()
         pixels = bytes(160 * 90)
         decode = ocr._memory_thumbnail
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             frames = [ocr.Frame(Path(tmp) / f"{i}.png", i) for i in range(2)]
             frames[1].path.write_bytes(b"image-1080")
             with patch.object(ocr, "_memory_thumbnail",
@@ -100,11 +102,11 @@ class InMemoryFramesTest(unittest.TestCase):
         self.assertIn(str(frames[1].path), scan.run.call_args.args[0])
 
     def test_half_size_uses_memory_or_transforms_failed_frame(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             frame = ocr.Frame(Path(tmp) / "frame.png", 0)
             frame.path.write_bytes(b"image-1080")
             scan = Mock()
-            scan.run.side_effect = lambda args, step: Path(args[-1]).write_bytes(b"image-540")
+            scan.run.side_effect = lambda args, step, **kwargs: Path(args[-1]).write_bytes(b"image-540")
             scan.recognize.return_value = SimpleNamespace(boxes=None, txts=None, scores=None)
             ocr._read_frame(scan, "ffmpeg", "engine", "slides", "", frame)
             self.assertEqual([call.args for call in scan.recognize.call_args_list],
@@ -118,6 +120,67 @@ class InMemoryFramesTest(unittest.TestCase):
                 ocr._read_frame(scan, "ffmpeg", "engine", "slides", "", frame)
             scan.run.assert_not_called()
             self.assertIs(scan.recognize.call_args.args[1], decoded)
+
+    def test_crop_is_removed_after_ocr_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = ocr.Frame(Path(tmp) / "frame.png", 0)
+            frame.path.touch()
+            original = frame.path.with_name("frame-original.png")
+            scan = Mock()
+            scan.run.side_effect = lambda args, step, **kwargs: Path(args[-1]).touch()
+
+            def timeout(*args, **kwargs):
+                self.assertTrue(original.exists())
+                raise ocr.FrameTimeout("test deadline expired")
+
+            scan.recognize.side_effect = timeout
+            with self.assertRaises(ocr.FrameTimeout):
+                ocr._read_frame(scan, "ffmpeg", Mock(), "slides", "crop=test", frame)
+            self.assertFalse(original.exists())
+            self.assertTrue(frame.path.exists())
+
+    def test_two_passes_and_transforms_share_one_deadline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            frame = ocr.Frame(Path(tmp) / "frame.png", 0)
+            frame.path.write_bytes(b"image")
+            now = 0
+            waits = []
+            transforms = []
+
+            def transform(args, **kwargs):
+                transforms.append(kwargs["timeout"])
+                Path(args[-1]).write_bytes(b"transformed")
+                return SimpleNamespace(returncode=0)
+
+            def result(*, timeout):
+                nonlocal now
+                waits.append(timeout)
+                if len(waits) == 1:
+                    now += 20
+                    return SimpleNamespace(boxes=None, txts=None, scores=None)
+                raise TimeoutError
+
+            with patch.object(ocr.time, "monotonic", side_effect=lambda: now), \
+                 patch.object(ocr.subprocess, "run", side_effect=transform), \
+                 patch.object(ocr, "_memory_half", return_value=None), \
+                 patch.object(ocr, "_OCR_SLOTS"), patch.object(ocr, "Thread"), \
+                 patch.object(ocr, "Future") as future:
+                future.return_value.result.side_effect = result
+                with self.assertRaises(ocr.FrameTimeout):
+                    ocr._read_frame(ocr.Scan("slides", None), "ffmpeg", Mock(), "slides", "crop=test", frame)
+            self.assertEqual(waits, [30, 10])
+            self.assertEqual(transforms, [30, 10])
+
+    def test_transform_timeout_distinguishes_frame_and_scan_budget(self):
+        for budget, error in ((10, ocr.ScreenTimeout), (60, ocr.FrameTimeout)):
+            with self.subTest(budget=budget), \
+                 patch.object(ocr.time, "monotonic", return_value=0), \
+                 patch.object(ocr.time, "time", return_value=0), \
+                 patch.object(ocr.subprocess, "run", side_effect=ocr.subprocess.TimeoutExpired("ffmpeg", 10)):
+                scan = ocr.Scan("slides", None, budget=budget)
+                with self.assertRaises(error) as raised:
+                    scan.run(["ffmpeg"], "transform", frame_deadline=10)
+                self.assertIs(type(raised.exception), error)
 
 
 def thumbnail(*levels):
@@ -168,9 +231,11 @@ class RepresentativeFramesTest(unittest.TestCase):
         short = [thumbnail(), thumbnail()]
         self.assertEqual(self.select([short, [thumbnail(), None, thumbnail()]]),
                          ([[0, 1], [0, 1, 2]], 0))
+        self.assertEqual(self.select([[None] * 8, [None] * 11]),
+                         ([list(range(8)), [0, 1, 3, 4, 6, 7, 9, 10]], 3))
 
     def test_extract_aligns_overrun_and_evidence_with_selected_frames(self):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             staged = Path(tmp)
             frames = [ocr.Frame(staged / f"f{i}.png", i * 8) for i in range(6)]
             for frame in frames:
@@ -193,8 +258,9 @@ class RepresentativeFramesTest(unittest.TestCase):
                  ]):
                 status = ocr.extract(staged, "slides", "source", ["yt-dlp"], 60, list, True)
             self.assertEqual(status["state"], "ready")
-            self.assertEqual([status[key] for key in ("frames_extracted", "frames_ocred", "frames_capped")],
-                             [6, 4, 0])
+            self.assertEqual([status[key] for key in
+                              ("frames_extracted", "frames_selected", "frames_ocred", "frames_capped")],
+                             [6, 4, 4, 0])
             self.assertEqual((staged / "screen.txt").read_text(encoding="utf-8").splitlines(), [
                 "[00:00][幻灯片 1] f0.png", "[00:00][画面] f0", "[00:16][画面] f2",
                 "[00:24][幻灯片 2] f3.png", "[00:24][画面] f3", "[00:40][画面] f5",
@@ -203,15 +269,15 @@ class RepresentativeFramesTest(unittest.TestCase):
 
 class FrameTimeoutTest(unittest.TestCase):
     def run_scan(self, skipped, *, count=10, mode="slides", through_host=False,
-                 error=ocr.FrameTimeout):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp:
+                 error=ocr.FrameTimeout, group_size=5, crop="", reader=None, init=None):
+        with tempfile.TemporaryDirectory() as tmp:
             staged = Path(tmp)
             frames = [ocr.Frame(staged / f"f{i}.png", i + 0.12345) for i in range(count)]
             for frame in frames:
                 frame.path.touch()
             video = staged / "video"
             video.touch()
-            groups = [frames[i:i + 5] for i in range(0, count, 5)]
+            groups = [frames[i:i + group_size] for i in range(0, count, group_size)]
 
             def read_frame(*args):
                 frame = args[-1]
@@ -219,25 +285,31 @@ class FrameTimeoutTest(unittest.TestCase):
                     raise error("test deadline expired")
                 return [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
 
-            with patch.object(ocr.Scan, "probe", return_value="ffmpeg"), \
-                 patch.object(ocr.Scan, "recognize"), \
+            with patch.dict(ocr.os.environ, {"TFV_SLIDE_CROP": crop}), \
+                 patch.object(ocr.Scan, "probe", return_value="ffmpeg"), \
+                 patch.object(ocr, "_rapidocr", side_effect=init), \
                  patch.object(ocr, "_download", return_value=video), \
                  patch.object(ocr, "_frames", return_value=frames), \
                  patch.object(ocr, "_group_frames", return_value=groups), \
-                 patch.object(ocr, "_select_representative_frames", return_value=(groups, 0)), \
-                 patch.object(ocr, "_read_frame", side_effect=read_frame) as read:
+                 patch.object(ocr, "_select_representative_frames", return_value=(groups, 0)) as select, \
+                 patch.object(ocr, "_read_frame", side_effect=reader or read_frame) as read:
                 if through_host:
                     status = youtube_host._screen_result(staged, mode, "source", ["yt-dlp"], 60)
                 else:
                     status = ocr.extract(staged, mode, "source", ["yt-dlp"], 60, list)
-            return status, read.call_count
+            if crop or len(groups) == 1:
+                select.assert_not_called()
+            evidence = staged / "screen.txt"
+            rows = evidence.read_text(encoding="utf-8").splitlines() if evidence.exists() else []
+            return status, read.call_count, rows
 
-    def assert_observability(self, status, count, skipped):
+    def assert_observability(self, status, count, completed, skipped):
         self.assertEqual(set(status["stage_seconds"]), {"download", "extract", "group", "ocr"})
         self.assertTrue(all(seconds >= 0 for seconds in status["stage_seconds"].values()))
         self.assertGreaterEqual(status["wall_elapsed_seconds"], 0)
         self.assertEqual(status["frames_extracted"], count)
-        self.assertEqual(status["frames_ocred"], count - len(skipped))
+        self.assertEqual(status["frames_selected"], count)
+        self.assertEqual(status["frames_ocred"], completed)
         self.assertEqual(status["frames_skipped_timeout"], len(skipped))
         self.assertEqual(status["skipped_timestamps"], [i + 0.123 for i in skipped])
         self.assertEqual(status["frames_capped"], 0)
@@ -245,36 +317,133 @@ class FrameTimeoutTest(unittest.TestCase):
     def test_single_timeout_skips_even_the_first_frame_of_a_group(self):
         for skipped in ([0], [6]):
             with self.subTest(skipped=skipped):
-                status, attempts = self.run_scan(skipped)
+                status, attempts, rows = self.run_scan(skipped)
                 self.assertEqual(status["state"], "ready", status)
                 self.assertEqual(attempts, 10)
-                self.assert_observability(status, 10, skipped)
+                self.assert_observability(status, 10, 9, skipped)
+                if skipped == [0]:
+                    self.assertEqual(rows, [
+                        "[00:00][幻灯片 1] f0.png",
+                        *[f"[00:0{i}][画面] f{i}" for i in range(1, 5)],
+                        "[00:05][幻灯片 2] f5.png",
+                        *[f"[00:0{i}][画面] f{i}" for i in range(5, 10)],
+                    ])
+                    self.assertEqual(status["screenshot_lines"], {
+                        "f0.png": [1], "f5.png": [6, 7],
+                        **{f"f{i}.png": [i + 1] for i in range(1, 5)},
+                        **{f"f{i}.png": [i + 2] for i in range(6, 10)},
+                    })
 
     def test_consecutive_breaker_preserves_observability_in_host_fallback(self):
         for through_host in (False, True):
             with self.subTest(through_host=through_host):
                 # Three skips are exactly 10%, so only the consecutive limit trips.
                 skipped = [0, 1, 2]
-                status, attempts = self.run_scan(skipped, count=30, through_host=through_host)
+                status, attempts, _ = self.run_scan(skipped, count=30, through_host=through_host)
                 self.assertEqual(status["state"], "fallback")
                 self.assertEqual(status["result" if through_host else "failure"], "timeout")
                 self.assertEqual(attempts, 3)
-                self.assert_observability(status, 30, skipped)
+                self.assert_observability(status, 30, 0, skipped)
 
     def test_ratio_breaker_requires_three_nonconsecutive_timeouts(self):
         for skipped, state, attempts in (([0, 2], "ready", 10), ([0, 2, 4], "fallback", 5)):
             with self.subTest(skipped=skipped):
-                status, actual_attempts = self.run_scan(skipped)
+                status, actual_attempts, _ = self.run_scan(skipped)
                 self.assertEqual(status["state"], state, status)
                 if state == "fallback":
                     self.assertEqual(status["failure"], "timeout")
                 self.assertEqual(actual_attempts, attempts)
-                self.assert_observability(status, 10, skipped)
+                self.assert_observability(status, 10, attempts - len(skipped), skipped)
+
+    def test_all_frames_timing_out_in_short_scan_is_timeout(self):
+        for count in (1, 2):
+            with self.subTest(count=count):
+                skipped = list(range(count))
+                status, attempts, rows = self.run_scan(skipped, count=count)
+                self.assertEqual(attempts, count)
+                self.assertEqual(status["state"], "fallback")
+                self.assertEqual(status["failure"], "timeout")
+                self.assertEqual(rows, [])
+                self.assert_observability(status, count, 0, skipped)
+
+    def test_crop_bypasses_pruning_in_multi_group_scan(self):
+        status, attempts, _ = self.run_scan([], crop="0,0,0.5,0.5")
+        self.assertEqual(status["state"], "ready", status)
+        self.assertEqual(attempts, 10)
+        self.assert_observability(status, 10, 10, [])
+
+    def test_single_group_keeps_nine_frames_for_watermark_majority(self):
+        def reader(scan, ffmpeg, engine, mode, crop, frame):
+            lines = [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
+            if frame.seconds < 5:
+                lines.append((ocr.Line("Fixed watermark", 0, 100, 90, 10, 99), True))
+            return lines
+
+        status, attempts, rows = self.run_scan([], count=9, group_size=9, reader=reader)
+        self.assertEqual(status["state"], "ready", status)
+        self.assertEqual(attempts, 9)
+        self.assert_observability(status, 9, 9, [])
+        self.assertEqual(rows, [f"[00:0{i}][画面] f{i}" for i in range(9)])
+
+    def test_timed_out_engine_is_retired_and_worker_releases_its_slot(self):
+        entered, release = Event(), Event()
+        slots = BoundedSemaphore(2)
+        threads = []
+
+        def wedged_engine():
+            entered.set()
+            release.wait()
+
+        first = Mock(side_effect=wedged_engine)
+        second = Mock()
+        init = Mock(side_effect=[first, second])
+
+        class TimedOutFuture(Future):
+            def result(self, timeout=None):
+                if not entered.wait(timeout=5):
+                    raise AssertionError("OCR worker did not start")
+                raise TimeoutError
+
+        def make_thread(**kwargs):
+            thread = Thread(**kwargs)
+            threads.append(thread)
+            return thread
+
+        def reader(scan, ffmpeg, engine, mode, crop, frame):
+            if frame.seconds >= 1:
+                self.assertIs(engine, second)
+                self.assertTrue(threads[1].is_alive())
+                self.assertTrue(slots.acquire(blocking=False))
+                try:
+                    self.assertFalse(slots.acquire(blocking=False))
+                finally:
+                    slots.release()
+            scan.recognize(engine, frame_deadline=ocr.time.monotonic() + 30)
+            return [(ocr.Line(frame.path.stem, 0, 0, 10, 10, 99), True)]
+
+        with patch.object(ocr, "_OCR_SLOTS", slots), \
+             patch.object(ocr, "Thread", side_effect=make_thread), \
+             patch.object(ocr, "Future", side_effect=[Future(), TimedOutFuture(), Future(), Future()]):
+            try:
+                status, attempts, _ = self.run_scan([], count=2, reader=reader, init=init)
+            finally:
+                release.set()
+                for thread in threads:
+                    thread.join(timeout=5)
+        self.assertEqual(status["state"], "ready", status)
+        self.assertEqual(attempts, 2)
+        self.assert_observability(status, 2, 1, [0])
+        self.assertEqual(init.call_count, 2)
+        first.assert_called_once_with()
+        second.assert_called_once_with()
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        for _ in range(2):
+            self.assertTrue(slots.acquire(blocking=False))
 
     def test_total_budget_and_nameplate_timeouts_are_not_skipped(self):
         for mode, error in (("slides", ocr.ScreenTimeout), ("nameplate", ocr.FrameTimeout)):
             with self.subTest(mode=mode):
-                status, attempts = self.run_scan([0], mode=mode, error=error)
+                status, attempts, _ = self.run_scan([0], mode=mode, error=error)
                 self.assertEqual(status["state"], "fallback")
                 self.assertEqual(status["failure"], "timeout")
                 self.assertEqual(attempts, 1)

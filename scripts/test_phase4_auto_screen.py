@@ -468,7 +468,7 @@ class AutoScreenBudgetTests(unittest.TestCase):
             scan.remaining()
             return SimpleNamespace(stdout="", stderr=stderr)
 
-        def recognize(scan, operation, *args):
+        def recognize(scan, operation, *args, frame_deadline=None):
             nonlocal elapsed
             scan.remaining()
             if operation is screen_ocr._rapidocr:

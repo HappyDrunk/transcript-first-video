@@ -1279,7 +1279,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
         observability = (
             "versions", "elapsed_seconds", "wall_elapsed_seconds", "timeout_seconds",
-            "stage_seconds", "frames_extracted", "frames_ocred", "frames_skipped_timeout",
+            "stage_seconds", "frames_extracted", "frames_selected", "frames_ocred", "frames_skipped_timeout",
             "frames_capped", "skipped_timestamps",
         )
         screen.update({key: result[key] for key in observability if key in result})

@@ -183,8 +183,15 @@ class Scan:
             raise ScreenTimeout("screen OCR timed out")
         return left
 
-    def run(self, args: list[str], step: str, *, limit: int | None = None):
-        timeout = self.remaining()
+    def run(self, args: list[str], step: str, *, limit: int | None = None,
+            frame_deadline: float | None = None):
+        left = self.remaining()
+        timeout = left
+        if frame_deadline is not None:
+            frame_left = frame_deadline - time.monotonic()
+            if frame_left <= 0:
+                raise FrameTimeout("RapidOCR timed out")
+            timeout = min(timeout, frame_left)
         if limit is not None:
             timeout = min(timeout, limit)
         try:
@@ -193,6 +200,9 @@ class Scan:
                 timeout=timeout, check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            if (frame_deadline is not None and left > frame_left
+                    and self.budget - self.elapsed() > 0):
+                raise FrameTimeout("RapidOCR timed out") from exc
             raise ScreenTimeout(f"{step} timed out") from exc
         except OSError as exc:
             raise ScreenError(f"{step} unavailable: {exc.strerror or exc}") from exc
@@ -224,19 +234,25 @@ class Scan:
             versions[name] = output.splitlines()[0]
         return ffmpeg
 
-    def recognize(self, operation, *args):
+    def recognize(self, operation, *args, frame_deadline: float | None = None):
         # Native inference can outlive its deadline. Keep it off the caller
         # thread and use bytes so it cannot race temporary-file cleanup.
         left = self.remaining()
-        frame_limit = min(SLIDE_FRAME_TIMEOUT_SECONDS, left)
-        deadline = time.monotonic() + frame_limit
+        now = time.monotonic()
+        frame_left = SLIDE_FRAME_TIMEOUT_SECONDS if frame_deadline is None else frame_deadline - now
+        if frame_left <= 0:
+            raise FrameTimeout("RapidOCR timed out")
+        deadline = now + min(left, frame_left)
 
         def timeout_error() -> ScreenTimeout:
-            if self.budget - self.elapsed() <= 0 or left <= SLIDE_FRAME_TIMEOUT_SECONDS:
+            if self.budget - self.elapsed() <= 0 or left <= frame_left:
                 return ScreenTimeout("screen OCR timed out")
             return FrameTimeout("RapidOCR timed out")
 
         if not _OCR_SLOTS.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise timeout_error()
+        if time.monotonic() >= deadline:
+            _OCR_SLOTS.release()
             raise timeout_error()
         future = Future()
 
@@ -528,9 +544,20 @@ def _select_representative_frames(
     }
     active = [tile for tile in range(tile_count) if tile not in dynamic]
     selected, frames_capped = [], 0
+
+    def _cap_group(chosen: list[Frame]) -> list[Frame]:
+        nonlocal frames_capped
+        if len(chosen) <= SLIDE_MAX_GROUP_FRAMES:
+            return chosen
+        frames_capped += len(chosen) - SLIDE_MAX_GROUP_FRAMES
+        middle = chosen[1:-1]
+        slots = SLIDE_MAX_GROUP_FRAMES - 2
+        return [chosen[0], *(middle[round(i * (len(middle) - 1) / (slots - 1))]
+                             for i in range(slots)), chosen[-1]]
+
     for index, group in enumerate(groups):
         if index not in thumbnails:
-            selected.append(group)
+            selected.append(_cap_group(group))
             continue
         if len(dynamic) > SLIDE_DYNAMIC_MAX_MASKED_TILES:
             selected.append([group[0], group[-1]])
@@ -545,13 +572,7 @@ def _select_representative_frames(
                 last = grid
         if group[-1] != chosen[-1]:
             chosen.append(group[-1])
-        if len(chosen) > SLIDE_MAX_GROUP_FRAMES:
-            frames_capped += len(chosen) - SLIDE_MAX_GROUP_FRAMES
-            middle = chosen[1:-1]
-            slots = SLIDE_MAX_GROUP_FRAMES - 2
-            chosen = [chosen[0], *(middle[round(i * (len(middle) - 1) / (slots - 1))]
-                                   for i in range(slots)), chosen[-1]]
-        selected.append(chosen)
+        selected.append(_cap_group(chosen))
     return selected, frames_capped
 
 
@@ -943,40 +964,44 @@ def _memory_half(path: Path):
 def _read_frame(
     scan: Scan, ffmpeg: str, ocr, mode: str, crop: str, frame: Frame,
 ) -> list[tuple[Line, bool]]:
+    frame_deadline = time.monotonic() + SLIDE_FRAME_TIMEOUT_SECONDS
+
     def transform(source: Path, name: str, filters: str) -> Path:
         path = frame.path.with_name(f"{frame.path.stem}-{name}.png")
         scan.run([
             ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error",
             "-filter_threads", "1", "-i", str(source), "-vf", filters,
             "-frames:v", "1", "-threads", "1", str(path),
-        ], f"FFmpeg {name} transform")
+        ], f"FFmpeg {name} transform", frame_deadline=frame_deadline)
         return path
 
     original = transform(frame.path, "original", crop) if crop else frame.path
     passes = []
-    for size in (1, 2):
-        if size == 1:
-            image = original.read_bytes()
-        else:
-            image = _memory_half(original)
-            if image is None:
-                path = transform(original, "half", "scale=iw/2:ih/2")
-                try:
-                    image = path.read_bytes()
-                finally:
-                    path.unlink()
-        result = scan.recognize(ocr, image)
-        lines = []
-        for box, text, score in zip(result.boxes if result.boxes is not None else (),
-                                    result.txts or (), result.scores or ()):
-            x, y = zip(*box)
-            left, right = round(min(x) * size), round(max(x) * size)
-            top, bottom = round(min(y) * size), round(max(y) * size)
-            if text := " ".join(text.split()):
-                lines.append(Line(text, left, top, right - left, bottom - top, float(score) * 100))
-        passes.append(lines)
-    if original != frame.path:
-        original.unlink()
+    try:
+        for size in (1, 2):
+            if size == 1:
+                image = original.read_bytes()
+            else:
+                image = _memory_half(original)
+                if image is None:
+                    path = transform(original, "half", "scale=iw/2:ih/2")
+                    try:
+                        image = path.read_bytes()
+                    finally:
+                        path.unlink()
+            result = scan.recognize(ocr, image, frame_deadline=frame_deadline)
+            lines = []
+            for box, text, score in zip(result.boxes if result.boxes is not None else (),
+                                        result.txts or (), result.scores or ()):
+                x, y = zip(*box)
+                left, right = round(min(x) * size), round(max(x) * size)
+                top, bottom = round(min(y) * size), round(max(y) * size)
+                if text := " ".join(text.split()):
+                    lines.append(Line(text, left, top, right - left, bottom - top, float(score) * 100))
+            passes.append(lines)
+    finally:
+        if original != frame.path:
+            original.unlink(missing_ok=True)
     return _agree(passes, nameplate=mode == "nameplate")
 
 
@@ -1162,6 +1187,7 @@ def extract(
     skipped_timestamps: list[float] = []
     stage_seconds: dict[str, float] = {}
     ocr_frames = []
+    frames_ocred = 0
     frames_capped = 0
 
     @contextmanager
@@ -1192,23 +1218,23 @@ def extract(
             if mode == "slides":
                 with measure_stage("group"):
                     groups = _group_frames(scan, ffmpeg, frames)
-                    if len(groups) > 1 or (groups and len(groups[0]) > SLIDE_MAX_GROUP_FRAMES):
+                    if not crop and len(groups) > 1:
                         groups, frames_capped = _select_representative_frames(scan, ffmpeg, groups)
                     ocr_frames = [frame for group in groups for frame in group]
-                    if len(groups) == 1 and len(frames) >= 3 and len(ocr_frames) < 3:
-                        groups[0].insert(1, frames[len(frames) // 2])
-                        ocr_frames = groups[0]
             else:
                 ocr_frames = frames
 
             with measure_stage("ocr"):
-                ocr = scan.recognize(_rapidocr, mode)
+                ocr = None
                 results, read_times = [], []
                 for frame in ocr_frames:
+                    if ocr is None:
+                        ocr = scan.recognize(_rapidocr, mode)
                     started = time.monotonic()
                     try:
                         results.append(_read_frame(scan, ffmpeg, ocr, mode, crop, frame))
                     except FrameTimeout as exc:
+                        ocr = None
                         if mode != "slides":
                             raise
                         scan.remaining()
@@ -1222,6 +1248,7 @@ def extract(
                         ):
                             raise ScreenTimeout("Too many slide frames timed out") from exc
                         continue
+                    frames_ocred += 1
                     consecutive_timeouts = 0
                     read_times.append(time.monotonic() - started)
                     if abort_on_overrun and mode == "slides" and len(read_times) >= AUTO_LIVE_OVERRUN_MIN_FRAMES:
@@ -1238,6 +1265,8 @@ def extract(
                                     f"Estimated remaining OCR time ({remaining_needed:.1f}s) "
                                     f"exceeds remaining budget ({left:.1f}s)."
                                 )
+            if skipped_timestamps and frames_ocred == 0:
+                raise ScreenTimeout("RapidOCR timed out")
             references = _write_evidence(
                 staged, ocr_frames, results, filter_watermarks=mode == "slides", slide_groups=groups,
             )
@@ -1252,7 +1281,7 @@ def extract(
     status.update(elapsed_seconds=round(time.monotonic() - scan.started, 3),
                   wall_elapsed_seconds=round(scan.wall_elapsed(), 3),
                   timeout_seconds=scan.budget, stage_seconds=stage_seconds,
-                  frames_ocred=len(ocr_frames) - len(skipped_timestamps),
+                  frames_selected=len(ocr_frames), frames_ocred=frames_ocred,
                   frames_skipped_timeout=len(skipped_timestamps),
                   skipped_timestamps=skipped_timestamps, frames_capped=frames_capped)
     return status
