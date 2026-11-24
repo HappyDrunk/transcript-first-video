@@ -112,10 +112,6 @@ class Phase2EItem6RerunTests(unittest.TestCase):
 
 > [!note] 术语：Ontology
 > 这里指采集需要用到的概念，原字幕写成 anthology。
-
-> [!tip] 类比（Claude 补充）
-> 像出门前看钥匙带没带，上线前也得先检查。
-> 不成立的地方：评测有单独的规则，原字幕的 emails 是识别错误。
 """
         job = self.conference("only-marked", passage, speech=(ANTHOLOGY, EMAILS), screen=(ONTOLOGY, EVALS))
         self.assert_passes(job)

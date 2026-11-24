@@ -22,6 +22,9 @@ OVERLAP = rules.QUOTE_WINDOW
 MIN_HITS = 3
 HIT_RATE_NUMERATOR = 9
 HIT_RATE_DENOMINATOR = 10
+OVERLAP_TOLERANCE = 1.5
+VIRTUAL_WINDOW_MIN_SECONDS = 240.0
+VIRTUAL_WINDOW_RATIO = 0.05
 DELIVERY_RATIO = 0.9  # Legacy C04e threshold. C04b now requires every quote to be used.
 
 
@@ -205,6 +208,8 @@ def selection_boundaries(units: list[SelectionUnit], endpoint: int | None) -> li
 
 def omission_issue(units: list[SelectionUnit], omission: str | None) -> list[str]:
     expected = [(unit.start, unit.end) for unit in units if not unit.retained]
+    if not expected and omission is None:
+        return []
     if omitted_ranges(omission) != expected:
         return ["本文略去 must list the omitted selection.md ranges in order, or 无"]
     return []
@@ -249,6 +254,61 @@ def picture_choice(rows: list[tuple[str, str, bool]], text: str) -> bool | None:
     return matching.pop() if len(matching) == 1 else None
 
 
+def virtual_slots(
+    units: list[SelectionUnit],
+    segments: list[rules.Cue],
+    total_duration: float,
+) -> list[tuple[float, float]]:
+    """Split overlong retained speech units into equal virtual sub-windows containing cues."""
+    window_max = max(VIRTUAL_WINDOW_MIN_SECONDS, VIRTUAL_WINDOW_RATIO * total_duration)
+    cue_starts = [cue.start for cue in segments if cue.start is not None]
+    slots: list[tuple[float, float]] = []
+    for unit in units:
+        if not unit.retained:
+            continue
+        span = unit.end - unit.start
+        if span <= window_max:
+            slots.append((float(unit.start), float(unit.end)))
+            continue
+        count = math.ceil(span / window_max)
+        step = span / count
+        unit_slots: list[tuple[float, float]] = []
+        for idx in range(count):
+            s_start = unit.start + idx * step
+            s_end = unit.end if idx == count - 1 else unit.start + (idx + 1) * step
+            if any(s_start <= stamp < s_end for stamp in cue_starts):
+                unit_slots.append((s_start, s_end))
+        slots.extend(unit_slots or [(float(unit.start), float(unit.end))])
+    return slots
+
+
+def _quote_covered_slots(quote: rules.Quote, slots: list[tuple[float, float]]) -> set[tuple[float, float]]:
+    covered: set[tuple[float, float]] = set()
+    if quote.screen:
+        for slot in slots:
+            if slot[0] <= quote.anchor.start < slot[1]:
+                covered.add(slot)
+        return covered
+    cue_starts = [cue.start for cue in quote.match.cues if cue.start is not None]
+    cue_ends = [
+        cue.end if (cue.end is not None and cue.end > cue.start) else cue.start
+        for cue in quote.match.cues
+        if cue.start is not None
+    ]
+    q_start = min(cue_starts) if cue_starts else quote.anchor.start
+    q_end = max(cue_ends) if cue_ends else quote.anchor.start
+    has_interval = q_end > q_start or len(cue_starts) > 1
+    for slot in slots:
+        s_start, s_end = slot
+        if any(s_start <= stamp < s_end for stamp in (cue_starts or [quote.anchor.start])):
+            covered.add(slot)
+        elif has_interval and q_start < s_end + OVERLAP_TOLERANCE and q_end > s_start - OVERLAP_TOLERANCE:
+            covered.add(slot)
+        elif s_start - OVERLAP_TOLERANCE <= q_start < s_start:
+            covered.add(slot)
+    return covered
+
+
 def check_selection(
     job: Path, ctx: rules.RuleContext, duration: float | None,
 ) -> tuple[list[str], list[str]]:
@@ -281,7 +341,10 @@ def check_selection(
                 screen_choices[quote.raw] = choice
             elif index >= 0:
                 screen_choices[quote.raw] = slide_choices[index][1]
-    hit = set()
+
+    total_span = float(duration if duration is not None else endpoint)
+    slots = virtual_slots(units, ctx.segments, total_span)
+    hit_slots: set[tuple[float, float]] = set()
     for quote in valid:
         moments = [cue.start for cue in quote.match.cues if cue.start is not None]
         if unit_at(quote.stamp) is None:
@@ -294,9 +357,7 @@ def check_selection(
         if screen_choice is None and _crosses_omission([quote.stamp, *moments], omitted):
             issues.append(f"quote [{rules._fmt(quote.stamp)}] uses or crosses an omitted (略) unit")
             continue
-        anchor_unit = unit_at(quote.anchor.start)
-        if anchor_unit and anchor_unit.retained:
-            hit.add(anchor_unit)
+        hit_slots.update(_quote_covered_slots(quote, slots))
 
     omitted_starts = {cue.start for cue in ctx.segments if not unit_at(cue.start).retained}
     index = rules.TranscriptIndex(ctx.segments) if omitted_starts else None
@@ -318,10 +379,16 @@ def check_selection(
             if index and _has_omitted_excerpt(rules.prose_without_times(prose), index, omitted_starts):
                 issues.append(f"{section.heading}: prose quotes an omitted (略) unit")
 
-    retained = len(units) - len(omitted)
-    needed = hits_required(retained)
-    if len(hit) < needed:
-        issues.append(f"{len(hit)} of {retained} retained units have verified quotes; need {needed} (9/10, at least 3)")
+    retained_units = len(units) - len(omitted)
+    needed_slots = hits_required(len(slots))
+    if retained_units < MIN_HITS:
+        issues.append(
+            f"{len(hit_slots)} of {retained_units} retained units have verified quotes; need {hits_required(retained_units)} (9/10, at least 3)"
+        )
+    elif len(hit_slots) < needed_slots:
+        issues.append(
+            f"{len(hit_slots)} of {len(slots)} retained units have verified quotes; need {needed_slots} (9/10, at least 3)"
+        )
     omitted_time = sum(unit.end - unit.start for unit in omitted)
     warnings = (
         [f"S01 WARN: 略去 {omitted_time} 秒，超过全片一半"]

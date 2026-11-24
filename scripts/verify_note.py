@@ -382,6 +382,10 @@ def check_closing_heading_pair(note_bytes: bytes, reading_level: str | None) -> 
     expected = knowledge_note.closing_heading_for_level(reading_level)
     recognized = {knowledge_note.PLAIN_ACTION_HEADING, knowledge_note.CONCISE_ACTION_HEADING}
     closing_headings = [heading for heading in headings if heading in recognized]
+    if not closing_headings:
+        if any(not heading.strip() for heading in headings) or any(h in delivery for h in recognized):
+            raise ValueError(f"note.md closing heading must match reading_level {reading_level or 'plain'}: {expected}")
+        return
     if closing_headings != [expected] or headings[-1] != expected:
         raise ValueError(f"note.md closing H2 must be {expected} for this reading level")
 

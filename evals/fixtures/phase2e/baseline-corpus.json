@@ -33,11 +33,11 @@
   ],
   "evals/adversarial/first_slice_1.md": [
     "d02b9f6036bc3f9d3801097b3932d9c74c6b2fbe68f51356fd05bcce29372ca7",
-    "4f313edf35c6cdd2e75d5ad8359b18da7be0be89bfcff318decff1c118e59c64"
+    "71698bda4eb3228b6a05a16a1dcb8f314a21b164a06a6d4d4de051c6b3fd3f79"
   ],
   "evals/adversarial/first_slice_2.md": [
     "38919b390d27a4ee1283366ff2113a506087e516f85552ec69cd957cb09c49ec",
-    "4f313edf35c6cdd2e75d5ad8359b18da7be0be89bfcff318decff1c118e59c64"
+    "71698bda4eb3228b6a05a16a1dcb8f314a21b164a06a6d4d4de051c6b3fd3f79"
   ],
   "evals/adversarial/from_title_1.md": [
     "a28844cca9fd1ae164b5f82326a2346ca650daadf7b36b42bbd141359509d620",
@@ -48,11 +48,11 @@
     "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
   ],
   "evals/adversarial/missing_front_1.md": [
-    "a0fab85ca13748dc6356df751e2bd31449e3851684e4cb13ba4f12d1e3c51923",
+    "981a97daaa612dc66db2629800014631eae9984ef586e198b62113854f8131f5",
     "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
   ],
   "evals/adversarial/missing_front_2.md": [
-    "a0fab85ca13748dc6356df751e2bd31449e3851684e4cb13ba4f12d1e3c51923",
+    "981a97daaa612dc66db2629800014631eae9984ef586e198b62113854f8131f5",
     "630831c300ebb637073be69d034a2fdfe6461a820235cebb4ff38005e9879d5f"
   ],
   "evals/adversarial/names_1.md": [

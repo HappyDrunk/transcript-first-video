@@ -20,8 +20,8 @@ Result: pass.
 | `evals/adversarial/bad_status_2.md` | FAIL R15 | FAIL | R15 |
 | `evals/adversarial/fake_quote_1.md` | FAIL R04 | FAIL | C04b, R04 |
 | `evals/adversarial/fake_quote_2.md` | FAIL R04 | FAIL | C04b, R04 |
-| `evals/adversarial/first_slice_1.md` | FAIL C02 | FAIL | C02 |
-| `evals/adversarial/first_slice_2.md` | FAIL C02 | FAIL | C02 |
+| `evals/adversarial/first_slice_1.md` | FAIL C02 | FAIL | C02, S01 |
+| `evals/adversarial/first_slice_2.md` | FAIL C02 | FAIL | C02, S01 |
 | `evals/adversarial/from_title_1.md` | FAIL R14 | FAIL | R14 |
 | `evals/adversarial/from_title_2.md` | FAIL R14 | FAIL | R14 |
 | `evals/adversarial/missing_front_1.md` | FAIL C04a | FAIL | C04a |
