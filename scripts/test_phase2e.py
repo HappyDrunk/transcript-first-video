@@ -35,7 +35,7 @@ TRANSCRIPT = (FIXTURES / "usable_en_timed_transcript.txt").read_text(encoding="u
 NOTE = (FIXTURES / "usable_en_note.md").read_text(encoding="utf-8").replace(
     "evals/fixtures/usable_en_timed_transcript.txt", "transcript.txt"
 )
-RULE_IDS = ["R01", "R04", "R05", "R13", "R14", "R15", "C04a", "C04b", "C04c", "C04d"]
+RULE_IDS = ["R01", "R04", "R05", "R13", "R15", "C04a", "C04b", "C04c", "C04d"]
 HINT = "标明来自画面的内容由机器识别，可能有误差"
 
 

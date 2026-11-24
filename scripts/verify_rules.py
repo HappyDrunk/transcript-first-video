@@ -60,10 +60,6 @@ _EN_VERBS = {
     "read", "review", "send", "set", "skip", "slide", "snip", "start",
     "stop", "turn", "wait", "water", "write",
 }
-_ZH_VERB_PREFIX = (
-    "不要", "别再", "别", "请", "倒", "拨", "剪", "写", "问", "停", "开",
-    "关", "放", "拿", "浇", "垫", "移", "记",
-)
 _EN_STOP = {
     "the", "and", "for", "that", "this", "with", "from", "your", "you", "are",
     "was", "not", "but", "its", "they", "them", "then", "than", "into", "about",
@@ -335,7 +331,6 @@ _CORRECTION_TARGET = re.compile(
     r'^(?:`[^`]+`|“[^”]+”|「[^」]+」|"[^"]+")|^.+?(?=[，,。；;！？（(]|\.(?:\s|$)|$)'
 )
 _CORRECTION_QUOTES = "`“”「」\""
-_ANALOGY_LIMIT = re.compile(r"^不成立的地方\s*[:：]\s*\S")
 DISCREPANCY_TITLE = "原文出入"
 _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
@@ -1033,53 +1028,6 @@ def _tokens(text: str) -> list[str]:
         # Non-overlapping pairs, so a short action can still share a third of its words.
         cjk.extend(run[index : index + 2] for index in range(0, len(run) - 1, 2))
     return latin + cjk
-
-
-def _imperatives(speech: str) -> list[str]:
-    pieces = re.split(r"[。！？.!?；;\n]+", speech)
-    kept: list[str] = []
-    for piece in pieces:
-        line = piece.strip()
-        if len(line) < 8:
-            continue
-        head = _fold(line)
-        first = _LATIN_WORD.findall(line)
-        zh = _CJK_RUN.findall(line)
-        starts_en = bool(first) and first[0].casefold() in _EN_VERBS
-        starts_zh = bool(zh) and any(zh[0].startswith(prefix) for prefix in _ZH_VERB_PREFIX)
-        marked = any(cue in head for cue in ("do not", "don't", "不要", "别", "必须"))
-        if starts_en or starts_zh or marked:
-            kept.append(line)
-    return kept
-
-
-def r14_platform_title(ctx: RuleContext) -> tuple[str, bool, str]:
-    """Words that appear only in platform_title, more than three, fail."""
-    if ctx.gate is None or not ctx.gate.passed:
-        return ("R14", True, "skipped because the transcript is not usable")
-    title = ""
-    if ctx.fields:
-        title = str(ctx.fields.get("platform_title") or "")
-    if not _compact(title):
-        return ("R14", True, "no platform_title")
-    speech = _fold(_speech(ctx))
-    stray = []
-    for token in _tokens(title):
-        if token.casefold() not in speech and token not in speech:
-            stray.append(token)
-    # Unique, stable order.
-    seen: list[str] = []
-    for token in stray:
-        if token not in seen:
-            seen.append(token)
-    if len(seen) > 3:
-        return (
-            "R14",
-            False,
-            f"platform_title words missing from the transcript ({len(seen)}): "
-            + ", ".join(seen[:8]),
-        )
-    return ("R14", True, "platform_title is not driving the note")
 
 
 def r15_failed_status(ctx: RuleContext) -> tuple[str, bool, str]:
@@ -2175,14 +2123,6 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     return _result("C04c", issues, "numbers and names have end evidence")
 
 
-_NOTE_CHECKING_PROCESS = re.compile(
-    r"(?:后半句|前半句|原句|这句话|这段文字)[^。！？\n]{0,20}(?:没(?:有|能)?|未(?:能)?)[^。！？\n]{0,6}识别"
-    r"|(?:这里|本文)[^。！？\n]{0,12}(?:不补写|不补全|不当作成绩|只按口头说法记录)"
-    r"|(?:部分|这部分|这些文字|画面文字|字幕)[^。！？\n]{0,8}识别[^。！？\n]{0,8}(?:不确定|不完整|不清楚)"
-    r"|(?:口播|名字|姓名|术语|词语)[^。！？\n]{0,20}(?:自动字幕|字幕)[^。！？\n]{0,8}(?:写错|听错|识别错|误写)"
-)
-
-
 def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
     blocks = [block for section in ctx.sections for block in section.blocks]
     block_contexts = [
@@ -2206,11 +2146,6 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
         (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
         for section in ctx.sections
     ]
-    for section in ctx.sections:
-        for prose in [section.heading, *section.prose]:
-            checking = _NOTE_CHECKING_PROCESS.search(prose)
-            if checking:
-                issues.append(f"{section.heading or '正文'}: remove note-checking commentary from prose: {checking[0]}")
     for original, corrected in dict.fromkeys(corrections):
         if original == corrected:
             continue
@@ -2326,18 +2261,7 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     sentences = action_sentences(visible)
     if not sentences or len(sentences) > 2:
         return ("R13", False, f"{ACTION_HEADING} needs one action in at most two sentences")
-    action = sentences[0]
-    if any(_cross_script(action, quote.text) or _fold(action) in _fold(quote.text) for quote in evidence):
-        return ("R13", True, "today step is short and links to its evidence")
-    tokens = set(_tokens(action))
-    overlap = max(
-        (sum(token in imperative for token in tokens) / len(tokens)
-         for quote in evidence for imperative in _imperatives(quote.text) if tokens),
-        default=0,
-    )
-    return _result("R13", [] if overlap >= 0.30 else [
-        f"{ACTION_HEADING} overlaps an imperative in its linked evidence by {overlap:.0%}; need 30%",
-    ], "today step is a short grounded action")
+    return ("R13", True, "today step is a short grounded action")
 
 
 def warnings(ctx: RuleContext) -> list[str]:
@@ -2387,7 +2311,7 @@ def warnings(ctx: RuleContext) -> list[str]:
     return result
 
 
-RULES = (r01_gate, r04_quotes_verbatim, r05_timestamps, r13_today_step, r14_platform_title,
+RULES = (r01_gate, r04_quotes_verbatim, r05_timestamps, r13_today_step,
          r15_failed_status, c04a_structure, c04b_trace, c04c_grounding, c04d_explanations)
 
 

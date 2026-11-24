@@ -445,6 +445,34 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
             self.assertFalse(cov_omit["ok"])
             self.assertIn("S01", failed_ids(cov_omit), cov_omit["reasons"])
 
+    def test_dead_rules_removed_and_chinese_lecture_r13_passes_without_imperatives(self) -> None:
+        self.assertFalse(hasattr(rules, "r14_platform_title"))
+        self.assertFalse(hasattr(rules, "_NOTE_CHECKING_PROCESS"))
+        self.assertFalse(hasattr(rules, "_imperatives"))
+        zh_quotes = [
+            ("00:20", "大语言模型的注意力机制本质上是在计算不同位置向量之间的相关性权重分布，从而决定每个词元应当关注哪些上下文信息。"),
+            ("01:00", "缩放点积能够避免维度增大时内积数值过大导致梯度过小，从而让深层网络的训练过程始终保持良好的数值稳定性和收敛速度。"),
+            ("02:00", "多层堆叠之后，模型就能在长上下文中把远距离的语义依赖逐步汇聚起来，并在最终输出层形成更加准确的预测结果。"),
+        ]
+        zh_transcript = "\n".join(f"[{s}] {t}" for s, t in zh_quotes) + "\n"
+        zh_note = _build_note(
+            "## 主线论点\n\n"
+            "注意力机制计算不同位置向量之间的相关性权重。 ⏱ 00:20\n\n"
+            "缩放点积帮助高维训练保持数值稳定。 ⏱ 01:00\n\n"
+            "多层堆叠可以汇聚长上下文中的远距离语义依赖。 ⏱ 02:00",
+            zh_quotes,
+            include_closings=False,
+            omission=None,
+        ).replace(
+            "## 原文依据",
+            "## 今天立刻动手一步\n\n对照一份模型结构图梳理注意力权重与缩放点积的关系。（改写讲者做法） ⏱ 00:20\n\n## 原文依据",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            job = _write_job(Path(tmp), "zh-lecture", zh_note, zh_transcript)
+            ver = verify_note.verify(job / "transcript.txt", zh_note, expected_lang="zh", job=True)
+            self.assertTrue(ver["allowed"], ver["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

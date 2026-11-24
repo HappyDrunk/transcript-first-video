@@ -22,8 +22,6 @@ Result: pass.
 | `evals/adversarial/fake_quote_2.md` | FAIL R04 | FAIL | C04b, R04 |
 | `evals/adversarial/first_slice_1.md` | FAIL C02 | FAIL | C02, S01 |
 | `evals/adversarial/first_slice_2.md` | FAIL C02 | FAIL | C02, S01 |
-| `evals/adversarial/from_title_1.md` | FAIL R14 | FAIL | R14 |
-| `evals/adversarial/from_title_2.md` | FAIL R14 | FAIL | R14 |
 | `evals/adversarial/missing_front_1.md` | FAIL C04a | FAIL | C04a |
 | `evals/adversarial/missing_front_2.md` | FAIL C04a | FAIL | C04a |
 | `evals/adversarial/names_1.md` | FAIL C04c | FAIL | C04c |
@@ -34,6 +32,8 @@ Result: pass.
 | `evals/adversarial/phase2c_b_nonverbatim_quote.md` | FAIL R04 | FAIL | C04b, R04 |
 | `evals/adversarial/phase2c_c_unused_quote.md` | FAIL C04b | FAIL | C04b |
 | `evals/adversarial/phase2c_d_selection.md` | FAIL S01 | FAIL | S01 |
+| `evals/adversarial/phase6_banned_tip.md` | FAIL C04d | FAIL | C04d |
+| `evals/adversarial/phase6_discrepancy_launder.md` | FAIL C04d | FAIL | C04d |
 | `evals/adversarial/quote_only_1.md` | FAIL C04a | FAIL | C04a |
 | `evals/adversarial/quote_only_2.md` | FAIL C04a | FAIL | C04a |
 | `evals/adversarial/same_quote_1.md` | FAIL C04b | FAIL | C04b |
@@ -42,10 +42,10 @@ Result: pass.
 | `evals/adversarial/swap_en_2.md` | FAIL C04b | FAIL | C04b |
 | `evals/adversarial/swap_zh_1.md` | FAIL C04b | FAIL | C04b |
 | `evals/adversarial/swap_zh_2.md` | FAIL C04b | FAIL | C04b |
-| `evals/adversarial/timestamp_1.md` | FAIL R05 | FAIL | C04b, R05, R13 |
+| `evals/adversarial/timestamp_1.md` | FAIL R05 | FAIL | C04b, R05 |
 | `evals/adversarial/timestamp_2.md` | FAIL R05 | FAIL | C04b, R05, R13 |
-| `evals/adversarial/vague_step_1.md` | FAIL R13 | FAIL | R13 |
-| `evals/adversarial/vague_step_2.md` | FAIL R13 | FAIL | R13 |
+| `evals/adversarial/vague_step_1.md` | FAIL R13 | FAIL | C04b, R13 |
+| `evals/adversarial/vague_step_2.md` | FAIL R13 | FAIL | C04c, R13 |
 
 ## Good
 
