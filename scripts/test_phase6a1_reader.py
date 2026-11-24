@@ -713,10 +713,10 @@ class ReviewRound1RegressionTests(ReaderFixture):
         _, res_sign = self.verify("先核对缓存并运行脚本，降幅 -78%，增幅 +78.3%。 ⏱ 00:30", BASE_QUOTE + " -78% +78.3%")
         self.assert_soft_warning(res_sign, r"约数并列", False)
 
-        # 2b. Multiline literal `（存疑：缓存\n继续）` + `短释` must NOT break invariant #7
+        # 2b. Multiline literal `（存疑：\n缓存继续）` + `短释` must NOT break invariant #7
         ml_q = BASE_QUOTE + " 这里写作（存疑：缓存 继续）。"
         ml_m = (
-            "先核对缓存并运行脚本，这里写作（存疑：缓存\n继续）。 ⏱ 00:30\n\n"
+            "先核对缓存并运行脚本，这里写作（存疑：\n缓存继续）。 ⏱ 00:30\n\n"
             "> [!note] 术语：缓存\n"
             "> 短释：临时保存数据\n"
             "> 加速重复读取的临时存储。"
@@ -725,6 +725,10 @@ class ReviewRound1RegressionTests(ReaderFixture):
         self.assertTrue(ml_res["allowed"], ml_res["reasons"])
         ml_reading = render_reading_note.render_note(ml_note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
         self.assertIn("缓存（注：临时保存数据）", ml_reading)
+        self.assertIn("（存疑：\n缓存继续）", ml_reading)
+        # Unicode minus `−78%` vs `78.3%` must NOT false-warn
+        _, res_uminus = self.verify("先核对缓存并运行脚本，降幅 \u221278%，增幅 78.3%。 ⏱ 00:30", BASE_QUOTE + " -78% 78.3%")
+        self.assert_soft_warning(res_uminus, r"约数并列", False)
 
         # 3. Literal inline code `` `（注：` `` must NOT fail manual-note check
         _, res_code_note = self.verify("先核对缓存并运行脚本，不要手写 `（注：` 标记。 ⏱ 00:30", BASE_QUOTE)

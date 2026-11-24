@@ -2670,7 +2670,7 @@ def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
             )
 
 
-_PERCENTAGE = re.compile(r"(?<![\d.])([+-]?\d+(?:\.\d+)?)\s*[%％]")
+_PERCENTAGE = re.compile(r"(?<![\d.])([+\-\u2212]?\d+(?:\.\d+)?)\s*[%％]")
 _PERCENT_RANGE = re.compile(r"\s*[–\-~～至到]\s*")
 _SCREEN_ASSIGNMENT = re.compile(
     r"^[ \t]*(?:\[\d{2}:\d{2}(?::\d{2})?\]\[画面\??\]\s*)?([A-Za-z][A-Za-z0-9_]{0,15})\s*=",
@@ -2686,8 +2686,8 @@ def _reader_r2_warnings(ctx: RuleContext):
         if any(
             ("." in left[1]) != ("." in right[1])
             and not _PERCENT_RANGE.fullmatch(clean[left.end():right.start()])
-            and not (right[1].startswith("-") and clean[left.end():right.start()].strip() == "")
-            and 0 < abs(float(left[1]) - float(right[1])) <= 1.0
+            and not (right[1].startswith(("-", "\u2212")) and clean[left.end():right.start()].strip() == "")
+            and 0 < abs(float(left[1].replace("\u2212", "-")) - float(right[1].replace("\u2212", "-"))) <= 1.0
             for index, left in enumerate(percentages) for right in percentages[index + 1:]
         ):
             yield "约数并列 WARN: 同段出现接近的整数与小数百分比，请核对指标口径"

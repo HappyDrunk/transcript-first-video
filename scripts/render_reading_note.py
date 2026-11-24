@@ -221,14 +221,21 @@ def _alias_pattern(alias: str) -> str:
 
 
 def _in_unclosed_paren(text: str, pos: int) -> bool:
-    line_start = text.rfind("\n", 0, pos) + 1
-    depth = 0
-    for ch in text[line_start:pos]:
-        if ch in "（(":
-            depth += 1
-        elif ch in "）)" and depth > 0:
-            depth -= 1
-    return depth > 0
+    code_spans = _protected_spans(text, include_parens=False)
+    full_depth = 0
+    half_depth = 0
+    for idx, ch in enumerate(text[:pos]):
+        if any(s <= idx < e for s, e in code_spans):
+            continue
+        if ch == "（":
+            full_depth += 1
+        elif ch == "）" and full_depth > 0:
+            full_depth -= 1
+        elif ch == "(":
+            half_depth += 1
+        elif ch == ")" and half_depth > 0:
+            half_depth -= 1
+    return full_depth > 0 or half_depth > 0
 
 
 def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:
@@ -250,7 +257,9 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
         first = min(matches)
         return first[2], f"（注：{gloss}）"
     if any_occurrence:
-        return _sentence_insertion_index(block_text, len(block_text)), f"（注：{gloss}）"
+        fallback = _sentence_insertion_index(block_text, len(block_text))
+        if not _in_unclosed_paren(block_text, fallback):
+            return fallback, f"（注：{gloss}）"
     return None
 
 
