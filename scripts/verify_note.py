@@ -29,6 +29,7 @@ import c04c_review  # noqa: E402
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 SCREEN_PENDING = "screen_pending"
 SCREEN_PENDING_MESSAGE = "Screen acquisition is pending; wait for the host or rerun acquisition if it stopped."
+UNCHANGED_FAILURE_NOTICE = "稿件与输入未改动，本次重复送检未消耗修订次数"
 
 
 def citation_forms(transcript: Path) -> set[str]:
@@ -111,6 +112,8 @@ def verify(
     confidence: float | None = None,
     job_status: str | None = None,
     job: bool = False,
+    screen_text: str = "",
+    raw: str | None = None,
 ) -> dict:
     """Run the single-note R and C04 rules. ``reasons`` are ``Rxx FAIL: ...`` lines."""
     ctx = verify_rules.build_context(
@@ -120,6 +123,8 @@ def verify(
         confidence=confidence,
         job_status=job_status,
         job=job,
+        screen_text=screen_text,
+        raw=raw,
     )
     c04c = []
     results = verify_rules.run_rules(ctx, c04c)
@@ -141,6 +146,24 @@ def verify(
         "quoted": ctx.quoted,
         "gate": None if gate is None else gate.to_dict(),
     }
+
+
+def verify_text(
+    note: str, transcript_text: str, *, source_url: str | None = None,
+    published: str | None = None, channel: str | None = None, title: str | None = None,
+    screen_text: str = "", expected_lang: str | None = None,
+) -> dict:
+    """Verify an in-memory note and transcript using the same rules as a job."""
+    fields = knowledge_note.parse_frontmatter(note) or {}
+    transcript = Path(fields.get("transcript_path") or "transcript.txt")
+    result = verify(transcript, note, raw=transcript_text, screen_text=screen_text,
+                    expected_lang=expected_lang)
+    for key, expected in (("source", source_url), ("published", published),
+                          ("channel", channel), ("title", title)):
+        if expected is not None and fields.get(key) != expected:
+            result["reasons"].append(f"C04a FAIL: {key} does not match source metadata")
+            result["allowed"] = False
+    return result
 
 
 NO_EXTRACTABLE = "no-extractable-content"
@@ -550,12 +573,13 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
     return data
 
 
-def _record_failure(data: dict, reasons: list[str], *, review: bool = False) -> bool:
+def _record_failure(data: dict, reasons: list[str], *, inputs: dict, review: bool = False) -> bool:
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
         rounds = 0
     data["repair_rounds"] = rounds + 1
     data["failure_lines"] = reasons
+    data["last_failed_inputs"] = inputs
     if review:
         data["review"]["failures"] += 1
     review_failed = review and data["review"]["failures"] >= 2
@@ -598,7 +622,7 @@ def resume_job(job: Path) -> None:
     history = list(status.pop("previous_attempts", []))
     root = {key: value for key, value in status.items()
             if key not in {"note_digest", "verifier", "coverage", "review", "review_rounds", "reason",
-                           "issues", "failure_lines"}}
+                           "issues", "failure_lines", "last_failed_inputs"}}
     root.update(status="transcript_ready", finished=False, locked=False, next_step="write-note",
                 edit_rounds=0, repair_rounds=0, previous_attempts=[*history, status])
     write_job_status(job, root)
@@ -611,6 +635,10 @@ def record_gate_result(
 ) -> dict:
     """Persist a single submission, optionally containing both gate results."""
     data = read_job_status(job)
+    skill_version = current_skill_version()
+    gate_key = "joint" if coverage is not None else gate
+    failed_inputs = {**(note_inputs or inputs or job_inputs(job)), "skill_version": skill_version, "gate": gate_key}
+    submission_reasons = reasons
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
         rounds = 0
@@ -625,7 +653,7 @@ def record_gate_result(
             "allowed": allowed,
             "checked_inputs": note_inputs or inputs,
             "at": datetime.now(timezone.utc).isoformat(),
-            "skill_version": current_skill_version(),
+            "skill_version": skill_version,
             "inputs": inputs if allowed else None,
             "c04c": c04c or [],
             "c04c_sha256": c04c_review.digest(c04c or []),
@@ -645,14 +673,20 @@ def record_gate_result(
         data["coverage"] = {"allowed": allowed, "reasons": reasons, "checked_inputs": inputs,
                             "inputs": inputs if allowed else None}
     if not allowed:
-        if _record_failure(data, reasons, review=review):
+        if data.get("last_failed_inputs") == failed_inputs:
+            submission_reasons.append(UNCHANGED_FAILURE_NOTICE)
+            if coverage is not None:
+                data["verifier"]["reasons"] = submission_reasons
+        elif _record_failure(data, reasons, inputs=failed_inputs, review=review):
             stop_for_user(job, data, REPAIR_LIMIT_MESSAGE, note_inputs or inputs)
-    elif (gate == "coverage" or coverage is not None) and inputs is not None:
+    else:
+        data.pop("last_failed_inputs", None)
+    if allowed and (gate == "coverage" or coverage is not None) and inputs is not None:
         verifier = data.get("verifier") or {}
         if (
             verifier.get("allowed") is True
             and verifier.get("inputs") == inputs
-            and verifier.get("skill_version") == current_skill_version()
+            and verifier.get("skill_version") == skill_version
         ):
             pending = bool(review_error) or (not review and bool(verifier.get("c04c")))
             data["finished"] = not pending
@@ -694,7 +728,8 @@ def archive_file(path: Path) -> Path | None:
 
 
 def apply_no_extractable(
-    job: Path, reason: str, *, coverage_reasons: Sequence[str] = (), review: bool = False,
+    job: Path, reason: str, *, inputs: dict, reasons: list[str],
+    coverage_reasons: Sequence[str] = (), review: bool = False,
 ) -> dict:
     """Record that the note must not be deposited, archiving prior documents."""
     status_path = job / "status.json"
@@ -723,7 +758,11 @@ def apply_no_extractable(
         "skill_version": current_skill_version(),
         "reasons": [reason],
     }
-    _record_failure(data, [reason, *coverage_reasons], review=review)
+    failed_inputs = {**inputs, "skill_version": data["verifier"]["skill_version"], "gate": "no_extractable"}
+    if data.get("last_failed_inputs") == failed_inputs:
+        reasons.append(UNCHANGED_FAILURE_NOTICE)
+    else:
+        _record_failure(data, [reason, *coverage_reasons], inputs=failed_inputs, review=review)
     write_job_status(job, data)
     return data
 
@@ -822,7 +861,8 @@ def check_job_submission(
     if no_extractable and not changed:
         coverage_reasons = coverage["reasons"] if coverage is not None else []
         status = apply_no_extractable(
-            job, knowledge_note.ALL_INAPPLICABLE_REASON, coverage_reasons=coverage_reasons, review=review,
+            job, knowledge_note.ALL_INAPPLICABLE_REASON, inputs=inputs, reasons=result["reasons"],
+            coverage_reasons=coverage_reasons, review=review,
         )
         result.update(status=NO_EXTRACTABLE, note_deleted=True)
     else:

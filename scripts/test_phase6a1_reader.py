@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +17,7 @@ import verify_rules as rules
 from verify_report import failed_ids
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts"
 FRONTMATTER = """\
 ---
 title: Synthetic Workshop
@@ -326,11 +329,12 @@ class ReadabilityTests(ReaderFixture):
                                           ("Nova3", "Nova4", False, False),
                                           ("Nova3.6", "nova3_5", True, False)):
             with self.subTest(a=a, b=b, explained=explained):
-                prose = f"先记录 {a}，再检查 {b}。"
+                prose = f"先记录 {a}，再检查 {b}，并保存运行记录。"
                 middle = prose + " ⏱ 00:30"
                 if explained:
                     middle += "\n\n" + _discrepancy(f"存疑｜「{a}」｜字幕另一次写作 {b}")
-                _, result = self.verify(middle, BASE_QUOTE + prose)
+                quote = BASE_QUOTE + (f"先记录 {a}，并保存运行记录。" if expected else prose)
+                _, result = self.verify(middle, quote)
                 self.assert_soft_warning(result, r"版本.*(?:冲突|不一致)|(?:冲突|不一致).*版本", expected)
 
     def test_untranslated_phrases_in_chinese_prose(self) -> None:
@@ -454,11 +458,19 @@ class ReviewRound1RegressionTests(ReaderFixture):
         _, res_eq = self.verify(prose_eq + " ⏱ 00:30", BASE_QUOTE + prose_eq)
         self.assert_soft_warning(res_eq, r"版本冲突", False)
 
-        # Unrelated Other_Widget1.1 in 原文出入 must NOT suppress Widget1.1 vs Widget1.2 conflict
+        # Unrelated Other_Widget1.1 in 原文出入 must NOT suppress Widget1.1 vs Widget1.2 conflict;
+        # when both variants are cited in quotes, version conflict upgrades to FAIL.
         prose_real = "先看 Widget1.1，再看 Widget1.2，并提到 Other_Widget1.1。"
         callout = _discrepancy("存疑｜「Other_Widget1.1」｜另一个组件")
         _, res_real = self.verify(prose_real + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose_real)
-        self.assert_soft_warning(res_real, r"版本冲突", True)
+        self.assertFalse(res_real["allowed"], res_real["reasons"])
+        self.assertTrue(any("版本冲突" in r for r in res_real["reasons"]), res_real["reasons"])
+
+        # When only one variant is backed by quotes, version conflict stays a soft WARN (non-blocking).
+        prose_one_cited = "先看 Widget1.1，再看 Widget1.2，最后保存运行记录。"
+        _, res_one = self.verify(prose_one_cited + " ⏱ 00:30", BASE_QUOTE + "先看 Widget1.1，最后保存运行记录。")
+        self.assertTrue(res_one["allowed"], res_one["reasons"])
+        self.assert_soft_warning(res_one, r"版本冲突", True)
 
         # Backtick in backtick fence info string is NOT a fence opener; NBSP is NOT a valid closing fence suffix
         self.assertIsNone(rules.match_fence_open("```python`"))
@@ -493,11 +505,285 @@ class ReviewRound1RegressionTests(ReaderFixture):
         )
         self.assertTrue(result["allowed"], result["reasons"])
 
-    def test_three_minor_versions_partially_explained_still_warns(self) -> None:
+    def test_three_minor_versions_partially_explained_still_fails_when_cited(self) -> None:
         prose = "先看 Widget1.1，再看 Widget1.2，最后看 Widget1.3。"
         callout = _discrepancy("存疑｜「Widget1.2」｜仅核对了这一条")
         _, result = self.verify(prose + " ⏱ 00:30\n\n" + callout, BASE_QUOTE + prose)
-        self.assert_soft_warning(result, r"版本冲突", True)
+        self.assertFalse(result["allowed"], result["reasons"])
+        self.assertTrue(any("版本冲突" in r for r in result["reasons"]), result["reasons"])
+
+    # --- Phase 6A.1 R2 RED tests ---
+
+    def test_term_short_gloss_inline_rendering_and_invariant7(self) -> None:
+        quote = BASE_QUOTE + " 这里讲到 dot product 和 gating 机制，再配合 relu 激活函数。"
+        middle = (
+            "先核对缓存并运行脚本，再用点积算相似度、看门控怎么开关。 ⏱ 00:30\n\n"
+            "> [!note] 术语：点积（dot product）\n"
+            "> 短释：两组数对应相乘再相加\n"
+            "> 衡量两个向量方向有多一致的基础运算。\n\n"
+            "> [!note] 术语：门控（gating）\n"
+            "> 短释：决定放行多少信号的开关\n"
+            "> 按权重放大或截断中间特征通道的机制。\n\n"
+            "最后核对缓存并运行脚本，再经过 `relu` 输出。 ⏱ 00:30\n\n"
+            "> [!note] 术语：relu\n"
+            "> 短释：把负数归零的函数\n"
+            "> 神经网络里常用的非线性激活函数。"
+        )
+        note, result = self.verify(middle, quote)
+        self.assertTrue(result["allowed"], result["reasons"])
+        reading = render_reading_note.render_note(note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        # First gloss injects inline after alias; second gloss in same paragraph is skipped (max 1/paragraph)
+        self.assertIn("点积（注：两组数对应相乘再相加）", reading)
+        self.assertNotIn("门控（注：", reading)
+        # Code-only alias falls back to sentence end before punctuation
+        self.assertIn("最后核对缓存并运行脚本，再经过 `relu` 输出（注：把负数归零的函数）。", reading)
+        # Full definitions remain in bottom glossary without leaking 短释 prefix
+        self.assertIn("## 术语速查", reading)
+        self.assertIn("衡量两个向量方向有多一致的基础运算。", reading)
+        self.assertIn("按权重放大或截断中间特征通道的机制。", reading)
+        self.assertNotIn("短释：", reading)
+        # Top notice discloses inline glosses are organizer additions
+        self.assertIn("说明：", reading)
+        self.assertIn("（注：", reading)
+        # Without any 短释 lines, rendering stays byte-identical to plain glossary mode
+        no_gloss_note = "\n".join(ln for ln in note.splitlines() if not ln.startswith("> 短释：")) + "\n"
+        reading_plain = render_reading_note.render_note(no_gloss_note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        self.assertNotIn("（注：", reading_plain)
+
+    def test_term_short_gloss_validation_and_manual_note_forbidden(self) -> None:
+        quote = BASE_QUOTE + " 这里提到 dot product 运算。"
+        # >16 chars fails
+        too_long = (
+            "先核对缓存并运行脚本，再算点积。 ⏱ 00:30\n\n"
+            "> [!note] 术语：点积（dot product）\n"
+            "> 短释：这是一个超过十六个字而且非常啰嗦的短释解释\n"
+            "> 基础向量运算。"
+        )
+        _, res_long = self.verify(too_long, quote)
+        self.assertIn("C04d", failed_ids(res_long), res_long["reasons"])
+
+        # Digits in 短释 fail
+        with_digit = (
+            "先核对缓存并运行脚本，再算点积。 ⏱ 00:30\n\n"
+            "> [!note] 术语：点积（dot product）\n"
+            "> 短释：把 2 组数相乘\n"
+            "> 基础向量运算。"
+        )
+        _, res_digit = self.verify(with_digit, quote)
+        self.assertIn("C04d", failed_ids(res_digit), res_digit["reasons"])
+
+        # Hand-written （注： in prose fails
+        manual = "先核对缓存并运行脚本，再算点积（注：手写注释）。 ⏱ 00:30"
+        _, res_manual = self.verify(manual, quote)
+        self.assertIn("C04d", failed_ids(res_manual), res_manual["reasons"])
+
+        # English transcript with Chinese-only term gives alias hint
+        en_quote = (
+            "First inspect the local cache and run the profiling script carefully to confirm all timings "
+            "using list comprehensions in the sample code."
+        )
+        zh_only_term = (
+            "这里改用列表推导提速。 ⏱ 00:30\n\n"
+            "> [!note] 术语：列表推导\n"
+            "> 用方括号在一行里生成列表的写法。"
+        )
+        _, res_hint = self.verify(zh_only_term, en_quote)
+        self.assertIn("C04d", failed_ids(res_hint), res_hint["reasons"])
+        self.assertTrue(
+            any("中文（English）" in r for r in res_hint["reasons"]),
+            res_hint["reasons"],
+        )
+
+    def test_name_transcription_tier2_footnote_no_inline_noise(self) -> None:
+        quote = BASE_QUOTE + " 讲者提到 Jordan Kay 和 Sam Lin 一起做了这套工具。"
+        middle = (
+            "主讲人提到 Jordan Kay 与 Sam Lin 一起搭起了最初的原型。 ⏱ 00:30\n\n"
+            "> [!warning] 原文出入\n"
+            "> 人名转写｜「Jordan Kay」\n"
+            "> 人名转写｜「Sam Lin」"
+        )
+        note, result = self.verify(middle, quote)
+        self.assertTrue(result["allowed"], result["reasons"])
+        self.assert_soft_warning(result, r"存疑密度", False)
+        reading = render_reading_note.render_note(note.encode("utf-8"), keep_frontmatter=False).decode("utf-8")
+        # Prose untouched (zero inline （存疑：） noise)
+        self.assertIn("主讲人提到 Jordan Kay 与 Sam Lin 一起搭起了最初的原型。", reading)
+        self.assertNotIn("（存疑：", reading)
+        # Single calm notice at top
+        self.assertIn("Jordan Kay", reading)
+        self.assertIn("Sam Lin", reading)
+        self.assertIn("自动字幕转写", reading)
+
+        # Digits or non-Latin or extra field in 人名转写 must FAIL
+        for bad_line in (
+            "人名转写｜「Model3」",
+            "人名转写｜「张三」",
+            "人名转写｜「Jordan Kay」｜或为 Jordan Kaye",
+            "人名转写｜「One Two Three Four Five」",
+        ):
+            bad_middle = (
+                "主讲人提到 Jordan Kay、Model3、张三 和 One Two Three Four Five。 ⏱ 00:30\n\n"
+                f"> [!warning] 原文出入\n> {bad_line}"
+            )
+            _, bad_res = self.verify(
+                bad_middle,
+                BASE_QUOTE + " Jordan Kay Model3 张三 One Two Three Four Five",
+            )
+            self.assertFalse(bad_res["allowed"], (bad_line, bad_res["reasons"]))
+
+    def test_r2_soft_warnings_rounded_duplication_and_tutorial_duplication(self) -> None:
+        # Rounded + exact percentage double-reporting in same paragraph
+        q_pct = BASE_QUOTE + " 前馈层占 78%，画面显示 78.3%，注意力占 22%，画面显示 21.7%。"
+        p_pct = "前馈层占 78%，更精确的比例是 78.3%。 ⏱ 00:30"
+        _, res_pct = self.verify(p_pct, q_pct)
+        self.assertTrue(res_pct["allowed"], res_pct["reasons"])
+        self.assert_soft_warning(res_pct, r"约数并列", True)
+
+        # Range like 20%–21% or exact-only must NOT trigger 约数并列
+        p_clean = "前馈层占 78.3%，范围在 20%–21% 之间。 ⏱ 00:30"
+        _, res_clean = self.verify(p_clean, q_pct + " 范围在 20% 到 21%。")
+        self.assert_soft_warning(res_clean, r"约数并列", False)
+
+        # Tutorial duplication between 操作步骤 and 可复用做法
+        note_dup = (
+            "---\n"
+            'title: "Synthetic Tutorial"\n'
+            'source: "https://www.youtube.com/watch?v=synth000001"\n'
+            'channel: "Example Lab"\n'
+            'published: "2026-01-01"\n'
+            'type: "教程"\n'
+            'caption_kind: "auto"\n'
+            'skill_version: "test"\n'
+            'transcript_path: "transcript.txt"\n'
+            "tags: [video-note]\n"
+            "---\n\n"
+            "## 先记住一句话\n\n"
+            "先定位慢函数再验证提速效果。 ⏱ 00:30\n\n"
+            "## 这场在谈什么、谁\n\n"
+            "Example Lab 于 2026-01-01 演示如何用分析工具找出瓶颈。 ⏱ 00:30\n\n"
+            "## 操作步骤\n\n"
+            "### 运行分析命令\n\n"
+            "先跑 `run_prof main.py`，再导出 `dump_res()` 并用 `view_res out.prof` 看图。 ⏱ 00:30\n\n"
+            "## 可复用做法\n\n"
+            "先跑 `run_prof main.py`，再导出 `dump_res()` 并用 `view_res out.prof` 看图。 ⏱ 00:30\n\n"
+            "本文略去｜无\n\n"
+            "## 原文依据\n\n"
+            "> [00:30] " + BASE_QUOTE + " run_prof main.py dump_res() view_res out.prof\n"
+        )
+        res_dup = verify_note.verify_text(
+            note_dup,
+            "[00:30] " + BASE_QUOTE + " run_prof main.py dump_res() view_res out.prof\n",
+            source_url="https://www.youtube.com/watch?v=synth000001",
+            published="2026-01-01",
+            channel="Example Lab",
+            title="Synthetic Tutorial",
+        )
+        self.assert_soft_warning(res_dup, r"做法重复", True)
+
+        # Inline-code version variant (`Widget1_1`) vs prose (`Widget1.2`) both cited -> FAIL
+        q_ver = BASE_QUOTE + " 标题是 Widget1.2，配置字段写成 Widget1_1。"
+        _, res_ver = self.verify("先看 Widget1.2，配置文件里写的是 `Widget1_1`。 ⏱ 00:30", q_ver)
+        self.assertFalse(res_ver["allowed"], res_ver["reasons"])
+        self.assertTrue(any("版本冲突" in r for r in res_ver["reasons"]), res_ver["reasons"])
+
+        # Screen assignment `[00:30][画面] r3 = calc()` + unintroduced prose mention `R3` -> 标识符未铺垫 WARN
+        ident_note = (
+            note_dup.replace("## 可复用做法\n\n先跑 `run_prof main.py`，再导出 `dump_res()` 并用 `view_res out.prof` 看图。 ⏱ 00:30\n\n", "")
+            .replace("先跑 `run_prof main.py`，再导出 `dump_res()` 并用 `view_res out.prof` 看图。", "先核对缓存并运行脚本，再跑 `run_prof main.py` 并去掉名为 R3 的调用。")
+            .replace("dump_res() view_res out.prof", "R3")
+        )
+        res_ident = verify_note.verify_text(
+            ident_note,
+            "[00:30] " + BASE_QUOTE + " run_prof main.py R3\n",
+            source_url="https://www.youtube.com/watch?v=synth000001",
+            published="2026-01-01",
+            channel="Example Lab",
+            title="Synthetic Tutorial",
+            screen_text="[00:30][画面] r3 = calc()\n",
+        )
+        self.assert_soft_warning(res_ident, r"标识符未铺垫", True)
+
+    def test_c04c_numeric_boundary_and_dedup(self) -> None:
+        # Missing '0' in a code fence containing 10000000, 5000, 70000 must emit at most ONE C04c for '0',
+        # NOT 17 substring matches inside larger numbers!
+        q = BASE_QUOTE + " 参数是 100、5000、70000 和 10000000，外加 1 和 2。"
+        fence = (
+            "```python\n"
+            "total = 0\n"
+            "for i in range(10000000):\n"
+            "    total += 100 + 5000 + 70000\n"
+            "```"
+        )
+        middle = f"先核对缓存并运行脚本，下面给出完整示例脚本，参数含 100、5000、70000、10000000。 ⏱ 00:30\n\n{fence}"
+        _, result = self.verify(middle, q)
+        self.assertTrue(result["allowed"], result["reasons"])
+        zero_findings = [f for f in result["c04c"] if f["term"] == "0"]
+        self.assertEqual(len(zero_findings), 1, result["c04c"])
+
+    def test_unchanged_failed_submission_does_not_burn_repair_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "job"
+            job.mkdir()
+            (job / "transcript.txt").write_text("[00:30] " + BASE_QUOTE + "\n", encoding="utf-8")
+            (job / "selection.md").write_text("00:00–01:00 | 核心步骤 | 留 | 主干\n", encoding="utf-8")
+            (job / "status.json").write_text(
+                json.dumps(
+                    {
+                        "status": "transcript_ready",
+                        "next_step": "write-note",
+                        "source_url": "https://www.youtube.com/watch?v=synth000001",
+                        "published": "2026-01-01",
+                        "channel": "Example Lab",
+                        "title": "Synthetic Job",
+                        "screen_ocr": {"mode": "off", "state": "skipped"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (job / "note.md").write_text("bad note draft 1\n", encoding="utf-8")
+            p1 = subprocess.run(
+                [sys.executable, str(SCRIPTS / "verify_note.py"), "--job", str(job), "--json"],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertNotEqual(p1.returncode, 0)
+            st1 = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(st1["repair_rounds"], 1, st1)
+
+            # Re-running verify_note.py on the EXACT same unchanged note must NOT burn repair_rounds!
+            p2 = subprocess.run(
+                [sys.executable, str(SCRIPTS / "verify_note.py"), "--job", str(job), "--json"],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertNotEqual(p2.returncode, 0)
+            st2 = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(st2["repair_rounds"], 1, st2)
+
+            # Editing note.md to a new broken draft DOES increment repair_rounds to 2
+            (job / "note.md").write_text("bad note draft 2\n", encoding="utf-8")
+            p3 = subprocess.run(
+                [sys.executable, str(SCRIPTS / "verify_note.py"), "--job", str(job), "--json"],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertNotEqual(p3.returncode, 0)
+            st3 = json.loads((job / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(st3["repair_rounds"], 2, st3)
+
+    def test_r2_doc_size_caps_and_required_rules(self) -> None:
+        root = SCRIPTS.parent
+        writer_bytes = sum(
+            (root / rel).stat().st_size
+            for rel in ("SKILL.md", "references/delivery-format.md", "references/rules.md")
+        )
+        review_bytes = (root / "references/review-guide.md").stat().st_size
+        self.assertLessEqual(writer_bytes, 30720, f"WRITER_REQUIRED too large: {writer_bytes}")
+        self.assertLessEqual(review_bytes, 8192, f"review-guide.md too large: {review_bytes}")
+        df = (root / "references/delivery-format.md").read_text(encoding="utf-8")
+        rg = (root / "references/review-guide.md").read_text(encoding="utf-8")
+        for needle in ("短释", "人名转写", "因果", "中文（English）"):
+            self.assertIn(needle, df)
+        for needle in ("版本冲突", "±30", "标签"):
+            self.assertIn(needle, rg)
 
 
 if __name__ == "__main__":

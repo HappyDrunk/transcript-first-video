@@ -326,6 +326,7 @@ _TIME_CLUSTER = re.compile(rf"(?:{_DELIVERY_TIME.pattern}(?:[ \t]*{_DELIVERY_TIM
 _CALLOUT = re.compile(r"^>\s*\[!(note|tip|warning)\]\s*(.*)$")
 _TERM_TITLE = re.compile(r"^术语\s*[:：]\s*(.*)$")
 _TERM_ALIAS_SEPARATOR = re.compile(r"[/／()（）]")
+_TERM_SHORT_GLOSS = re.compile(r"短释[：:]\s*(.*)")
 _HYPHEN = re.compile(r"[-\u2010\u2011]")
 _CAPTION_CORRECTION = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*(.+?)[，,]\s*实为\s*[:：]?\s*(.+)$")
 _CORRECTION_TARGET = re.compile(
@@ -335,6 +336,7 @@ _CORRECTION_QUOTES = "`“”「」\""
 DISCREPANCY_TITLE = "原文出入"
 _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
+_DISCREPANCY_NAME = re.compile(r"人名转写[｜|]\s*「([A-Za-z][A-Za-z .'-]*)」")
 _AI_CREDIT = re.compile(r"[（(](?:Claude|整理者|AI)[ \t]*补充(?:[，,][ \t]*非视频内容)?[）)]")
 _FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
@@ -909,6 +911,28 @@ def _validate_doubt_anchor(anchor: str, explanation: str, preceding_raw: str | N
     return None
 
 
+def _name_transcription_issue(name: str, preceding: str | None) -> str | None:
+    if not (1 <= len(name.split()) <= 4):
+        return f"原文出入 人名转写限一至四个词: {name!r}"
+    if preceding and any(
+        not _overlaps_forbidden_inline_span(preceding, match.start(), match.end())
+        for match in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", preceding)
+    ):
+        return None
+    return f"原文出入 人名转写须逐字出现在前一段的代码和链接之外: {name!r}"
+
+
+def _term_definition(lines: list[str]) -> tuple[list[str], list[str]]:
+    glosses, definition = [], []
+    for line in lines:
+        match = _TERM_SHORT_GLOSS.fullmatch(line)
+        if match:
+            glosses.append(match[1].strip())
+        else:
+            definition.append(line)
+    return glosses, definition or glosses
+
+
 def spoken_code_entries(blocks: list[list[str]]) -> list[tuple[str, str]]:
     """Return (spoken_original, code_text) pairs from 原文出入 Type 2 rows."""
     entries: list[tuple[str, str]] = []
@@ -1012,13 +1036,23 @@ def explanation_issues(
             word = term[1].strip()
             aliases = _TERM_ALIAS_SEPARATOR.split(_HYPHEN.sub(" ", word))
             if not any(term_occurs(alias, source) for alias in map(str.strip, aliases) if alias for source in sources):
-                issues.append(f"term {word!r} is absent from the transcript")
+                hint = "（英文文稿请写成「术语：中文（English）」，括号内英文须逐字出现在文稿或更正结果中）"
+                letters = sum(ch.isalpha() for ch in transcript)
+                if not re.search(r"[A-Za-z]", word) and 2 * len(re.findall(r"[A-Za-z]", transcript)) > letters:
+                    hint += " 英文文稿术语标题缺少原文英文别名"
+                issues.append(f"term {word!r} is absent from the transcript{hint}")
             if "⏱" in header or any("⏱" in ln for ln in lines):
                 issues.append(f"term {word!r} block must not contain ⏱ time markers")
-            joined_term = _AI_CREDIT.sub("", " ".join(lines)).strip()
+            glosses, definition = _term_definition(lines)
+            if len(glosses) > 1 or any(
+                not gloss or len(gloss) > 16 or re.search(r"[\d⏱）)]", _norm_ascii_digits(gloss))
+                or _AI_CREDIT.search(gloss) for gloss in glosses
+            ):
+                issues.append(f"term {word!r} 短释限一条、1–16 字，禁用数字、⏱、右括号及补充署名")
+            joined_term = _AI_CREDIT.sub("", " ".join(definition)).strip()
             if len(joined_term) > MAX_TERM_CHARS:
                 issues.append(f"term {word!r} block exceeds {MAX_TERM_CHARS} characters ({len(joined_term)})")
-            if len(_term_sentences(" ".join(lines))) > MAX_TERM_SENTENCES:
+            if len(_term_sentences(" ".join(definition))) > MAX_TERM_SENTENCES:
                 issues.append(f"term {word!r} block exceeds {MAX_TERM_SENTENCES} sentences")
         elif kind == "tip":
             issues.append("[!tip] analogy blocks are retired; explain in prose or 术语")
@@ -1060,6 +1094,10 @@ def explanation_issues(
                 if t3 is not None:
                     err = _validate_doubt_anchor(t3[1].strip(), t3[2].strip(), preceding)
                     if err:
+                        issues.append(err)
+                    continue
+                if name := _DISCREPANCY_NAME.fullmatch(line):
+                    if err := _name_transcription_issue(name[1], preceding):
                         issues.append(err)
                     continue
                 issues.append(f"原文出入 contains unknown line format: {line}")
@@ -1311,6 +1349,7 @@ class RuleContext:
     omission: str | None
     cited: bool
     has_screen_file: bool = False
+    screen_text: str = ""
 
     @property
     def exists(self) -> bool:
@@ -1619,6 +1658,10 @@ def caption_structure(note: str) -> tuple[str | None, list[str]]:
                         if err:
                             issues.append(err)
                         continue
+                    if name := _DISCREPANCY_NAME.fullmatch(line):
+                        if err := _name_transcription_issue(name[1], preceding):
+                            issues.append(err)
+                        continue
                     issues.append(f"note.md {DISCREPANCY_TITLE} contains unknown line format: {line}")
     return omission, issues
 
@@ -1632,6 +1675,7 @@ def build_context(
     job_status: str | None = None,
     job: bool = False,
     raw: str | None = None,
+    screen_text: str = "",
 ) -> RuleContext:
     if raw is None and transcript.is_file():
         raw = transcript.read_text(encoding="utf-8-sig", errors="replace")
@@ -1654,6 +1698,7 @@ def build_context(
         transcript, note, tuple(status for status in (job_status, fields.get("job_status")) if status),
         gate, fields, segments, speech, sections, quotes, evidence_errors, omission,
         _cites(fields, transcript, job=job), screen_enabled and screen_path.is_file(),
+        screen_text or "\n".join(screen or ()),
     )
 
 
@@ -2268,16 +2313,28 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                         "values": [number.label for number in numbers],
                     } for quote, numbers in zip(evidence, numbers_by_quote)]
 
+                seen_findings: set[tuple[str, str]] = set()
+
                 def finding(kind: str, term: str, offset: int) -> dict:
                     return {"kind": kind, "term": term, "line": line, "offset": offset,
                             "section": section.heading, "claim": unit_text, "citations": citations}
 
-                def add(kind: str, terms) -> None:
+                def add(kind: str, terms, offset: int | None = None) -> None:
                     if findings is not None:
                         for term in terms:
-                            matches = list(re.finditer(re.escape(term), unit_text, re.IGNORECASE))
-                            for match in matches or (None,):
-                                findings.append(finding(kind, term, match.start() if match else 0))
+                            key = kind, term.casefold()
+                            if key in seen_findings:
+                                continue
+                            seen_findings.add(key)
+                            if offset is None:
+                                pattern = re.escape(term)
+                                if kind == "number":
+                                    pattern = rf"(?<![\d.]){pattern}(?![\d.])"
+                                match = re.search(pattern, unit_text, re.IGNORECASE)
+                                position = match.start() if match else 0
+                            else:
+                                position = offset
+                            findings.append(finding(kind, term, position))
 
                 excerpts = [quote.text for quote in evidence]
                 screen_excerpts = [quote.text for quote in evidence if quote.screen]
@@ -2340,7 +2397,7 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                     else:
                         issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
                         if findings is not None:
-                            findings.append(finding("original", original, match.start()))
+                            add("original", (original,), match.start())
                 for match in _QUOTED_TERM.finditer(prose):
                     if match.end() in supported_originals:
                         continue
@@ -2387,6 +2444,12 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
         cited_screen,
         block_contexts=block_contexts,
         second_sources=second_sources,
+    )
+    if any("（注：" in text for text in _body_prose(ctx)):
+        issues.append("正文不得手写 （注：；请在术语块填写短释")
+    issues.extend(
+        "版本冲突 " + message + "，请用 原文出入 行型 3 登记说明"
+        for cited, message in _version_conflicts(ctx, blocks) if cited
     )
     searchable = [
         (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
@@ -2540,6 +2603,89 @@ def _correction_sources(ctx: RuleContext) -> tuple[tuple[str, ...], tuple[str, .
     return cited_screen, metadata
 
 
+def _body_prose(ctx: RuleContext):
+    for section in ctx.sections:
+        if section.heading:
+            yield section.heading
+        for index, claim in enumerate(section.prose):
+            if index not in section.fence_parents:
+                yield claim
+
+
+def _version_groups(text: str) -> dict[tuple[str, str], dict[str, set[str]]]:
+    versions: dict[tuple[str, str], dict[str, set[str]]] = {}
+    for match in _VERSIONED_ENTITY.finditer(text):
+        base, major, minor = match.groups()
+        major_norm = _norm_ascii_digits(major).lstrip("0") or "0"
+        minor_norm = _norm_ascii_digits(minor).lstrip("0") or "0"
+        key = base.rstrip("-_").casefold(), major_norm
+        versions.setdefault(key, {}).setdefault(minor_norm, set()).add(match[0])
+    return versions
+
+
+def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
+    prose = "\n".join(prose_without_times(text) for text in _body_prose(ctx))
+    explanations = "\n".join(
+        line for header, *lines in blocks
+        if (callout := _CALLOUT.fullmatch(header)) and callout.groups() == ("warning", DISCREPANCY_TITLE)
+        for line in lines if _DISCREPANCY_TYPE3.fullmatch(line)
+    )
+    covered = _version_groups(explanations)
+    cited = _version_groups("\n".join(quote.text for quote in ctx.valid_quotes))
+    for key, minors in _version_groups(prose).items():
+        uncovered = minors.keys() - covered.get(key, {}).keys()
+        if len(uncovered) >= 2:
+            surfaces = sorted(set().union(*(minors[minor] for minor in uncovered)))
+            yield (
+                len(uncovered & cited.get(key, {}).keys()) >= 2,
+                "同一实体存在未登记原文出入的版本不一致: " + "、".join(surfaces),
+            )
+
+
+_PERCENTAGE = re.compile(r"(?<![\d.])([+-]?\d+(?:\.\d+)?)\s*[%％]")
+_PERCENT_RANGE = re.compile(r"\s*[–\-~至到]\s*")
+_SCREEN_ASSIGNMENT = re.compile(
+    r"^[ \t]*(?:\[\d{2}:\d{2}(?::\d{2})?\]\[画面\??\]\s*)?([A-Za-z][A-Za-z0-9_]{0,15})\s*=",
+    re.MULTILINE,
+)
+_IDENTIFIER = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]*(?![A-Za-z0-9_])")
+
+
+def _reader_r2_warnings(ctx: RuleContext):
+    for claim in _body_prose(ctx):
+        clean = _INLINE_CODE.sub(" ", prose_without_times(claim))
+        percentages = list(_PERCENTAGE.finditer(_norm_ascii_digits(clean)))
+        if any(
+            ("." in left[1]) != ("." in right[1])
+            and not _PERCENT_RANGE.fullmatch(clean[left.end():right.start()])
+            and 0 < abs(float(left[1]) - float(right[1])) <= 1.0
+            for index, left in enumerate(percentages) for right in percentages[index + 1:]
+        ):
+            yield "约数并列 WARN: 同段出现接近的整数与小数百分比，请核对指标口径"
+            break
+
+    pending = {name.casefold(): name for name in _SCREEN_ASSIGNMENT.findall(ctx.screen_text)
+               if re.search(r"[0-9_]", name)}
+    steps, reuse = [], []
+    for parent, section in _with_parents(ctx.sections):
+        for index, claim in enumerate(section.prose):
+            is_fence = index in section.fence_parents
+            text = claim.partition("\n")[2] if is_fence else prose_without_times(claim)
+            if pending:
+                for match in _IDENTIFIER.finditer(text):
+                    if (name := pending.pop(match[0].casefold(), None)) and not is_fence:
+                        tail = text[match.end():].lstrip()
+                        if not tail.startswith("="):
+                            yield f"标识符未铺垫 WARN: 正文首次出现 {name!r}，请交代来历"
+            if ctx.fields.get("type") == "教程" and not is_fence:
+                if parent == "操作步骤":
+                    steps.extend(match[0].strip("`").strip() for match in _INLINE_CODE.finditer(text))
+                elif parent == "可复用做法":
+                    reuse.extend(match[0].strip("`").strip() for match in _INLINE_CODE.finditer(text))
+    if len(reuse) >= 2 and 2 * sum(span in set(steps) for span in reuse) >= len(reuse):
+        yield "做法重复 WARN: 可复用做法重复操作步骤中的命令，请保留新增检查或判断条件"
+
+
 def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
     result: list[str] = []
     review = "（已过检，交复核裁定）"
@@ -2620,25 +2766,9 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
         if not any(noun[:length] in earlier for length in range(len(noun), 1, -1)):
             result.append(f"序数未铺垫 WARN: 正文首次直接出现“{match[0]}”，前文未铺垫“{noun}”{review}")
 
-    versions: dict[tuple[str, str], dict[str, set[str]]] = {}
-    for match in _VERSIONED_ENTITY.finditer(text):
-        base, major, minor = match.groups()
-        major_norm = _norm_ascii_digits(major).lstrip("0") or "0"
-        minor_norm = _norm_ascii_digits(minor).lstrip("0") or "0"
-        key = base.rstrip("-_").casefold(), major_norm
-        versions.setdefault(key, {}).setdefault(minor_norm, set()).add(match[0])
-    norm_discrepancies = [_norm_ascii_digits(line) for line in discrepancies]
-    for minors in versions.values():
-        uncovered = [
-            surfaces for surfaces in minors.values()
-            if not any(
-                re.search(rf"(?<![A-Za-z0-9_]){re.escape(_norm_ascii_digits(surface))}(?![A-Za-z0-9_])", line, re.IGNORECASE)
-                for line in norm_discrepancies for surface in surfaces
-            )
-        ]
-        if len(uncovered) >= 2:
-            surfaces = sorted(set().union(*uncovered))
-            result.append("版本冲突 WARN: 同一实体存在未登记原文出入的版本不一致: " + "、".join(surfaces) + review)
+    result.extend("版本冲突 WARN: " + message + review
+                  for cited, message in _version_conflicts(ctx, blocks) if not cited)
+    result.extend(_reader_r2_warnings(ctx))
 
     language_parts = [_MARKDOWN_LINK_SPAN.sub(" | ", part) for part in language_parts]
     language_text = "\n".join(language_parts)

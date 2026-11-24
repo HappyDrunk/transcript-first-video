@@ -64,8 +64,10 @@ class Phase1AStatusTests(unittest.TestCase):
     def test_third_failed_check_stops_job_and_coverage_failure_counts_too(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             job = self._job(Path(tmp))
-            (job / "note.md").write_text("bad note", encoding="utf-8")
-            outcomes = [self._run("verify_note.py", job) for _ in range(2)]
+            outcomes = []
+            for revision in (1, 2):
+                (job / "note.md").write_text(f"bad note {revision}", encoding="utf-8")
+                outcomes.append(self._run("verify_note.py", job))
             self.assertTrue(all(result.returncode != 0 for result in outcomes))
             (job / "selection.md").unlink()
             coverage = self._run("coverage_check.py", job)

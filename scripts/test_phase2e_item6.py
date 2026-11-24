@@ -160,12 +160,18 @@ class Phase2EItem6Tests(unittest.TestCase):
 
     def test_joint_check_keeps_the_failed_submission_limit(self) -> None:
         job = self.bad_job()
+        note_path = job / "note.md"
+        bad_note = note_path.read_text(encoding="utf-8")
         for failed_submissions in (1, 2, 3):
+            note_path.write_text(
+                bad_note.replace("\n---\n", f"\nrevision: {failed_submissions}\n---\n", 1),
+                encoding="utf-8",
+            )
             code, result = self.verify(job, "--with-coverage")
             self.assertNotEqual(code, 0, result)
             self.assertFalse(result["allowed"], result)
             status = self.status(job)
-            self.assertEqual(status["edit_rounds"], 1, status)
+            self.assertEqual(status["edit_rounds"], failed_submissions, status)
             self.assertEqual(status["repair_rounds"], failed_submissions, status)
             self.assertFalse(status.get("locked"), status)
         self.assertEqual(status["status"], "needs_user_input", status)
