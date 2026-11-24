@@ -506,6 +506,100 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
             self.assertTrue(ver["allowed"], ver["reasons"])
             self.assertTrue(any("术语数 WARN" in w for w in ver["warnings"]), ver["warnings"])
 
+    def test_review_round1_validator_and_s01_regressions(self) -> None:
+        quotes = [
+            ("00:20", "We run load config on version v1.10 and v10 during startup checks cleanly."),
+            ("01:00", "The second stage writes metrics to local disk after validating the active schema."),
+            ("02:00", "The third stage closes connections and prints a clean exit summary to stdout."),
+        ]
+        transcript = "\n".join(f"[{s}] {t}" for s, t in quotes) + "\n"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # BLOCKING-5: v1.10 -> v1.1 and v10 -> Ten must fail under both 原文出入 and legacy 字幕更正
+            for header, orig, corr in (
+                ("> [!warning] 原文出入", "v1.10", "v1.1"),
+                ("> [!warning] 字幕更正", "v1.10", "v1.1"),
+                ("> [!warning] 原文出入", "v10", "Ten"),
+            ):
+                with self.subTest(header=header, orig=orig, corr=corr):
+                    bad = _build_note(
+                        f"## 主线论点\n\n系统升级到 {corr} 版本。 ⏱ 00:20\n\n{header}\n> 字幕写作 {orig}，实为 {corr}。\n\n"
+                        "后续落盘与退出正常完成。 ⏱ 01:00 ⏱ 02:00",
+                        quotes,
+                        include_closings=False,
+                        omission=None,
+                    )
+                    job = _write_job(root, f"launder-{corr}", bad, transcript)
+                    ver = verify_note.verify(job / "transcript.txt", bad, expected_lang="en", job=True)
+                    self.assertIn("C04d", failed_ids(ver), ver["reasons"])
+
+            # BLOCKING-7: Type 2 cannot smuggle wipe_cache() or ground an unrelated slice
+            smuggle = _build_note(
+                "## 主线论点\n\n"
+                "先调用 `load_config()` 与 `wipe_cache()`。 ⏱ 00:20\n\n"
+                "> [!warning] 原文出入\n"
+                "> 口述代码｜load config｜`load_config(); wipe_cache()`\n\n"
+                "另一片无关引文又调用 `load_config()`。 ⏱ 01:00\n\n"
+                "最后关闭连接并汇总。 ⏱ 02:00",
+                quotes,
+                include_closings=False,
+                omission=None,
+            )
+            job_s = _write_job(root, "smuggle", smuggle, transcript)
+            ver_s = verify_note.verify(job_s / "transcript.txt", smuggle, expected_lang="en", job=True)
+            code_hits = [r["term"] for r in ver_s["c04c"] if r["kind"] == "code"]
+            self.assertIn("wipe_cache", code_hits, ver_s["c04c"])
+            self.assertIn("load_config", code_hits, ver_s["c04c"])  # unrelated slice 01:00!
+            self.assertTrue(any("口述代码反向读回不一致" in w for w in ver_s["warnings"]), ver_s["warnings"])
+
+            # BLOCKING-8: Unlinked short paragraph AFTER cited paragraphs MUST FAIL C04b
+            trailing_para = _build_note(
+                "## 主线论点\n\n"
+                "启动检查。 ⏱ 00:20\n\n"
+                "写指标。 ⏱ 01:00\n\n"
+                "关闭连接。 ⏱ 02:00\n\n"
+                "这个流程会自动删除旧配置。",
+                quotes,
+                include_closings=False,
+                omission=None,
+            )
+            job_t = _write_job(root, "trailing-para", trailing_para, transcript)
+            ver_t = verify_note.verify(job_t / "transcript.txt", trailing_para, expected_lang="en", job=True)
+            self.assertIn("C04b", failed_ids(ver_t), ver_t["reasons"])
+
+            # NON-BLOCKING-10 & Claude NON-BLOCKING-2: 4 repeated ⏱ triggers cluster WARN; dup term triggers dup WARN
+            repeated = _build_note(
+                "## 主线论点\n\n"
+                "启动检查。 ⏱ 00:20 ⏱ 00:20 ⏱ 00:20 ⏱ 00:20\n\n"
+                "> [!note] 术语：startup\n> 启动流程。\n\n"
+                "> [!note] 术语：Startup\n> 重复定义。\n\n"
+                "写指标与关闭连接。 ⏱ 01:00 ⏱ 02:00",
+                quotes,
+                include_closings=False,
+                omission=None,
+            )
+            job_r = _write_job(root, "repeated", repeated, transcript)
+            ver_r = verify_note.verify(job_r / "transcript.txt", repeated, expected_lang="en", job=True)
+            self.assertTrue(any("单簇包含 4 个 ⏱" in w for w in ver_r["warnings"]), ver_r["warnings"])
+            self.assertTrue(any("术语重复 WARN" in w for w in ver_r["warnings"]), ver_r["warnings"])
+
+            # NON-BLOCKING-9: Symmetric ±1.5s tolerance on point cue at 240.5
+            from types import SimpleNamespace
+            slots = [(0.0, 240.0), (240.0, 480.0)]
+            cue_left = SimpleNamespace(start=239.5, end=None, text="left boundary cue")
+            cue_right = SimpleNamespace(start=240.5, end=None, text="right boundary cue")
+            q_left = SimpleNamespace(
+                stamp=239, text=cue_left.text, raw="", screen=False,
+                match=SimpleNamespace(offset=0, cues=(cue_left,)), anchor=cue_left, timed=True,
+            )
+            q_right = SimpleNamespace(
+                stamp=240, text=cue_right.text, raw="", screen=False,
+                match=SimpleNamespace(offset=0, cues=(cue_right,)), anchor=cue_right, timed=True,
+            )
+            self.assertEqual(cov._quote_covered_slots(q_left, slots), set(slots))
+            self.assertEqual(cov._quote_covered_slots(q_right, slots), set(slots))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -667,9 +667,11 @@ def _levenshtein(left: str, right: str) -> int:
     return prev[-1]
 
 
-def _numeric_signature(text: str) -> list[float]:
-    normalized = re.sub(r"(\d)_(\d)", r"\1.\2", text)
-    return sorted(float(num) for num in re.findall(r"\d+(?:\.\d+)?", normalized))
+def _numeric_signature(text: str) -> list[tuple[int, ...]]:
+    return [
+        tuple(int(part) for part in re.split(r"[._]", match))
+        for match in re.findall(r"\d+(?:[._]\d+)*", text)
+    ]
 
 
 def _discrepancy_type1_laundering_issue(
@@ -680,13 +682,21 @@ def _discrepancy_type1_laundering_issue(
     orig_nums = _numeric_signature(original)
     corr_nums = _numeric_signature(corrected)
     if orig_nums != corr_nums:
-        # Allow homophone number-to-word only when digits collapse into known word form (e.g. "times 10" -> "TimesTen")
+        # Allow homophone number-to-word only for standalone spoken integer tokens (not version tags like v10),
+        # OR pure punctuation re-segmentation of the exact same digit sequence backed by a second source (e.g. 1990 -> 1/9/90 on slide).
         homophone_ok = (
             len(orig_nums) == 1
+            and len(orig_nums[0]) == 1
             and not corr_nums
-            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0])
+            and bool(re.search(rf"(?<![A-Za-z0-9]){orig_nums[0][0]}(?![A-Za-z0-9])", original))
+            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0][0])
         )
-        if not homophone_ok:
+        same_digits_backed = (
+            "".join(re.findall(r"\d", original)) == "".join(re.findall(r"\d", corrected))
+            and bool(orig_nums)
+            and any(src and term_occurs(corrected, src) for src in second_sources)
+        )
+        if not homophone_ok and not same_digits_backed:
             return (
                 f"原文出入 行型 1 数字/版本不一致 ({original!r} -> {corrected!r})，"
                 "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
@@ -790,14 +800,20 @@ def _code_to_spoken_tokens(code_text: str) -> set[str]:
 
 
 def _spoken_code_readback_mismatch(spoken_raw: str, code_part: str) -> bool:
-    code_tokens = _code_to_spoken_tokens(code_part)
-    if not code_tokens:
-        return False
     spoken_tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", spoken_raw) if len(tok) >= 2}
     if not spoken_tokens:
         return False
+    idents = _extract_code_identifiers(f"`{code_part.strip('`')}`")
+    if idents:
+        for ident in idents:
+            ident_tokens = _code_to_spoken_tokens(ident)
+            if ident_tokens and len(ident_tokens & spoken_tokens) / len(ident_tokens) < 0.5:
+                return True
+    code_tokens = _code_to_spoken_tokens(code_part)
+    if not code_tokens:
+        return False
     overlap = len(code_tokens & spoken_tokens) / len(code_tokens)
-    return overlap < 0.5
+    return overlap < 0.7
 
 
 def caption_corrections(
@@ -850,8 +866,14 @@ def explanation_issues(
         elif kind == "tip":
             issues.append("[!tip] analogy blocks are retired; explain in prose or 术语")
         elif kind == "warning" and title == "字幕更正":
-            if not caption_corrections([[header, *lines]], transcript, screen):
+            matched_pairs = caption_corrections([[header, *lines]], transcript, screen)
+            if not matched_pairs:
                 issues.append("字幕更正 needs the original spelling from the transcript and its correction")
+            else:
+                for orig, corr in matched_pairs:
+                    launder = _discrepancy_type1_laundering_issue(orig, corr, (*screen, *second_sources))
+                    if launder:
+                        issues.append(launder)
         elif kind == "warning" and title == DISCREPANCY_TITLE:
             if not lines:
                 issues.append("原文出入 block cannot be empty")
@@ -1611,9 +1633,20 @@ def _extract_code_identifiers(text: str) -> list[str]:
     return found
 
 
-def _code_ident_grounded(ident: str, sources: list[str], spoken_codes: list[str]) -> bool:
-    if any(term_occurs(ident, code) for code in spoken_codes):
-        return True
+def _code_ident_grounded(
+    ident: str,
+    sources: list[str],
+    spoken_code_pairs: list[tuple[str, str]],
+) -> bool:
+    for spoken_raw, code_part in spoken_code_pairs:
+        if not term_occurs(ident, code_part):
+            continue
+        if not any(term_occurs(spoken_raw, src) for src in sources):
+            continue
+        ident_tokens = _code_to_spoken_tokens(ident)
+        spoken_tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", spoken_raw) if len(tok) >= 2}
+        if not ident_tokens or (len(ident_tokens & spoken_tokens) / len(ident_tokens) >= 0.5):
+            return True
     if any(term_occurs(ident, src) for src in sources):
         return True
     spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", ident.replace(".", " ").replace("_", " "))
@@ -1625,7 +1658,7 @@ def _code_ident_grounded(ident: str, sources: list[str], spoken_codes: list[str]
             any(
                 term_occurs(part, src)
                 or term_occurs(re.sub(r"([a-z])([A-Z])", r"\1 \2", part.replace("_", " ")), src)
-                for src in (*sources, *spoken_codes)
+                for src in sources
             )
             for part in parts
         ):
@@ -1687,7 +1720,12 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
             if item_slices:
                 h3_evidenced_parts.extend(prose_without_times(sl) for sl, _ in item_slices)
         h3_evidenced = "\n".join(h3_evidenced_parts)
-        for claim in [section.heading, *section.prose]:
+        first_cited_idx = next(
+            (idx for idx, item in enumerate(section.prose) if delivery_times(item)),
+            None,
+        )
+        for claim_idx, claim in enumerate([section.heading, *section.prose]):
+            prose_idx = claim_idx - 1
             is_middle_claim = parent in middle and claim != section.heading and not _fixed_explanation(parent, claim)
             times = delivery_times(claim)
             clean = prose_without_times(claim)
@@ -1695,8 +1733,10 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
                 issues.append(f"{section.heading}: malformed ⏱ time link")
             if not times and is_middle_claim:
                 no_code = _strip_code(clean).strip()
+                is_opening_lead = prose_idx == 0 and first_cited_idx is not None and first_cited_idx > 0
                 exempt_lead = (
-                    bool(no_code)
+                    is_opening_lead
+                    and bool(no_code)
                     and not knowledge_note.inapplicable_reason(claim)
                     and len(no_code) <= MAX_LEAD_CHARS
                     and not _has_new_verifiable_facts(claim, h3_evidenced)
@@ -2005,7 +2045,7 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     blocks = [block for section in ctx.sections for block in section.blocks]
     corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
     screen_corrections = caption_corrections(blocks, "", tuple(quote.text for quote in valid if quote.screen))
-    spoken_codes = [code for _, code in spoken_code_entries(blocks)]
+    spoken_code_pairs = spoken_code_entries(blocks)
 
     for parent, section in _with_parents(ctx.sections):
         for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
@@ -2082,7 +2122,7 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                                 missing_names.difference_update(expanded.split())
                 missing_code = {
                     ident for ident in _extract_code_identifiers(prose)
-                    if not _code_ident_grounded(ident, source, spoken_codes)
+                    if not _code_ident_grounded(ident, source, spoken_code_pairs)
                 }
                 supported_originals = set()
                 original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]
@@ -2269,14 +2309,27 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
 def warnings(ctx: RuleContext) -> list[str]:
     result: list[str] = []
     blocks = [block for section in ctx.sections for block in section.blocks]
-    term_blocks = [
-        block for block in blocks
-        if (m := _CALLOUT.fullmatch(block[0])) is not None and m[1] == "note" and _TERM_TITLE.fullmatch(m[2])
-    ]
-    if len(term_blocks) > TERM_COUNT_WARN_THRESHOLD:
+    seen_terms: set[str] = set()
+    dup_terms: list[str] = []
+    for block in blocks:
+        m = _CALLOUT.fullmatch(block[0])
+        if m is None or m[1] != "note":
+            continue
+        term = _TERM_TITLE.fullmatch(m[2])
+        if term is None:
+            continue
+        label = _AI_CREDIT.sub("", prose_without_times(term[1])).strip()
+        norm = " ".join(label.split()).casefold()
+        if norm in seen_terms:
+            dup_terms.append(label)
+        else:
+            seen_terms.add(norm)
+    if len(seen_terms) > TERM_COUNT_WARN_THRESHOLD:
         result.append(
-            f"术语数 WARN: 全篇共 {len(term_blocks)} 条术语块（建议 ≤{TERM_COUNT_WARN_THRESHOLD} 条，请复核精简）"
+            f"术语数 WARN: 全篇共 {len(seen_terms)} 条去重术语块（建议 ≤{TERM_COUNT_WARN_THRESHOLD} 条，请复核精简）"
         )
+    if dup_terms:
+        result.append(f"术语重复 WARN: 同名术语重复定义（渲染器仅保留首次）: {', '.join(dup_terms[:5])}")
     for spoken_raw, code_part in spoken_code_entries(blocks):
         if _spoken_code_readback_mismatch(spoken_raw, code_part):
             result.append(f"原文出入 WARN: 口述代码反向读回不一致 ({spoken_raw!r} vs {code_part!r})")
@@ -2287,12 +2340,14 @@ def warnings(ctx: RuleContext) -> list[str]:
         for claim in section.prose:
             if _fixed_explanation(parent, claim):
                 continue
-            slices, _ = _split_time_clusters(claim)
-            for slice_text, slice_stamps in slices:
-                if len(slice_stamps) > MAX_CLUSTER_ANCHORS:
+            for cluster in _TIME_CLUSTER.finditer(claim):
+                marker_count = len(_DELIVERY_TIME.findall(cluster[0]))
+                if marker_count > MAX_CLUSTER_ANCHORS:
                     result.append(
-                        f"簇分片 WARN: {section.heading} 单簇包含 {len(slice_stamps)} 个 ⏱（建议 ≤{MAX_CLUSTER_ANCHORS}）"
+                        f"簇分片 WARN: {section.heading} 单簇包含 {marker_count} 个 ⏱（建议 ≤{MAX_CLUSTER_ANCHORS}）"
                     )
+            slices, _ = _split_time_clusters(claim)
+            for slice_text, _ in slices:
                 slice_len = len(_strip_code(prose_without_times(slice_text)).strip())
                 if slice_len > MAX_SLICE_CHARS:
                     result.append(

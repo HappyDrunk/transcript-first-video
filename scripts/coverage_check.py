@@ -257,7 +257,7 @@ def picture_choice(rows: list[tuple[str, str, bool]], text: str) -> bool | None:
 
 def virtual_slots(
     units: list[SelectionUnit],
-    segments: list[rules.Cue],
+    segments: list,
     total_duration: float,
 ) -> list[tuple[float, float]]:
     """Split overlong retained speech units into equal virtual sub-windows containing cues."""
@@ -305,7 +305,7 @@ def _quote_covered_slots(quote: rules.Quote, slots: list[tuple[float, float]]) -
             covered.add(slot)
         elif has_interval and q_start < s_end + OVERLAP_TOLERANCE and q_end > s_start - OVERLAP_TOLERANCE:
             covered.add(slot)
-        elif s_start - OVERLAP_TOLERANCE <= q_start < s_start:
+        elif (s_start - OVERLAP_TOLERANCE <= q_start < s_start) or (s_end < q_start <= s_end + OVERLAP_TOLERANCE):
             covered.add(slot)
     return covered
 

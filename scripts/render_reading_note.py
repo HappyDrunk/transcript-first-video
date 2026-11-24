@@ -45,6 +45,7 @@ DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([
 FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 INLINE_CODE_RE = re.compile(r"(`+)([^`\n]+?)\1")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
+PAREN_SPAN_RE = re.compile(r"（[^）\n]*）|\([^)\n]*\)")
 TABLE_SEP_RE = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 JOB_FILES = (
     "note.md", "transcript.txt", "selection.md", "status.json", "segments.json", ".status.lock", "delivery.md",
@@ -84,18 +85,30 @@ def _is_table_block(block_lines: list[str]) -> bool:
     return len(block_lines) >= 2 and any(TABLE_SEP_RE.fullmatch(line) for line in block_lines)
 
 
+def _protected_spans(text: str, *, include_parens: bool = False) -> list[tuple[int, int]]:
+    patterns = (INLINE_CODE_RE, MARKDOWN_LINK_RE, PAREN_SPAN_RE) if include_parens else (INLINE_CODE_RE, MARKDOWN_LINK_RE)
+    spans = [(m.start(), m.end()) for pat in patterns for m in pat.finditer(text)]
+    spans.sort()
+    return spans
+
+
 def _overlaps_forbidden_span(text: str, start: int, end: int) -> bool:
-    for pattern in (INLINE_CODE_RE, MARKDOWN_LINK_RE):
-        for match in pattern.finditer(text):
-            if start < match.end() and end > match.start():
-                return True
-    return False
+    return any(start < span_end and end > span_start for span_start, span_end in _protected_spans(text))
 
 
 def _sentence_insertion_index(text: str, anchor_end: int) -> int:
+    protected = _protected_spans(text, include_parens=True)
     pos = anchor_end
     length = len(text)
     while pos < length:
+        jumped = False
+        for span_start, span_end in protected:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
         ch = text[pos]
         if ch == "\n":
             return pos
@@ -109,7 +122,7 @@ def _sentence_insertion_index(text: str, anchor_end: int) -> int:
     return length
 
 
-def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
+def _resolve_doubt_insertion(block_text: str, anchor: str, explanation: str) -> tuple[int, str]:
     if not anchor or not explanation or "\n" in explanation or "）" in explanation:
         raise RenderError(f"invalid 存疑 entry: anchor={anchor!r}, explanation={explanation!r}")
     count = block_text.count(anchor)
@@ -119,8 +132,44 @@ def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
     end = start + len(anchor)
     if _overlaps_forbidden_span(block_text, start, end):
         raise RenderError(f"存疑 anchor {anchor!r} must not fall inside code or link")
-    insert_at = _sentence_insertion_index(block_text, end)
-    return f"{block_text[:insert_at]}（存疑：{explanation}）{block_text[insert_at:]}"
+    return _sentence_insertion_index(block_text, end), f"（存疑：{explanation}）"
+
+
+def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
+    insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+    return f"{block_text[:insert_at]}{annotation}{block_text[insert_at:]}"
+
+
+def _apply_doubt_notes(block_text: str, doubts: list[tuple[str, str]]) -> tuple[str, list[tuple[int, int]]]:
+    """Resolve all anchors against original block_text, then apply stably and return generated spans."""
+    if len(doubts) == 1:
+        anchor, explanation = doubts[0]
+        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+        updated = _insert_doubt_note(block_text, anchor, explanation)
+        return updated, [(insert_at, insert_at + len(annotation))]
+
+    resolved: list[tuple[int, int, str]] = []
+    for order, (anchor, explanation) in enumerate(doubts):
+        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
+        resolved.append((insert_at, order, annotation))
+
+    # Build left-to-right so we know exact final (start, end) spans in updated block_text.
+    resolved.sort(key=lambda item: (item[0], item[1]))
+    parts: list[str] = []
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    out_len = 0
+    for insert_at, _, annotation in resolved:
+        chunk = block_text[cursor:insert_at]
+        parts.append(chunk)
+        out_len += len(chunk)
+        span_start = out_len
+        parts.append(annotation)
+        out_len += len(annotation)
+        spans.append((span_start, out_len))
+        cursor = insert_at
+    parts.append(block_text[cursor:])
+    return "".join(parts), spans
 
 
 def _parse_discrepancy_lines(content: list[str]) -> tuple[bool, list[tuple[str, str]]]:
@@ -203,7 +252,8 @@ def render_lines(
                 rendered.append(cleaned)
                 continue
             if cleaned:
-                if not block_open:
+                starts_list_item = bool(rules._LIST_ITEM.match(raw.strip()))
+                if not block_open or starts_list_item:
                     block_open = True
                     last_block_start = len(rendered)
                     last_block_raw = [raw]
@@ -243,14 +293,23 @@ def render_lines(
                         raise RenderError("存疑 entry must follow a non-callout paragraph or list item")
                     raw_block_text = "\n".join(last_block_raw)
                     block_text = "\n".join(rendered[last_block_start:last_block_end])
-                    for anchor, explanation in doubts:
+                    for anchor, _ in doubts:
                         if raw_block_text.count(anchor) != 1:
                             raise RenderError(
                                 f"存疑 anchor {anchor!r} must occur exactly once verbatim without crossing ⏱"
                             )
-                        block_text = _insert_doubt_note(block_text, anchor, explanation)
-                        doubt_count += 1
-                    rendered[last_block_start:last_block_end] = block_text.split("\n")
+                    updated_block, generated_spans = _apply_doubt_notes(block_text, doubts)
+                    # Local invariant check: removing exact generated spans must restore block_text verbatim.
+                    reconstructed: list[str] = []
+                    pos = 0
+                    for s_start, s_end in generated_spans:
+                        reconstructed.append(updated_block[pos:s_start])
+                        pos = s_end
+                    reconstructed.append(updated_block[pos:])
+                    if "".join(reconstructed) != block_text:
+                        raise RenderError("invariant #7 failed: generated doubt spans did not restore original block")
+                    rendered[last_block_start:last_block_end] = updated_block.split("\n")
+                    doubt_count += len(generated_spans)
             index = _absorb_hidden_block(rendered, lines, index)
             continue
 

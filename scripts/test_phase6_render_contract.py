@@ -293,6 +293,84 @@ class Phase6RendererContractTests(unittest.TestCase):
                     self.assertNotIn("⏱", decoded)
                     self.assertNotIn("[!", decoded)
 
+    def test_review_round1_render_and_verify_alignment_regressions(self) -> None:
+        import coverage_check as cov
+        import hashlib
+        import json
+        import verify_note
+
+        # 1. Consecutive list items sharing anchor word (BLOCKING-1)
+        # 2. Multiple doubts where row 1 explanation mentions row 2 anchor (BLOCKING-2)
+        # 3. Anchor followed by URL containing `?` (BLOCKING-3)
+        # 4. Literal speaker text containing `（存疑：旧说法。仍待确认）` (BLOCKING-4)
+        quotes = (
+            ("00:20", "We keep the index on disk, update the index later, and read configuration from the guide."),
+            ("01:00", "Team A chose plan B during the review while keeping the fallback setting intact."),
+            ("02:00", "This step runs normally even when an earlier note remains open for confirmation."),
+        )
+        screen_line = "[00:25][画面] config_mode=full"
+        transcript = "\n".join(f"[{s}] {t}" for s, t in quotes) + "\n"
+        selection = (
+            "00:00–00:50 | 索引与配置 | 留 | 索引步骤与画面配置\n"
+            "00:50–01:40 | 方案对比 | 留 | 甲乙方案\n"
+            "01:40–02:30 | 常规执行 | 留 | 执行说明\n"
+            "00:25 | [画面] config_mode=full | 留 | 画面配置键值\n"
+        )
+        note = (
+            FRONTMATTER.replace("type: 访谈", "type: 讲座")
+            + "\n## 先记住一句话\n\n先检查索引与配置再执行。\n\n"
+            + "## 这场在谈什么、谁\n\n合成园艺课堂说明索引和配置流程。\n\n"
+            + "## 主线论点\n\n"
+            + "- 保留索引。 ⏱ 00:20\n"
+            + "- 更新索引，参考 [说明](https://example.test/?mode=full) 与 `config_mode`。 ⏱ 00:20 ⏱ 00:25\n\n"
+            + "> [!warning] 原文出入\n"
+            + "> 存疑｜「索引」｜第二项索引位置待核实\n\n"
+            + "甲采用乙方案。 ⏱ 01:00\n\n"
+            + "> [!warning] 原文出入\n"
+            + "> 存疑｜「甲」｜乙仍待确认\n"
+            + "> 存疑｜「乙」｜出处不清\n\n"
+            + "这一步（存疑：旧说法。仍待确认）照常执行。 ⏱ 02:00\n\n"
+            + "> [!warning] 原文出入\n"
+            + "> 存疑｜「这一步」｜新说明\n\n"
+            + "## 原文依据\n"
+            + "".join(f"> [{s}] {t}\n" for s, t in quotes)
+            + f"> {screen_line}\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "screen-job"
+            job.mkdir()
+            (job / "transcript.txt").write_text(transcript, encoding="utf-8")
+            (job / "selection.md").write_text(selection, encoding="utf-8")
+            (job / "screen.txt").write_bytes((screen_line + "\n").encode("utf-8"))
+            (job / "note.md").write_text(note, encoding="utf-8")
+            (job / "status.json").write_text(
+                json.dumps({
+                    "status": "transcript_ready",
+                    "expected_lang": "en",
+                    "duration_seconds": 150,
+                    "screen_ocr": {
+                        "state": "ready",
+                        "mode": "slides",
+                        "sha256": hashlib.sha256((screen_line + "\n").encode("utf-8")).hexdigest(),
+                    },
+                }),
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {"TFV_SCREEN_MODE": "slides"}):
+                ver = verify_note.verify(job / "transcript.txt", note, expected_lang="en", job=True)
+                self.assertTrue(ver["allowed"], ver["reasons"])
+                covered = cov.check_job(job)
+                self.assertTrue(covered["ok"], covered["reasons"])
+            for inline_terms in (False, True):
+                reading = render_reading_note.render_note(
+                    note.encode("utf-8"), keep_frontmatter=False, inline_terms=inline_terms
+                ).decode("utf-8")
+                self.assertIn("- 更新索引，参考 [说明](https://example.test/?mode=full) 与 `config_mode`（存疑：第二项索引位置待核实）。", reading)
+                self.assertIn("甲采用乙方案（存疑：乙仍待确认）（存疑：出处不清）。", reading)
+                self.assertIn("这一步（存疑：旧说法。仍待确认）照常执行（存疑：新说明）。", reading)
+                self.assertNotIn("⏱", reading)
+                self.assertNotIn("[!", reading)
+
 
 if __name__ == "__main__":
     unittest.main()
