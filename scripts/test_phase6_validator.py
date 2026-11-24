@@ -535,12 +535,12 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
                     ver = verify_note.verify(job / "transcript.txt", bad, expected_lang="en", job=True)
                     self.assertIn("C04d", failed_ids(ver), ver["reasons"])
 
-            # BLOCKING-7 & R2-BLOCKING-1: Type 2 cannot smuggle partial tokens (secret) or ground unrelated/uncited slices
+            # BLOCKING-7 & R2/R3-BLOCKING-1: Type 2 cannot smuggle partial or single-char tokens or unrelated slices
             smuggle = _build_note(
                 "## 主线论点\n\n"
-                "先调用 `load_local_config()` 与 `load_local_secret_config()`。 ⏱ 00:20\n\n"
+                "先调用 `load_local_config()`、`load_local_secret_config()` 与 `load_local_x_config()`。 ⏱ 00:20\n\n"
                 "> [!warning] 原文出入\n"
-                "> 口述代码｜load local config｜`load_local_config(); load_local_secret_config()`\n\n"
+                "> 口述代码｜load local config｜`load_local_config(); load_local_secret_config(); load_local_x_config()`\n\n"
                 "另一片无关引文又调用 `load_local_config()`。 ⏱ 01:00\n\n"
                 "最后关闭连接并汇总。 ⏱ 02:00",
                 quotes,
@@ -551,8 +551,13 @@ class OptionalClosingsAndTutorialTypeTests(unittest.TestCase):
             ver_s = verify_note.verify(job_s / "transcript.txt", smuggle, expected_lang="en", job=True)
             code_hits = [r["term"] for r in ver_s["c04c"] if r["kind"] == "code"]
             self.assertIn("load_local_secret_config", code_hits, ver_s["c04c"])
+            self.assertIn("load_local_x_config", code_hits, ver_s["c04c"])
             self.assertIn("load_local_config", code_hits, ver_s["c04c"])  # unrelated slice 01:00!
             self.assertTrue(any("口述代码反向读回不一致" in w for w in ver_s["warnings"]), ver_s["warnings"])
+            # Also verify standalone single-char mismatch triggers readback warning
+            self.assertTrue(
+                rules._spoken_code_readback_mismatch("load local config", "`load_local_x_config()`")
+            )
 
             # BLOCKING-8: Unlinked short paragraph AFTER cited paragraphs MUST FAIL C04b
             trailing_para = _build_note(

@@ -333,6 +333,9 @@ class Phase6RendererContractTests(unittest.TestCase):
             + "这一步（存疑：旧说法（含内层。注）仍待确认）照常执行。 ⏱ 02:00\n\n"
             + "> [!warning] 原文出入\n"
             + "> 存疑｜「这一步」｜新说明\n\n"
+            + "甲方案（示例 `）` 后继续？仍在外层）结束。 ⏱ 02:00\n\n"
+            + "> [!warning] 原文出入\n"
+            + "> 存疑｜「甲方案」｜括号内含代码右括号\n\n"
             + "## 原文依据\n"
             + "".join(f"> [{s}] {t}\n" for s, t in quotes)
             + f"> {screen_line}\n"
@@ -376,6 +379,7 @@ class Phase6RendererContractTests(unittest.TestCase):
                 self.assertIn("- 更新索引并核对本地完整配置说明，参考 [说明](https://example.test/a(b)?mode=full) 与 `config_mode`（存疑：第二项索引位置待核实）。", reading)
                 self.assertIn("甲采用乙方案（存疑：乙仍待确认）（存疑：出处不清）。", reading)
                 self.assertIn("这一步（存疑：旧说法（含内层。注）仍待确认）照常执行（存疑：新说明）。", reading)
+                self.assertIn("甲方案（示例 `）` 后继续？仍在外层）结束（存疑：括号内含代码右括号）。", reading)
                 self.assertNotIn("⏱", reading)
                 self.assertNotIn("[!", reading)
 

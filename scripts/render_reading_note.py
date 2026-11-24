@@ -85,11 +85,26 @@ def _is_table_block(block_lines: list[str]) -> bool:
     return len(block_lines) >= 2 and any(TABLE_SEP_RE.fullmatch(line) for line in block_lines)
 
 
-def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | None:
+def _scan_balanced(
+    text: str,
+    start: int,
+    open_ch: str,
+    close_ch: str,
+    skip_spans: list[tuple[int, int]] = (),
+) -> int | None:
     depth = 0
     pos = start
     length = len(text)
     while pos < length:
+        if pos > start:
+            jumped = False
+            for span_start, span_end in skip_spans:
+                if span_start <= pos < span_end:
+                    pos = span_end
+                    jumped = True
+                    break
+            if jumped:
+                continue
         ch = text[pos]
         if ch == "\n":
             return None
@@ -107,13 +122,22 @@ def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | 
 
 
 def _protected_spans(text: str, *, include_parens: bool = False) -> list[tuple[int, int]]:
-    spans: list[tuple[int, int]] = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(text)]
+    code_spans: list[tuple[int, int]] = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(text)]
+    spans: list[tuple[int, int]] = list(code_spans)
     # Balanced Markdown links: [label](dest with balanced (parens))
     length = len(text)
     pos = 0
     while pos < length:
+        jumped = False
+        for span_start, span_end in code_spans:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
         if text[pos] == "[":
-            label_end = _scan_balanced(text, pos, "[", "]")
+            label_end = _scan_balanced(text, pos, "[", "]", code_spans)
             if label_end is not None and label_end < length and text[label_end] == "(":
                 dest_end = _scan_balanced(text, label_end, "(", ")")
                 if dest_end is not None:
@@ -122,7 +146,7 @@ def _protected_spans(text: str, *, include_parens: bool = False) -> list[tuple[i
                     continue
         if include_parens and text[pos] in "（(":
             close_ch = "）" if text[pos] == "（" else ")"
-            paren_end = _scan_balanced(text, pos, text[pos], close_ch)
+            paren_end = _scan_balanced(text, pos, text[pos], close_ch, code_spans)
             if paren_end is not None:
                 spans.append((pos, paren_end))
                 pos = paren_end

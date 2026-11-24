@@ -740,11 +740,26 @@ def _term_sentences(text: str) -> list[str]:
     return parts
 
 
-def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | None:
+def _scan_balanced(
+    text: str,
+    start: int,
+    open_ch: str,
+    close_ch: str,
+    skip_spans: list[tuple[int, int]] = (),
+) -> int | None:
     depth = 0
     pos = start
     length = len(text)
     while pos < length:
+        if pos > start:
+            jumped = False
+            for span_start, span_end in skip_spans:
+                if span_start <= pos < span_end:
+                    pos = span_end
+                    jumped = True
+                    break
+            if jumped:
+                continue
         ch = text[pos]
         if ch == "\n":
             return None
@@ -762,14 +777,23 @@ def _scan_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int | 
 
 
 def _overlaps_forbidden_inline_span(text: str, start: int, end: int) -> bool:
-    for match in _INLINE_CODE.finditer(text):
-        if start < match.end() and end > match.start():
+    code_spans = [(match.start(), match.end()) for match in _INLINE_CODE.finditer(text)]
+    for span_start, span_end in code_spans:
+        if start < span_end and end > span_start:
             return True
     pos = 0
     length = len(text)
     while pos < length:
+        jumped = False
+        for span_start, span_end in code_spans:
+            if span_start <= pos < span_end:
+                pos = span_end
+                jumped = True
+                break
+        if jumped:
+            continue
         if text[pos] == "[":
-            label_end = _scan_balanced(text, pos, "[", "]")
+            label_end = _scan_balanced(text, pos, "[", "]", code_spans)
             if label_end is not None and label_end < length and text[label_end] == "(":
                 dest_end = _scan_balanced(text, label_end, "(", ")")
                 if dest_end is not None:
@@ -816,6 +840,14 @@ def spoken_code_entries(blocks: list[list[str]]) -> list[tuple[str, str]]:
     return entries
 
 
+def _spoken_tokens(text: str) -> set[str]:
+    tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", text)}
+    for digit, word in enumerate(_SPOKEN_DIGITS):
+        if word in tokens:
+            tokens.add(str(digit))
+    return tokens
+
+
 def _code_to_spoken_tokens(code_text: str) -> set[str]:
     text = code_text.strip().strip("`")
     for op, spoken in (
@@ -826,14 +858,14 @@ def _code_to_spoken_tokens(code_text: str) -> set[str]:
     ):
         text = text.replace(op, spoken)
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-    tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", text) if len(tok) >= 2}
+    tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", text)}
     connectors = {"dot", "plus", "minus", "equals", "not", "greater", "less", "arrow", "slash", "colon"}
     ident_tokens = tokens - connectors
     return ident_tokens or tokens
 
 
 def _spoken_code_readback_mismatch(spoken_raw: str, code_part: str) -> bool:
-    spoken_tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", spoken_raw) if len(tok) >= 2}
+    spoken_tokens = _spoken_tokens(spoken_raw)
     if not spoken_tokens:
         return False
     idents = _extract_code_identifiers(f"`{code_part.strip('`')}`")
@@ -1679,7 +1711,7 @@ def _code_ident_grounded(
         if not any(term_occurs(spoken_raw, src) for src in spoken_scope):
             continue
         ident_tokens = _code_to_spoken_tokens(ident)
-        spoken_tokens = {tok.casefold() for tok in re.findall(r"[A-Za-z0-9]+", spoken_raw) if len(tok) >= 2}
+        spoken_tokens = _spoken_tokens(spoken_raw)
         if not ident_tokens or (ident_tokens <= spoken_tokens):
             return True
     if any(term_occurs(ident, src) for src in sources):
