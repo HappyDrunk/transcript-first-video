@@ -198,12 +198,12 @@ _ARABIC_MAGNITUDE = re.compile(
 _ZH_APPROXIMATE_COUNT = re.compile(
     r"(?P<prefix>上|成|数|數|约|約|大约|大約)"
     r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
-    r"|(?<![总總参參函次点點指常变變倍分系度基整小实實虚虛正负負奇偶质質合对對倒余餘模阶階导導级級人年天字词詞条條项項行列表页頁节節量值率比差和])"
+    r"|(?<![总總参參函次点點指常变變倍分系度基位整小实實虚虛正负負奇偶质質合对對倒余餘模阶階导導级級人年天字词詞条條项項行列表页頁节節量值率比差和])"
     r"(?P<tens>[数數]十)(?![一二两兩三四五六七八九十零〇万萬亿億百千])"
 )
 _ZH_UNIT_SCALE_COUNT = re.compile(
     r"以(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
-    r"(?:[^\n，。；！？、]{0,4})?[计計]"
+    r"(?:美元|欧元|英镑|日元|元|块|人|次|个|台|座|栋|件|条|项|份)?[计計](?![算划策])"
 )
 _EN_APPROXIMATE_COUNT = re.compile(
     r"\b(?P<scale>hundreds|thousands|millions|billions)"
@@ -816,7 +816,7 @@ def _discrepancy_type1_laundering_issue(
                 f"原文出入 行型 1 数字/版本不一致 ({original!r} -> {corrected!r})，"
                 "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
             )
-    elif not orig_nums:
+    else:
         orig_words = [m.group() for m in _EN_NUMBER.finditer(original)]
         corr_words = [m.group() for m in _EN_NUMBER.finditer(corrected)]
         if (orig_words or corr_words) and (

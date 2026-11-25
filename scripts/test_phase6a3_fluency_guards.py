@@ -115,6 +115,12 @@ def test_t2_billions_scale_label_and_exact_reject() -> None:
     )
     assert not ok_bad4, "T2 bad4 ('耗时十秒' vs 'decades') MUST fail C04c"
 
+    ok_bad5, _ = _run_c04c(
+        "这套方案以百为起点计算分数。 ⏱ 00:10",
+        "The scoring rubric starts at 800 points for the baseline benchmark run.",
+    )
+    assert not ok_bad5, "T2 bad5 ('以百为起点计算' vs 800) MUST fail C04c"
+
 
 def test_t3_dozens_and_decades_guard() -> None:
     for body, quote in [
@@ -136,6 +142,7 @@ def test_t3_dozens_and_decades_guard() -> None:
         ("实验分成十组进行。 ⏱ 00:10", "The study split participants into 80 groups across the entire evaluation."),
         ("他登上十楼查看设备。 ⏱ 00:10", "The engineer inspected equipment on floor 80 of the high-rise tower."),
         ("模型参数十个即可。 ⏱ 00:10", "The compact controller requires 80 parameters for stable operation."),
+        ("有效位数十个即可。 ⏱ 00:10", "The compact format requires 80 digits for stable serialization."),
     ]:
         ok, _ = _run_c04c(body, quote)
         assert not ok, f"T3 bad MUST fail C04c for {body!r} vs {quote!r}"
@@ -216,9 +223,12 @@ def test_t5_original_english_hyphen_and_same_slice_type1() -> None:
         assert term_issues, "T5 bad4 (fabricated glossary term) MUST fail explanation_issues"
 
 
-    # Bad 5: Type-1 laundering that changes English spoken number words ('two dozen' -> 'ten dozen')
+    # Bad 5: Type-1 laundering that changes English spoken number words (pure & mixed with digits)
     assert vr._discrepancy_type1_laundering_issue("two dozen", "ten dozen") is not None, (
-        "T5 bad5 ('two dozen' -> 'ten dozen') MUST be rejected by Type-1 laundering guard"
+        "T5 bad5a ('two dozen' -> 'ten dozen') MUST be rejected by Type-1 laundering guard"
+    )
+    assert vr._discrepancy_type1_laundering_issue("v2 two dozen", "v2 ten dozen") is not None, (
+        "T5 bad5b ('v2 two dozen' -> 'v2 ten dozen') MUST be rejected by Type-1 laundering guard"
     )
     assert vr._discrepancy_type1_laundering_issue("cap Theory", "CAP theorem") is None, (
         "T5 good ('cap Theory' -> 'CAP theorem') should pass Type-1 laundering guard"
