@@ -128,7 +128,7 @@ class SubmissionFormatTests(unittest.TestCase):
         self.assertNotEqual(code, 0, result)
         self.assertTrue(any(reason.startswith("R04 FAIL:") for reason in result["reasons"]), result)
         self.assertEqual(self.status(job)["edit_rounds"], 1)
-        self.assertEqual(self.status(job)["repair_rounds"], 2)
+        self.assertEqual(self.status(job)["repair_rounds"], 1)
         self.assertEqual((job / "note.md").read_bytes(), changed.encode("utf-8"))
 
     def test_renderer_checks_and_renders_the_cleaned_note_in_one_run(self) -> None:

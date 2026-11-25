@@ -4,22 +4,25 @@ Reviewer-required guidance for an independent Task or the self-review fallback.
 
 ## Independent semantic review
 
-Only after verify and coverage pass on the same inputs, give the evidence note, full transcript, selection, and complete `status.verifier.inputs` to a Task that did not write the note. With screen evidence, also supply `screen.txt` and screenshots. Use slide groups to find omitted tables and lists, inspect doubtful screenshots and key numbers, and read necessary transcript context. A reading preview may be generated from the same note with `render_reading_note.render_note()`.
+Only after verify and coverage pass on the same inputs, give the evidence note, full transcript, selection, all verifier warnings, and complete `status.verifier.inputs` to a Task that did not write the note. With screen evidence, also supply `screen.txt` and screenshots. Use slide groups to find omitted tables and lists, inspect doubtful screenshots and key numbers, and read necessary transcript context. A reading preview may be generated from the same note with `render_reading_note.render_note()`.
 
 Report only located, evidenced issues. Do not repeat mechanical checks or add unrelated preferences.
 
-- Compare every claim with evidence for negation, order, conditions, and causal direction (especially across merged multi-sentence paragraphs). For `今天立刻动手一步` (when present), ensure the reader can act with the stated prerequisites.
-- Find repeated passages and cases where speech and screen duplicate a point; preserve useful differences in precision or scope. Verify scope/region/version prerequisites appear upfront rather than buried at the end.
-- In interviews, verify who proposed, summarized, or opposed each point. Check that every person named in the video title is accounted for in the body, with no silent "default to guest" attribution when speaker labels are absent.
-- Check retained lists and tutorial/hands-on code blocks for missing items or omitted runnable commands (without inventing missing parameters—state when the video omits them). Read omitted units for core claims, steps, or supporting numbers. Locate useful screen-only tables or lists absent from both the note and a distinct selection decision.
+- Check negation, order, conditions, and causal direction. For each “讲者认为/提出” conclusion, read the transcript ±30 seconds (±30 秒) and require any stated reason or mechanism in the same paragraph. Check prerequisites for `今天立刻动手一步`.
+- Review soft warnings and C04c. Flag machine-like screen narration (“画面写明”), repeated metrics, unit mismatches, and unexplained ordinals.
+- Check English-to-Chinese fidelity sentence by sentence, including subjects, objects, relative-clause attachment, and ambiguous subject switches. Flag untranslated English phrases, idioms, and time expressions.
+- Flag repeated passages, rounded-and-exact double reporting, and duplicated tutorial steps or commands. Check scope, region, and version prerequisites upfront.
+- In interviews, verify attribution and account for all people named in the title. Check speaker identity before attributing an unlabeled claim.
+- Check lists, runnable commands, omitted claims, steps and numbers, and screen-only tables or lists missing from the note and selection. State missing command parameters as omissions.
 - **Bidirectional terminology & readability review**:
   1. Flag essential terms missing explanation at first technical use (see reading-level section below).
   2. **Also flag excess/noise**: too many `术语` entries (target ≤12 entries, ≤60 chars each), glossary entries that merely parrot the prose, video facts (numbers/names/causality) smuggled into `术语` blocks instead of prose, and noisy English parentheses (such as `50%（50%）`, common words, or broken ASR fragments). Keep only essential proper names, search terms, and code.
 - **Review `原文出入` direction and neutrality**:
-  1. Type 1 (`字幕/画面写作 A，实为 B`): confirm it is a genuine typo/casing fix, not silently washing over a version/number conflict or unverified name completion.
+  1. Type 1 (`字幕/画面写作 A，实为 B`): confirm the context uniquely identifies the intended term, including for phonetic ASR errors resolved from speech alone. Check for changed numbers or versions and unsupported name completion.
   2. Type 2 (`口述代码`): verify the reconstructed code matches spoken words without inventing parameters or APIs.
-  3. Type 3 (`存疑`): confirm each entry reflects a real source conflict or missing detail, stays neutral without picking sides, and is not used as an escape hatch for unverified claims.
-- For screen-only numbers, inspect the image for units, comparison targets, and conditions; remove unsupported or contradicted uses.
+  3. Type 3 (`存疑`): check for overuse and downgradeable phonetic ASR typos. Confirm each remaining entry reflects a real conflict or missing detail, uses a neutral anchor, and preserves uncertainty.
+  4. For `版本冲突`, classify it as `误报` only if cited quotes prove the speaker is intentionally comparing or contrasting distinct versions (such as an upgrade); if one entity is given conflicting versions (such as title vs. config), require a reader-facing Type 3 `原文出入` explanation.
+- Reject unexplained code identifiers and screen numbers without clear labels (标签). Check units, comparison targets, and conditions against the image.
 - Find prose commentary about how the writer prepared, checked, or selected material. Preserve reader-facing scope/uncertainty notes (such as `存疑`, "视频未展开", "视频未给出完整命令") and source attribution.
 
 Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.

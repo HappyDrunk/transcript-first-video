@@ -65,17 +65,18 @@ class ReviewCorrectionTests(unittest.TestCase):
         return self.command("render_reading_note.py", "--task-dir", str(self.job), "--output", str(self.output))
 
     def ordinary_allowance_used(self, failures: int = 1) -> dict:
-        self.note(INITIAL_BAD)
         for failure in range(1, failures + 1):
+            self.note(INITIAL_BAD.replace("\n---\n", f"\nrevision: {failure}\n---\n", 1))
             code, result = self.submit()
             self.assertNotEqual(code, 0, result)
             self.assertTrue(any(reason.startswith("R04 FAIL:") for reason in result["reasons"]), result)
             status = self.status()
-            self.assertEqual((status["edit_rounds"], status["repair_rounds"]), (1, failure), status)
+            self.assertEqual((status["edit_rounds"], status["repair_rounds"]), (failure, failure), status)
             self.assertFalse(status.get("locked"), status)
-        self.note(NOTE.replace("\n---\n", "\nrevision: ordinary draft two\n---\n", 1))
-        code, result = self.submit()
-        self.assertEqual(code, 0, result["reasons"])
+        if failures == 1:
+            self.note(NOTE.replace("\n---\n", "\nrevision: ordinary draft two\n---\n", 1))
+            code, result = self.submit()
+            self.assertEqual(code, 0, result["reasons"])
         self.note(NOTE)
         code, result = self.submit()
         self.assertEqual(code, 0, result["reasons"])

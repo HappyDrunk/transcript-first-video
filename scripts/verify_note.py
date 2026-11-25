@@ -29,6 +29,7 @@ import c04c_review  # noqa: E402
 QUOTE_WINDOW = knowledge_note.QUOTE_WINDOW
 SCREEN_PENDING = "screen_pending"
 SCREEN_PENDING_MESSAGE = "Screen acquisition is pending; wait for the host or rerun acquisition if it stopped."
+UNCHANGED_FAILURE_NOTICE = "稿件与输入未改动，本次重复送检未消耗修订次数"
 
 
 def citation_forms(transcript: Path) -> set[str]:
@@ -111,6 +112,8 @@ def verify(
     confidence: float | None = None,
     job_status: str | None = None,
     job: bool = False,
+    screen_text: str = "",
+    raw: str | None = None,
 ) -> dict:
     """Run the single-note R and C04 rules. ``reasons`` are ``Rxx FAIL: ...`` lines."""
     ctx = verify_rules.build_context(
@@ -120,6 +123,8 @@ def verify(
         confidence=confidence,
         job_status=job_status,
         job=job,
+        screen_text=screen_text,
+        raw=raw,
     )
     c04c = []
     results = verify_rules.run_rules(ctx, c04c)
@@ -141,6 +146,24 @@ def verify(
         "quoted": ctx.quoted,
         "gate": None if gate is None else gate.to_dict(),
     }
+
+
+def verify_text(
+    note: str, transcript_text: str, *, source_url: str | None = None,
+    published: str | None = None, channel: str | None = None, title: str | None = None,
+    screen_text: str = "", expected_lang: str | None = None,
+) -> dict:
+    """Verify an in-memory note and transcript using the same rules as a job."""
+    fields = knowledge_note.parse_frontmatter(note) or {}
+    transcript = Path(fields.get("transcript_path") or "transcript.txt")
+    result = verify(transcript, note, raw=transcript_text, screen_text=screen_text,
+                    expected_lang=expected_lang)
+    for key, expected in (("source", source_url), ("published", published),
+                          ("channel", channel), ("title", title)):
+        if expected is not None and fields.get(key) != expected:
+            result["reasons"].append(f"C04a FAIL: {key} does not match source metadata")
+            result["allowed"] = False
+    return result
 
 
 NO_EXTRACTABLE = "no-extractable-content"
@@ -550,12 +573,17 @@ def record_note_revision(job: Path, note: str | None = None, *, digest: str | No
     return data
 
 
-def _record_failure(data: dict, reasons: list[str], *, review: bool = False) -> bool:
+def _record_failure(
+    data: dict, reasons: list[str], *, gate_snapshots: dict[str, dict], review: bool = False,
+) -> bool:
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
         rounds = 0
     data["repair_rounds"] = rounds + 1
     data["failure_lines"] = reasons
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    recorded.update(gate_snapshots)
+    data["last_failed_by_gate"] = recorded
     if review:
         data["review"]["failures"] += 1
     review_failed = review and data["review"]["failures"] >= 2
@@ -598,7 +626,7 @@ def resume_job(job: Path) -> None:
     history = list(status.pop("previous_attempts", []))
     root = {key: value for key, value in status.items()
             if key not in {"note_digest", "verifier", "coverage", "review", "review_rounds", "reason",
-                           "issues", "failure_lines"}}
+                           "issues", "failure_lines", "last_failed_inputs", "last_failed_by_gate"}}
     root.update(status="transcript_ready", finished=False, locked=False, next_step="write-note",
                 edit_rounds=0, repair_rounds=0, previous_attempts=[*history, status])
     write_job_status(job, root)
@@ -608,9 +636,24 @@ def record_gate_result(
     job: Path, gate: str, allowed: bool, reasons: list[str], *, inputs: dict | None = None,
     coverage: dict | None = None, review: bool = False, c04c: list[dict] | None = None,
     review_error: ValueError | None = None, note_inputs: dict | None = None,
+    checked_digest: str | None = None,
 ) -> dict:
     """Persist a single submission, optionally containing both gate results."""
     data = read_job_status(job)
+    skill_version = current_skill_version()
+    verify_allowed = allowed
+    coverage_allowed = coverage["ok"] if coverage is not None else (allowed if gate == "coverage" else None)
+    base_inputs = inputs or note_inputs or job_inputs(job)
+    effective_digest = checked_digest if checked_digest is not None else base_inputs.get("note")
+    scope = "review:" if review else ""
+    snapshot = {
+        **base_inputs,
+        "skill_version": skill_version,
+        "review": bool(review),
+        "canonical": inputs is not None,
+        "checked_digest": effective_digest,
+    }
+    submission_reasons = reasons
     rounds = data.get("repair_rounds", 0)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or rounds < 0:
         rounds = 0
@@ -622,37 +665,73 @@ def record_gate_result(
         data["next_step"] = "write-note"
     if gate == "verify":
         data["verifier"] = {
-            "allowed": allowed,
+            "allowed": verify_allowed,
             "checked_inputs": note_inputs or inputs,
             "at": datetime.now(timezone.utc).isoformat(),
-            "skill_version": current_skill_version(),
-            "inputs": inputs if allowed else None,
+            "skill_version": skill_version,
+            "inputs": inputs if verify_allowed else None,
             "c04c": c04c or [],
             "c04c_sha256": c04c_review.digest(c04c or []),
-            **({"reasons": reasons} if reasons else {}),
+            **({"reasons": list(reasons)} if reasons else {}),
         }
         data["coverage"] = {
-            "allowed": False, "reasons": ["coverage pending" if allowed else "verify failed"],
+            "allowed": False, "reasons": ["coverage pending" if verify_allowed else "verify failed"],
         }
     if coverage is not None:
         data["coverage"] = {
-            "allowed": coverage["ok"], "reasons": coverage["reasons"], "checked_inputs": note_inputs or inputs,
+            "allowed": coverage["ok"], "reasons": list(coverage["reasons"]), "checked_inputs": note_inputs or inputs,
             "inputs": inputs if coverage["ok"] else None,
         }
-        allowed = allowed and coverage["ok"]
+        allowed = verify_allowed and coverage["ok"]
         reasons = reasons + coverage["reasons"]
     elif gate == "coverage":
-        data["coverage"] = {"allowed": allowed, "reasons": reasons, "checked_inputs": inputs,
+        data["coverage"] = {"allowed": allowed, "reasons": list(reasons), "checked_inputs": inputs,
                             "inputs": inputs if allowed else None}
+
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    # Prune stale failure snapshots in the same review scope whenever the submitted draft/inputs changed
+    # so alternating Draft A -> Draft B -> Draft A can never evade repair_rounds!
+    for key in list(recorded):
+        same_scope = key.startswith("review:") if review else not key.startswith("review:")
+        if same_scope and recorded[key] != snapshot:
+            recorded.pop(key, None)
+    if gate == "verify" and verify_allowed:
+        recorded.pop(f"{scope}verify", None)
+    if coverage_allowed is True:
+        recorded.pop(f"{scope}coverage", None)
+    data["last_failed_by_gate"] = recorded
+    if not recorded:
+        data.pop("last_failed_by_gate", None)
+
+    failing_gates: list[str] = []
+    if gate == "verify" and not verify_allowed:
+        failing_gates.append(f"{scope}verify")
+    if coverage_allowed is False:
+        failing_gates.append(f"{scope}coverage")
+
     if not allowed:
-        if _record_failure(data, reasons, review=review):
+        gate_snapshots = {g: snapshot for g in failing_gates}
+        is_unchanged = bool(failing_gates) and all(recorded.get(g) == snapshot for g in failing_gates)
+        if is_unchanged:
+            if gate == "verify" and not verify_allowed:
+                submission_reasons.append(UNCHANGED_FAILURE_NOTICE)
+                data["verifier"]["reasons"] = list(submission_reasons)
+            elif coverage is not None and not coverage["ok"]:
+                coverage["reasons"].append(UNCHANGED_FAILURE_NOTICE)
+                data["coverage"]["reasons"] = list(coverage["reasons"])
+            elif gate == "coverage":
+                submission_reasons.append(UNCHANGED_FAILURE_NOTICE)
+                data["coverage"]["reasons"] = list(submission_reasons)
+        elif _record_failure(data, reasons, gate_snapshots=gate_snapshots, review=review):
             stop_for_user(job, data, REPAIR_LIMIT_MESSAGE, note_inputs or inputs)
-    elif (gate == "coverage" or coverage is not None) and inputs is not None:
+    else:
+        data.pop("last_failed_inputs", None)
+    if allowed and (gate == "coverage" or coverage is not None) and inputs is not None:
         verifier = data.get("verifier") or {}
         if (
             verifier.get("allowed") is True
             and verifier.get("inputs") == inputs
-            and verifier.get("skill_version") == current_skill_version()
+            and verifier.get("skill_version") == skill_version
         ):
             pending = bool(review_error) or (not review and bool(verifier.get("c04c")))
             data["finished"] = not pending
@@ -694,7 +773,8 @@ def archive_file(path: Path) -> Path | None:
 
 
 def apply_no_extractable(
-    job: Path, reason: str, *, coverage_reasons: Sequence[str] = (), review: bool = False,
+    job: Path, reason: str, *, inputs: dict, reasons: list[str],
+    coverage_reasons: Sequence[str] = (), review: bool = False,
 ) -> dict:
     """Record that the note must not be deposited, archiving prior documents."""
     status_path = job / "status.json"
@@ -723,7 +803,22 @@ def apply_no_extractable(
         "skill_version": current_skill_version(),
         "reasons": [reason],
     }
-    _record_failure(data, [reason, *coverage_reasons], review=review)
+    scope = "review:" if review else ""
+    failed_snapshot = {**inputs, "skill_version": data["verifier"]["skill_version"], "review": bool(review)}
+    recorded = dict(data.get("last_failed_by_gate") or {})
+    key = f"{scope}no_extractable"
+    if recorded.get(key) == failed_snapshot:
+        reasons.append(UNCHANGED_FAILURE_NOTICE)
+    else:
+        for k in list(recorded):
+            same_scope = k.startswith("review:") if review else not k.startswith("review:")
+            if same_scope and recorded[k] != failed_snapshot:
+                recorded.pop(k, None)
+        data["last_failed_by_gate"] = recorded
+        _record_failure(
+            data, [reason, *coverage_reasons],
+            gate_snapshots={key: failed_snapshot}, review=review,
+        )
     write_job_status(job, data)
     return data
 
@@ -822,7 +917,8 @@ def check_job_submission(
     if no_extractable and not changed:
         coverage_reasons = coverage["reasons"] if coverage is not None else []
         status = apply_no_extractable(
-            job, knowledge_note.ALL_INAPPLICABLE_REASON, coverage_reasons=coverage_reasons, review=review,
+            job, knowledge_note.ALL_INAPPLICABLE_REASON, inputs=inputs, reasons=result["reasons"],
+            coverage_reasons=coverage_reasons, review=review,
         )
         result.update(status=NO_EXTRACTABLE, note_deleted=True)
     else:
@@ -830,6 +926,7 @@ def check_job_submission(
             job, "verify", result["allowed"], result["reasons"],
             inputs=inputs if canonical_note else None, coverage=coverage, review=review,
             c04c=result.get("c04c"), review_error=review_error, note_inputs=inputs,
+            checked_digest=_note_digest(note) if note is not None else None,
         )
     if coverage is not None:
         coverage["finished"] = status["finished"]

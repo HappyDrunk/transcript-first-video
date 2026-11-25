@@ -31,18 +31,18 @@ TIME_GROUP = re.compile(
     rf"(?:[ \t]*{rules._DELIVERY_TIME.pattern})*(?P<after>[ \t]*)"
 )
 CALLOUT_START = re.compile(r"^>\s*\[!")
-AI_CREDIT = re.compile(r"[（(]Claude[ \t]+补充(?:[，,][ \t]*非视频内容)?[）)]")
+AI_CREDIT = rules._AI_CREDIT
 EMPTY_SECTION = re.compile(
     r"(?:不适用(?:（文稿中未出现意见分歧）|\(文稿中未出现意见分歧\))"
     r"|本节没有补充中间部分之外的情况)[。.]?"
 )
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 ANY_OMISSION_LINE = re.compile(r"^本文略去[｜|]", re.MULTILINE)
-DOUBT_NOTE_RE = re.compile(r"（存疑：[^）\n]+）")
+GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）")
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
-FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+FENCE_RE = rules._FENCE_OPEN
 INLINE_CODE_RE = re.compile(r"(`+)([^`\n]+?)\1")
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 PAREN_SPAN_RE = re.compile(r"（[^）\n]*）|\([^)\n]*\)")
@@ -162,6 +162,13 @@ def _overlaps_forbidden_span(text: str, start: int, end: int) -> bool:
 
 def _sentence_insertion_index(text: str, anchor_end: int) -> int:
     protected = _protected_spans(text, include_parens=True)
+    if anchor_end == len(text):
+        end = len(text.rstrip())
+        punctuation = end
+        while (punctuation > 0 and text[punctuation - 1] in "。！？!?."
+               and not any(start <= punctuation - 1 < stop for start, stop in protected)):
+            punctuation -= 1
+        return punctuation
     pos = anchor_end
     length = len(text)
     while pos < length:
@@ -204,26 +211,80 @@ def _insert_doubt_note(block_text: str, anchor: str, explanation: str) -> str:
     return f"{block_text[:insert_at]}{annotation}{block_text[insert_at:]}"
 
 
-def _apply_doubt_notes(block_text: str, doubts: list[tuple[str, str]]) -> tuple[str, list[tuple[int, int]]]:
-    """Resolve all anchors against original block_text, then apply stably and return generated spans."""
-    if len(doubts) == 1:
+def _alias_pattern(alias: str) -> str:
+    pattern = rules._term_pattern(alias)
+    if alias.isascii() and re.match(r"^[A-Za-z0-9_]", alias):
+        pattern = rf"(?<![A-Za-z0-9_]){pattern}"
+    if alias.isascii() and re.search(r"[A-Za-z0-9_]$", alias):
+        pattern = rf"{pattern}(?![A-Za-z0-9_])"
+    return pattern
+
+
+def _in_unclosed_paren(text: str, pos: int) -> bool:
+    code_spans = _protected_spans(text, include_parens=False)
+    full_depth = 0
+    half_depth = 0
+    for idx, ch in enumerate(text[:pos]):
+        if any(s <= idx < e for s, e in code_spans):
+            continue
+        if ch == "（":
+            full_depth += 1
+        elif ch == "）" and full_depth > 0:
+            full_depth -= 1
+        elif ch == "(":
+            half_depth += 1
+        elif ch == ")" and half_depth > 0:
+            half_depth -= 1
+    return full_depth > 0 or half_depth > 0
+
+
+def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:
+    aliases = sorted({part.strip() for part in rules._TERM_ALIAS_SEPARATOR.split(label) if part.strip()},
+                     key=lambda alias: (-len(alias), alias))
+    protected_all = _protected_spans(block_text, include_parens=True)
+    matches = []
+    any_occurrence = False
+    for alias in aliases:
+        flags = re.IGNORECASE | re.ASCII if alias.isascii() else 0
+        for match in re.finditer(_alias_pattern(alias), block_text, flags):
+            start, end = match.start(), match.end()
+            if _in_unclosed_paren(block_text, start):
+                continue
+            any_occurrence = True
+            if not any(s < end and start < e for s, e in protected_all):
+                matches.append((start, -len(match[0]), end))
+    if matches:
+        first = min(matches)
+        return first[2], f"（注：{gloss}）"
+    if any_occurrence:
+        fallback = _sentence_insertion_index(block_text, len(block_text))
+        if not _in_unclosed_paren(block_text, fallback):
+            return fallback, f"（注：{gloss}）"
+    return None
+
+
+def _apply_annotations(
+    block_text: str, doubts: list[tuple[str, str]], gloss: tuple[int, str] | None,
+) -> str:
+    """Resolve annotations against the original block and track their exact output spans."""
+    if len(doubts) == 1 and gloss is None:
         anchor, explanation = doubts[0]
         insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
         updated = _insert_doubt_note(block_text, anchor, explanation)
-        return updated, [(insert_at, insert_at + len(annotation))]
-
-    resolved: list[tuple[int, int, str]] = []
-    for order, (anchor, explanation) in enumerate(doubts):
-        insert_at, annotation = _resolve_doubt_insertion(block_text, anchor, explanation)
-        resolved.append((insert_at, order, annotation))
+        if updated[:insert_at] + updated[insert_at + len(annotation):] != block_text:
+            raise RenderError("invariant #7 failed: generated doubt span did not restore original block")
+        return updated
+    resolved = [_resolve_doubt_insertion(block_text, anchor, explanation) for anchor, explanation in doubts]
+    if gloss is not None:
+        resolved.insert(0, gloss)
 
     # Build left-to-right so we know exact final (start, end) spans in updated block_text.
-    resolved.sort(key=lambda item: (item[0], item[1]))
+    resolved.sort(key=lambda item: item[0])
     parts: list[str] = []
     spans: list[tuple[int, int]] = []
     cursor = 0
     out_len = 0
-    for insert_at, _, annotation in resolved:
+    for insert_at, annotation in resolved:
         chunk = block_text[cursor:insert_at]
         parts.append(chunk)
         out_len += len(chunk)
@@ -233,14 +294,24 @@ def _apply_doubt_notes(block_text: str, doubts: list[tuple[str, str]]) -> tuple[
         spans.append((span_start, out_len))
         cursor = insert_at
     parts.append(block_text[cursor:])
-    return "".join(parts), spans
+    updated = "".join(parts)
+    reconstructed: list[str] = []
+    cursor = 0
+    for start, end in spans:
+        reconstructed.append(updated[cursor:start])
+        cursor = end
+    reconstructed.append(updated[cursor:])
+    if "".join(reconstructed) != block_text:
+        raise RenderError("invariant #7 failed: generated spans did not restore original block")
+    return updated
 
 
-def _parse_discrepancy_lines(content: list[str]) -> tuple[bool, list[tuple[str, str]]]:
+def _parse_discrepancy_lines(content: list[str]) -> tuple[bool, list[tuple[str, str]], list[str]]:
     if not content:
         raise RenderError("empty 原文出入 block")
     has_spoken_code = False
     doubts: list[tuple[str, str]] = []
+    names: list[str] = []
     for line in content:
         if DISCREPANCY_TYPE1.fullmatch(line):
             continue
@@ -255,8 +326,11 @@ def _parse_discrepancy_lines(content: list[str]) -> tuple[bool, list[tuple[str, 
                 raise RenderError(f"invalid 存疑 line in 原文出入: {line}")
             doubts.append((anchor, explanation))
             continue
+        if name := rules._DISCREPANCY_NAME.fullmatch(line):
+            names.append(name[1])
+            continue
         raise RenderError(f"unknown line in 原文出入: {line}")
-    return has_spoken_code, doubts
+    return has_spoken_code, doubts, names
 
 
 def _with_note_suffix(label: str) -> str:
@@ -270,6 +344,8 @@ def render_lines(
     terms: list[tuple[str, str]] | None = None,
     seen_terms: set[str] | None = None,
     strip_discrepancy: bool = False,
+    names: dict[str, None] | None = None,
+    inline_glosses: list[str] | None = None,
 ) -> tuple[str, set[int], bool, int]:
     lines = body.split("\n")
     rendered: list[str] = []
@@ -285,6 +361,7 @@ def render_lines(
     last_block_raw: list[str] = []
     last_block_original: str = ""
     last_block_doubts: list[tuple[str, str]] = []
+    last_block_gloss: tuple[int, str] | None = None
     last_block_kind: str | None = None  # "prose" or "forbidden"
 
     index = 0
@@ -292,19 +369,18 @@ def render_lines(
         raw = lines[index]
         index += 1
 
-        fence = FENCE_RE.match(raw)
         if in_fence_char is not None:
             rendered.append(raw)
-            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
+            if rules.is_fence_close(raw, in_fence_char, in_fence_len):
                 in_fence_char = None
                 in_fence_len = 0
                 block_open = False
             last_block_kind = "forbidden"
             continue
 
-        if fence:
-            in_fence_char = fence[1][0]
-            in_fence_len = len(fence[1])
+        opened = rules.match_fence_open(raw)
+        if opened is not None:
+            in_fence_char, in_fence_len, _ = opened
             rendered.append(raw)
             block_open = False
             last_block_kind = "forbidden"
@@ -324,6 +400,7 @@ def render_lines(
                     last_block_start = len(rendered)
                     last_block_raw = [raw]
                     last_block_doubts = []
+                    last_block_gloss = None
                 else:
                     last_block_raw.append(raw)
                 rendered.append(cleaned)
@@ -338,12 +415,16 @@ def render_lines(
         if header is None:
             raise RenderError(f"unknown explanation block: {raw.strip()}")
         kind, title = header.groups()
+        raw_content: list[str] = []
         content: list[str] = []
         while index < len(lines):
             quoted = lines[index].strip()
             if not quoted.startswith(">") or CALLOUT_START.match(quoted):
                 break
-            cleaned = AI_CREDIT.sub("", remove_times(quoted[1:])).strip()
+            raw_line = remove_times(quoted[1:]).strip()
+            if raw_line:
+                raw_content.append(raw_line)
+            cleaned = AI_CREDIT.sub("", raw_line).strip()
             if cleaned:
                 content.append(cleaned)
             index += 1
@@ -354,11 +435,17 @@ def render_lines(
 
         if kind == "warning" and title == DISCREPANCY_TITLE:
             if not strip_discrepancy:
-                spoken, doubts = _parse_discrepancy_lines(content)
+                spoken, doubts, transcribed = _parse_discrepancy_lines(raw_content)
+                if names is not None:
+                    for name in transcribed:
+                        names.setdefault(name, None)
                 has_spoken_code = has_spoken_code or spoken
                 if doubts:
                     if last_block_kind != "prose" or last_block_start is None or last_block_end is None:
-                        raise RenderError("存疑 entry must follow a non-callout paragraph or list item")
+                        raise RenderError(
+                            "存疑 entry must follow a non-callout paragraph or list item。"
+                            "请将含存疑的 原文出入 放在说明段落与代码块之间"
+                        )
                     raw_block_text = "\n".join(last_block_raw)
                     for anchor, _ in doubts:
                         if raw_block_text.count(anchor) != 1:
@@ -366,16 +453,7 @@ def render_lines(
                                 f"存疑 anchor {anchor!r} must occur exactly once verbatim without crossing ⏱"
                             )
                     last_block_doubts.extend(doubts)
-                    updated_block, generated_spans = _apply_doubt_notes(last_block_original, last_block_doubts)
-                    # Local invariant check: removing exact generated spans must restore original block verbatim.
-                    reconstructed: list[str] = []
-                    pos = 0
-                    for s_start, s_end in generated_spans:
-                        reconstructed.append(updated_block[pos:s_start])
-                        pos = s_end
-                    reconstructed.append(updated_block[pos:])
-                    if "".join(reconstructed) != last_block_original:
-                        raise RenderError("invariant #7 failed: generated doubt spans did not restore original block")
+                    updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
                     rendered[last_block_start:last_block_end] = updated_block.split("\n")
                     doubt_count += len(doubts)
             index = _absorb_hidden_block(rendered, lines, index)
@@ -384,8 +462,19 @@ def render_lines(
         term = rules._TERM_TITLE.fullmatch(title)
         if kind == "note" and term:
             label = AI_CREDIT.sub("", remove_times(term[1])).strip()
-            body_text = " ".join(content)
+            glosses, definition = rules._term_definition(content)
+            body_text = " ".join(definition)
             if not inline_terms:
+                if (glosses and glosses[0] and not strip_discrepancy and inline_glosses is not None
+                        and len(inline_glosses) < 8 and last_block_gloss is None
+                        and last_block_kind == "prose" and last_block_start is not None):
+                    gloss = glosses[0]
+                    resolved_gloss = _resolve_gloss_insertion(last_block_original, label, gloss)
+                    if resolved_gloss is not None:
+                        last_block_gloss = resolved_gloss
+                        updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
+                        rendered[last_block_start:last_block_end] = updated_block.split("\n")
+                        inline_glosses.append(gloss)
                 if terms is not None and seen_terms is not None:
                     norm = " ".join(label.split()).casefold()
                     if norm not in seen_terms:
@@ -406,6 +495,8 @@ def render_lines(
         if index < len(lines) and lines[index].strip():
             rendered.append("")
 
+    if in_fence_char is not None:
+        raise RenderError("unclosed fenced code block")
     return "\n".join(rendered), times, has_spoken_code, doubt_count
 
 
@@ -422,7 +513,7 @@ def _render_body_details(
     *,
     inline_terms: bool = False,
     strip_discrepancy: bool = False,
-) -> tuple[str, bool, int]:
+) -> tuple[str, bool, int, dict[str, None], int]:
     headings = rules.markdown_headings(body)
     ends = [start for _, _, start, _ in headings[1:]] + [len(body)]
     sections: list[Section] = []
@@ -430,6 +521,8 @@ def _render_body_details(
     seen_terms: set[str] = set()
     has_spoken_code = False
     doubt_count = 0
+    names: dict[str, None] = {}
+    inline_glosses: list[str] = []
 
     for (level, title, _, heading_end), end in zip(headings, ends):
         content, times, spoken, doubts = render_lines(
@@ -438,6 +531,8 @@ def _render_body_details(
             terms=terms,
             seen_terms=seen_terms,
             strip_discrepancy=strip_discrepancy,
+            names=names,
+            inline_glosses=inline_glosses,
         )
         has_spoken_code = has_spoken_code or spoken
         doubt_count += doubts
@@ -475,12 +570,30 @@ def _render_body_details(
         glossary_lines.extend(f"- **{label}**：{definition}" for label, definition in terms)
         glossary = "\n".join(glossary_lines)
         rendered = f"{rendered}\n\n{glossary}" if rendered else glossary
-    return rendered, has_spoken_code, doubt_count
+    return rendered, has_spoken_code, doubt_count, names, len(inline_glosses)
 
 
 def render_body(body: str, *, inline_terms: bool = False) -> str:
-    rendered, _, _ = _render_body_details(body, inline_terms=inline_terms)
+    rendered, *_ = _render_body_details(body, inline_terms=inline_terms)
     return rendered
+
+
+def _outside_fences(text: str) -> str:
+    kept: list[str] = []
+    in_fence_char: str | None = None
+    in_fence_len = 0
+    for raw in text.splitlines():
+        if in_fence_char is not None:
+            if rules.is_fence_close(raw, in_fence_char, in_fence_len):
+                in_fence_char = None
+                in_fence_len = 0
+            continue
+        opened = rules.match_fence_open(raw)
+        if opened is not None:
+            in_fence_char, in_fence_len, _ = opened
+            continue
+        kept.append(raw)
+    return "\n".join(kept)
 
 
 def render_note(
@@ -511,30 +624,48 @@ def render_note(
     evidence_start, _ = evidence
     body = body[:evidence_start]
     omission = OMISSION.search(body)
+    if omission is not None:
+        in_f_ch: str | None = None
+        in_f_len = 0
+        for ln in body[:omission.start()].splitlines():
+            if in_f_ch is not None:
+                if rules.is_fence_close(ln, in_f_ch, in_f_len):
+                    in_f_ch = None
+                    in_f_len = 0
+            else:
+                opened = rules.match_fence_open(ln)
+                if opened is not None:
+                    in_f_ch, in_f_len, _ = opened
+        if in_f_ch is not None:
+            omission = None
     if omission is None:
-        if ANY_OMISSION_LINE.search(body):
+        if ANY_OMISSION_LINE.search(_outside_fences(body)):
             raise RenderError("本文略去 must appear at the end before 原文依据")
         prose_body = body
         omission_text = ""
     else:
         prose_body = body[:omission.start()]
         omission_text = omission[1].strip()
+        if ANY_OMISSION_LINE.search(_outside_fences(prose_body)):
+            raise RenderError("本文略去 must appear at the end before 原文依据")
 
-    rendered_body, has_spoken_code, doubt_count = _render_body_details(
+    rendered_body, has_spoken_code, doubt_count, names, gloss_count = _render_body_details(
         prose_body, inline_terms=inline_terms, strip_discrepancy=False
     )
-    baseline_body, _, _ = _render_body_details(
+    baseline_body, *_ = _render_body_details(
         prose_body, inline_terms=inline_terms, strip_discrepancy=True
     )
-    stripped_rendered, n_rendered = DOUBT_NOTE_RE.subn("", rendered_body)
-    stripped_base, n_base = DOUBT_NOTE_RE.subn("", baseline_body)
-    if (n_rendered - n_base) != doubt_count or stripped_rendered != stripped_base:
-        raise RenderError("invariant #7 failed: stripping doubt notes did not match baseline body")
+    stripped_rendered, n_rendered = GENERATED_NOTE_RE.subn("", rendered_body)
+    stripped_base, n_base = GENERATED_NOTE_RE.subn("", baseline_body)
+    if (n_rendered - n_base) != doubt_count + gloss_count or stripped_rendered != stripped_base:
+        raise RenderError("invariant #7 failed: stripping generated notes did not match baseline body")
 
     notice_parts = [
         part for part in (
             "未经独立复核" if self_review else None,
             SPOKEN_CODE_NOTICE if has_spoken_code else None,
+            "正文中「（注：…）」为整理者补充的极短术语解释，非视频原话" if gloss_count else None,
+            "人名 " + "、".join(names) + " 按自动字幕转写，未经画面核对" if names else None,
         )
         if part is not None
     ]
@@ -548,7 +679,7 @@ def render_note(
     if omission_text.casefold() not in EMPTY_OMISSION:
         blocks.extend(("---", f"没写进来的部分：{omission_text}"))
     markdown = "\n\n".join(blocks) + "\n"
-    if "⏱" in markdown or "[!" in markdown:
+    if "⏱" in markdown or "[!" in _outside_fences(markdown):
         raise RenderError("reading copy still contains an evidence time marker or callout")
     if keep_frontmatter:
         original = frontmatter[0]

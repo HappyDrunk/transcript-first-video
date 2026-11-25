@@ -10,9 +10,10 @@ import os
 import re
 import unicodedata
 from bisect import bisect_left, bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from itertools import chain
 from pathlib import Path
 
 import knowledge_note
@@ -325,6 +326,7 @@ _TIME_CLUSTER = re.compile(rf"(?:{_DELIVERY_TIME.pattern}(?:[ \t]*{_DELIVERY_TIM
 _CALLOUT = re.compile(r"^>\s*\[!(note|tip|warning)\]\s*(.*)$")
 _TERM_TITLE = re.compile(r"^术语\s*[:：]\s*(.*)$")
 _TERM_ALIAS_SEPARATOR = re.compile(r"[/／()（）]")
+_TERM_SHORT_GLOSS = re.compile(r"短释[：:]\s*(.*)")
 _HYPHEN = re.compile(r"[-\u2010\u2011]")
 _CAPTION_CORRECTION = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*(.+?)[，,]\s*实为\s*[:：]?\s*(.+)$")
 _CORRECTION_TARGET = re.compile(
@@ -334,8 +336,28 @@ _CORRECTION_QUOTES = "`“”「」\""
 DISCREPANCY_TITLE = "原文出入"
 _DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*([^｜|\n]+?)\s*[｜|]\s*([^\n]+)$")
 _DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
-_AI_CREDIT = re.compile(r"[（(]Claude[ \t]+补充(?:[，,][ \t]*非视频内容)?[）)]")
-_FENCE_OPEN = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_DISCREPANCY_NAME = re.compile(
+    r"人名转写[｜|]\s*「([A-Za-z\u00C0-\u024F](?:[A-Za-z\u00C0-\u024F .'-]*[A-Za-z\u00C0-\u024F])?)」"
+)
+_AI_CREDIT = re.compile(r"[（(](?:Claude|整理者|AI)[ \t]*补充(?:[，,][ \t]*非视频内容)?[）)]")
+_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+
+
+def match_fence_open(raw: str) -> tuple[str, int, str] | None:
+    """CommonMark fence opener (0-3 spaces; backtick info string forbids backticks)."""
+    m = _FENCE_OPEN.match(raw)
+    if m is None:
+        return None
+    marker = m[1]
+    rest = raw[m.end():]
+    if marker[0] == "`" and "`" in rest:
+        return None
+    return marker[0], len(marker), rest
+
+
+def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
+    m = _FENCE_OPEN.match(raw)
+    return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip(" \t\r") == "")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
@@ -400,7 +422,8 @@ def delivery_parts(
     *,
     list_forms: list[bool] | None = None,
     block_contexts: list[str | None] | None = None,
-) -> tuple[list[str], list[list[str]]]:
+    fence_parents: dict[int, int | None] | None = None,
+) -> tuple[list[str], list[list[str]], bool]:
     """Split Markdown into prose paragraphs/list items and explicit callouts."""
     prose: list[str] = []
     blocks: list[list[str]] = []
@@ -412,12 +435,17 @@ def delivery_parts(
     in_fence_len = 0
     fence_lines: list[str] = []
     last_context: str | None = None
+    cited_parent: int | None = None
 
     def flush_paragraph() -> None:
-        nonlocal paragraph, paragraph_raw, last_context
+        nonlocal paragraph, paragraph_raw, last_context, cited_parent
         if not paragraph:
             return
         text = "\n".join(paragraph)
+        if delivery_times(text) and not text.startswith(">") and not _is_table_block(paragraph_raw):
+            cited_parent = len(prose)
+        else:
+            cited_parent = None
         prose.append(text)
         if list_forms is not None:
             list_forms.append(in_list)
@@ -425,24 +453,28 @@ def delivery_parts(
         paragraph = []
         paragraph_raw = []
 
-    for raw in body.splitlines() + [""]:
-        fence = _FENCE_OPEN.match(raw)
+    def flush_fence() -> None:
+        if fence_parents is not None:
+            fence_parents[len(prose)] = cited_parent
+        prose.append("\n".join(fence_lines))
+        if list_forms is not None:
+            list_forms.append(False)
+
+    for raw in body.splitlines():
         if in_fence_char is not None:
             fence_lines.append(raw)
-            if fence and fence[1][0] == in_fence_char and len(fence[1]) >= in_fence_len and raw[fence.end():].strip() == "":
-                prose.append("\n".join(fence_lines))
-                if list_forms is not None:
-                    list_forms.append(False)
+            if is_fence_close(raw, in_fence_char, in_fence_len):
+                flush_fence()
                 fence_lines = []
                 in_fence_char = None
                 in_fence_len = 0
                 last_context = None
             continue
-        if fence:
+        opened = match_fence_open(raw)
+        if opened is not None:
             block = None
             flush_paragraph()
-            in_fence_char = fence[1][0]
-            in_fence_len = len(fence[1])
+            in_fence_char, in_fence_len, _ = opened
             fence_lines = [raw]
             last_context = None
             continue
@@ -466,11 +498,10 @@ def delivery_parts(
                 in_list = item is not None
             paragraph.append(line[item.end() :] if item else line)
             paragraph_raw.append(raw.strip())
-    if fence_lines:
-        prose.append("\n".join(fence_lines))
-        if list_forms is not None:
-            list_forms.append(False)
-    return prose, blocks
+    flush_paragraph()
+    if in_fence_char is not None:
+        flush_fence()
+    return prose, blocks, in_fence_char is not None
 
 
 @dataclass
@@ -482,6 +513,8 @@ class DeliverySection:
     mixed_list: bool = False
     has_fence: bool = False
     block_contexts: tuple[str | None, ...] = ()
+    fence_parents: dict[int, int | None] = field(default_factory=dict)
+    unclosed_fence: bool = False
 
 
 def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
@@ -522,10 +555,9 @@ def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
 
 def delivery_sections(body: str) -> list[DeliverySection]:
     headings = markdown_headings(body)
+    headings.insert(0, (0, "", 0, 0))
     starts = [start for _, _, start, _ in headings] + [len(body)]
-    contexts0: list[str | None] = []
-    prose, blocks = delivery_parts(body[:starts[0]], block_contexts=contexts0)
-    sections = [DeliverySection(0, "", prose, blocks, block_contexts=tuple(contexts0))]
+    sections: list[DeliverySection] = []
     for index, (level, heading, _, end) in enumerate(headings):
         section_body = body[end : starts[index + 1]]
         list_forms = [] if heading == CONCISE_ACTION_HEADING else None
@@ -534,11 +566,17 @@ def delivery_sections(body: str) -> list[DeliverySection]:
             section_body = _MARKDOWN_CODE_OR_COMMENT.sub(
                 lambda match: "" if match["comment"] else match[0], section_body
             )
-            has_fence = bool(re.search(r"(?m)^[ \t]*(?:`{3,}|~{3,})", section_body))
+            has_fence = any(match_fence_open(ln.lstrip(" \t")) is not None for ln in section_body.splitlines())
         contexts: list[str | None] = []
-        prose, blocks = delivery_parts(section_body, list_forms=list_forms, block_contexts=contexts)
+        fence_parents: dict[int, int | None] = {}
+        prose, blocks, unclosed_fence = delivery_parts(
+            section_body, list_forms=list_forms, block_contexts=contexts, fence_parents=fence_parents,
+        )
         mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
-        sections.append(DeliverySection(level, heading, prose, blocks, mixed_list, has_fence, tuple(contexts)))
+        sections.append(DeliverySection(
+            level, heading, prose, blocks, mixed_list, has_fence or bool(fence_parents),
+            tuple(contexts), fence_parents, unclosed_fence,
+        ))
     return sections
 
 
@@ -667,11 +705,68 @@ def _levenshtein(left: str, right: str) -> int:
     return prev[-1]
 
 
-def _numeric_signature(text: str) -> list[tuple[int, ...]]:
-    return [
-        tuple(int(part) for part in re.split(r"[._]", match))
-        for match in re.findall(r"\d+(?:[._]\d+)*", text)
-    ]
+def _norm_ascii_digits(text: str) -> str:
+    out: list[str] = []
+    for ch in text:
+        if ch in "\u2212\u2013\u2014\uff0d":
+            out.append("-")
+        elif ch.isdigit():
+            d = unicodedata.digit(ch, None)
+            out.append(str(d) if d is not None else ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _numeric_signature(text: str) -> list[tuple[str, ...]]:
+    sigs: list[tuple[str, ...]] = []
+    # Preserve standalone ASCII minus (-3) and Unicode minus (X−3), without turning hyphenated tags like GPT-3 negative.
+    raw_marked = re.sub(r"[\u2212\uff0d]", " -", text)
+    normalized = _norm_ascii_digits(raw_marked)
+    for match in re.findall(r"(?<![A-Za-z0-9])-\d+(?:[._]\d+)*|\d+(?:[._]\d+)*", normalized):
+        sign = "-" if match.startswith("-") else ""
+        parts = re.split(r"[._]", match[1:] if sign else match)
+        norm = [parts[0].lstrip("0") or "0", *parts[1:]]
+        if sign and any(part.lstrip("0") for part in norm):
+            norm[0] = "-" + norm[0]
+        sigs.append(tuple(norm))
+    return sigs
+
+
+def _expands_name_token(original: str, corrected: str) -> bool:
+    orig_tokens = original.split()
+    corr_tokens = corrected.split()
+    if len(orig_tokens) == len(corr_tokens):
+        for old_tok, new_tok in zip(orig_tokens, corr_tokens):
+            old_clean = re.sub(r"[^A-Za-z0-9]", "", old_tok)
+            new_clean = re.sub(r"[^A-Za-z0-9]", "", new_tok)
+            if (
+                old_clean
+                and new_clean.casefold() != old_clean.casefold()
+                and len(new_clean) - len(old_clean) >= 3
+                and len(new_clean) >= 1.5 * len(old_clean)
+            ):
+                return True
+    a, b = map(_normalized_correction, (original, corrected))
+    if a and a != b and len(b) - len(a) >= 3 and len(b) >= 1.5 * len(a):
+        return True
+    return False
+
+
+def _normalized_correction(text: str) -> str:
+    return re.sub(r"[\s_\-'\"`]+", "", text).casefold()
+
+
+def _secondary_asr_variant(original: str, corrected: str) -> bool:
+    # Only allow single-token established targets (e.g. "chache BT" -> "ChatGPT"),
+    # never multi-word personal-name swaps, signed number changes, or whole-word expansions.
+    if len(corrected.split()) != 1:
+        return False
+    if _numeric_signature(original) != _numeric_signature(corrected) or _expands_name_token(original, corrected):
+        return False
+    a, b = map(_normalized_correction, (original, corrected))
+    distance = _levenshtein(a, b)
+    return distance <= 4 and distance / max(len(a), len(b), 1) <= 0.50
 
 
 def _discrepancy_type1_laundering_issue(
@@ -687,12 +782,15 @@ def _discrepancy_type1_laundering_issue(
         homophone_ok = (
             len(orig_nums) == 1
             and len(orig_nums[0]) == 1
+            and orig_nums[0][0].isdigit()
+            and len(orig_nums[0][0]) <= 3
             and not corr_nums
             and bool(re.search(rf"(?<![A-Za-z0-9_.\-]){orig_nums[0][0]}(?![A-Za-z0-9_.\-])", original))
-            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == orig_nums[0][0])
+            and any(word in corrected.casefold() for word, val in _EN_NUMBER_WORDS.items() if val == int(orig_nums[0][0]))
         )
         same_digits_backed = (
-            "".join(re.findall(r"\d", original)) == "".join(re.findall(r"\d", corrected))
+            "".join(re.findall(r"\d", _norm_ascii_digits(original))) == "".join(re.findall(r"\d", _norm_ascii_digits(corrected)))
+            and sum(s[0].startswith("-") for s in orig_nums) == sum(s[0].startswith("-") for s in corr_nums)
             and bool(orig_nums)
             and any(src and term_occurs(corrected, src) for src in second_sources)
         )
@@ -701,8 +799,7 @@ def _discrepancy_type1_laundering_issue(
                 f"原文出入 行型 1 数字/版本不一致 ({original!r} -> {corrected!r})，"
                 "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
             )
-    a = re.sub(r"[\s_\-`'\"]+", "", original).casefold()
-    b = re.sub(r"[\s_\-`'\"]+", "", corrected).casefold()
+    a, b = map(_normalized_correction, (original, corrected))
     if a == b:
         return None
     if any(src and term_occurs(corrected, src) for src in second_sources):
@@ -713,22 +810,11 @@ def _discrepancy_type1_laundering_issue(
             f"原文出入 行型 1 专名改动超限且无第二来源 ({original!r} -> {corrected!r})，"
             "请升级为行型 3（存疑｜「…」｜…）"
         )
-    orig_tokens = original.split()
-    corr_tokens = corrected.split()
-    if len(orig_tokens) == len(corr_tokens):
-        for old_tok, new_tok in zip(orig_tokens, corr_tokens):
-            old_clean = re.sub(r"[^A-Za-z0-9]", "", old_tok)
-            new_clean = re.sub(r"[^A-Za-z0-9]", "", new_tok)
-            if (
-                old_clean
-                and new_clean.casefold() != old_clean.casefold()
-                and len(new_clean) - len(old_clean) >= 3
-                and len(new_clean) >= 1.5 * len(old_clean)
-            ):
-                return (
-                    f"原文出入 行型 1 疑似补全未核实专名 ({original!r} -> {corrected!r})，"
-                    "无第二来源依据，请升级为行型 3（存疑｜「…」｜…）"
-                )
+    if _expands_name_token(original, corrected):
+        return (
+            f"原文出入 行型 1 疑似补全未核实专名 ({original!r} -> {corrected!r})，"
+            "无第二来源依据，请升级为行型 3（存疑｜「…」｜…）"
+        )
     return None
 
 
@@ -813,7 +899,8 @@ def _validate_doubt_anchor(anchor: str, explanation: str, preceding_raw: str | N
     if len(explanation) > MAX_DOUBT_CHARS:
         return f"原文出入 存疑说明超过 {MAX_DOUBT_CHARS} 字上限（当前 {len(explanation)} 字）"
     if preceding_raw is None:
-        return f"原文出入 存疑锚点 {anchor!r} 必须紧跟非 callout 段落或列表项（不可在标题/代码块/表格后）"
+        return (f"原文出入 存疑锚点 {anchor!r} 必须紧跟非 callout 段落或列表项。"
+                "请将含存疑的 原文出入 放在说明段落与代码块之间")
     if preceding_raw.count(anchor) != 1:
         return f"原文出入 存疑锚点 {anchor!r} 须在前一段原文中恰好出现一次且不得跨 ⏱"
     cleaned = prose_without_times(preceding_raw)
@@ -824,6 +911,31 @@ def _validate_doubt_anchor(anchor: str, explanation: str, preceding_raw: str | N
     if _overlaps_forbidden_inline_span(cleaned, start, end):
         return f"原文出入 存疑锚点 {anchor!r} 不得落入行内代码或链接"
     return None
+
+
+def _name_transcription_issue(name: str, preceding: str | None) -> str | None:
+    if not (1 <= len(name.split()) <= 4):
+        return f"原文出入 人名转写限一至四个词: {name!r}"
+    if preceding and any(
+        not _overlaps_forbidden_inline_span(preceding, match.start(), match.end())
+        for match in re.finditer(
+            rf"(?<![A-Za-z0-9_\u00C0-\u024F'-]){re.escape(name)}(?![A-Za-z0-9_\u00C0-\u024F'-])",
+            preceding,
+        )
+    ):
+        return None
+    return f"原文出入 人名转写须逐字出现在前一段的代码和链接之外: {name!r}"
+
+
+def _term_definition(lines: list[str]) -> tuple[list[str], list[str]]:
+    glosses, definition = [], []
+    for line in lines:
+        match = _TERM_SHORT_GLOSS.fullmatch(line)
+        if match:
+            glosses.append(match[1].strip())
+        else:
+            definition.append(line)
+    return glosses, definition or glosses
 
 
 def spoken_code_entries(blocks: list[list[str]]) -> list[tuple[str, str]]:
@@ -908,6 +1020,16 @@ def explanation_issues(
 ) -> list[str]:
     issues: list[str] = []
     sources = [_HYPHEN.sub(" ", text) for text in (transcript, *corrections)]
+    evidence = (*screen, *second_sources)
+    discrepancy_blocks = [
+        block for block in blocks
+        if (callout := _CALLOUT.fullmatch(block[0])) and callout.groups() == ("warning", DISCREPANCY_TITLE)
+    ]
+    established_targets = {
+        corrected.casefold()
+        for original, corrected in caption_corrections(discrepancy_blocks, transcript, screen)
+        if _discrepancy_type1_laundering_issue(original, corrected, evidence) is None
+    }
     for idx, (header, *lines) in enumerate(blocks):
         match = _CALLOUT.fullmatch(header)
         if match is None:
@@ -919,13 +1041,23 @@ def explanation_issues(
             word = term[1].strip()
             aliases = _TERM_ALIAS_SEPARATOR.split(_HYPHEN.sub(" ", word))
             if not any(term_occurs(alias, source) for alias in map(str.strip, aliases) if alias for source in sources):
-                issues.append(f"term {word!r} is absent from the transcript")
+                hint = "（英文文稿请写成「术语：中文（English）」，括号内英文须逐字出现在文稿或更正结果中）"
+                letters = sum(ch.isalpha() for ch in transcript)
+                if not re.search(r"[A-Za-z]", word) and 2 * len(re.findall(r"[A-Za-z]", transcript)) > letters:
+                    hint += " 英文文稿术语标题缺少原文英文别名"
+                issues.append(f"term {word!r} is absent from the transcript{hint}")
             if "⏱" in header or any("⏱" in ln for ln in lines):
                 issues.append(f"term {word!r} block must not contain ⏱ time markers")
-            joined_term = _AI_CREDIT.sub("", " ".join(lines)).strip()
+            glosses, definition = _term_definition(lines)
+            if len(glosses) > 1 or any(
+                not gloss or len(gloss) > 16 or re.search(r"[\d⏱）)]", _norm_ascii_digits(gloss))
+                or _AI_CREDIT.search(gloss) for gloss in glosses
+            ):
+                issues.append(f"term {word!r} 短释限一条、1–16 字，禁用数字、⏱、右括号及补充署名")
+            joined_term = _AI_CREDIT.sub("", " ".join(definition)).strip()
             if len(joined_term) > MAX_TERM_CHARS:
                 issues.append(f"term {word!r} block exceeds {MAX_TERM_CHARS} characters ({len(joined_term)})")
-            if len(_term_sentences(" ".join(lines))) > MAX_TERM_SENTENCES:
+            if len(_term_sentences(" ".join(definition))) > MAX_TERM_SENTENCES:
                 issues.append(f"term {word!r} block exceeds {MAX_TERM_SENTENCES} sentences")
         elif kind == "tip":
             issues.append("[!tip] analogy blocks are retired; explain in prose or 术语")
@@ -950,8 +1082,11 @@ def explanation_issues(
                     if not any(term_occurs(pair[0], s) for s in src):
                         issues.append(f"原文出入 行型 1 缺少原材依据: {pair[0]!r}")
                     else:
-                        launder = _discrepancy_type1_laundering_issue(pair[0], pair[1], (*screen, *second_sources))
-                        if launder:
+                        original, corrected = pair
+                        launder = _discrepancy_type1_laundering_issue(original, corrected, evidence)
+                        if launder and not (
+                            corrected.casefold() in established_targets and _secondary_asr_variant(original, corrected)
+                        ):
                             issues.append(launder)
                     continue
                 t2 = _DISCREPANCY_TYPE2.fullmatch(line)
@@ -964,6 +1099,10 @@ def explanation_issues(
                 if t3 is not None:
                     err = _validate_doubt_anchor(t3[1].strip(), t3[2].strip(), preceding)
                     if err:
+                        issues.append(err)
+                    continue
+                if name := _DISCREPANCY_NAME.fullmatch(line):
+                    if err := _name_transcription_issue(name[1], preceding):
                         issues.append(err)
                     continue
                 issues.append(f"原文出入 contains unknown line format: {line}")
@@ -1215,6 +1354,7 @@ class RuleContext:
     omission: str | None
     cited: bool
     has_screen_file: bool = False
+    screen_text: str = ""
 
     @property
     def exists(self) -> bool:
@@ -1523,6 +1663,10 @@ def caption_structure(note: str) -> tuple[str | None, list[str]]:
                         if err:
                             issues.append(err)
                         continue
+                    if name := _DISCREPANCY_NAME.fullmatch(line):
+                        if err := _name_transcription_issue(name[1], preceding):
+                            issues.append(err)
+                        continue
                     issues.append(f"note.md {DISCREPANCY_TITLE} contains unknown line format: {line}")
     return omission, issues
 
@@ -1536,6 +1680,7 @@ def build_context(
     job_status: str | None = None,
     job: bool = False,
     raw: str | None = None,
+    screen_text: str = "",
 ) -> RuleContext:
     if raw is None and transcript.is_file():
         raw = transcript.read_text(encoding="utf-8-sig", errors="replace")
@@ -1558,6 +1703,7 @@ def build_context(
         transcript, note, tuple(status for status in (job_status, fields.get("job_status")) if status),
         gate, fields, segments, speech, sections, quotes, evidence_errors, omission,
         _cites(fields, transcript, job=job), screen_enabled and screen_path.is_file(),
+        screen_text or "\n".join(screen or ()),
     )
 
 
@@ -1640,6 +1786,8 @@ def _fixed_explanation(parent: str, claim: str) -> bool:
 def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
     fields = ctx.fields
     issues = delivery_structure(ctx.sections, fields.get("type", ""))
+    issues.extend(f"{section.heading}: unclosed fenced code block (未闭合代码块围栏)"
+                  for section in ctx.sections if section.unclosed_fence)
     required = ("title", "source", "channel", "published", "type", "caption_kind",
                 "skill_version", "transcript_path", "tags")
     absent = [name for name in required if name not in fields
@@ -1653,7 +1801,9 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
     if "gate_passed" in fields and not knowledge_note._truthy(fields["gate_passed"]):
         issues.append("gate_passed must be true when supplied")
     for parent, section in _with_parents(ctx.sections):
-        for claim in section.prose:
+        for index, claim in enumerate(section.prose):
+            if index in section.fence_parents:
+                continue
             if claim.startswith(">") or any(line.startswith("本文略去") for line in claim.splitlines()):
                 issues.append(f"orphan text in {section.heading}: {claim.splitlines()[0][:80]}")
             elif knowledge_note._STUB.search(claim) or "FILL:" in claim or re.search(r"〈[^〉]+〉", claim):
@@ -1780,19 +1930,28 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
                     issues.append(f"end quotes starting at source second [{_fmt(first)}] need one continuous quote")
     valid = ctx.valid_quotes
     middle = middle_headings(ctx.fields.get("type"), ctx.sections)
-    for parent, section in _with_parents(ctx.sections):
+    for parent, section in chain((("", ctx.sections[0]),), _with_parents(ctx.sections)):
         h3_evidenced_parts: list[str] = []
-        for item in section.prose:
+        for index, item in enumerate(section.prose):
+            if index in section.fence_parents:
+                continue
             item_slices, _ = _split_time_clusters(item)
             if item_slices:
                 h3_evidenced_parts.extend(prose_without_times(sl) for sl, _ in item_slices)
         h3_evidenced = "\n".join(h3_evidenced_parts)
         first_cited_idx = next(
-            (idx for idx, item in enumerate(section.prose) if delivery_times(item)),
+            (idx for idx, item in enumerate(section.prose)
+             if idx not in section.fence_parents and delivery_times(item)),
             None,
         )
         for claim_idx, claim in enumerate([section.heading, *section.prose]):
             prose_idx = claim_idx - 1
+            if prose_idx in section.fence_parents:
+                if "⏱" in claim:
+                    issues.append("fenced code block must not contain ⏱; place ⏱ on the preceding explanation paragraph")
+                elif section.fence_parents[prose_idx] is None:
+                    issues.append("fenced code block must follow a cited explanation paragraph with ⏱")
+                continue
             is_middle_claim = parent in middle and claim != section.heading and not _fixed_explanation(parent, claim)
             times = delivery_times(claim)
             clean = prose_without_times(claim)
@@ -2110,16 +2269,32 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
     cursor = 0
     valid = ctx.valid_quotes
     blocks = [block for section in ctx.sections for block in section.blocks]
-    corrections = [corrected for _, corrected in caption_corrections(blocks, ctx.speech)]
+    speech_correction_pairs = caption_corrections(blocks, ctx.speech)
+    corrections = [corrected for _, corrected in speech_correction_pairs]
     screen_corrections = caption_corrections(blocks, "", tuple(quote.text for quote in valid if quote.screen))
     spoken_code_pairs = spoken_code_entries(blocks)
 
     for parent, section in _with_parents(ctx.sections):
-        for claim in [*([section.heading] if section.level == 3 else []), *section.prose]:
+        claims = enumerate(section.prose)
+        if section.level == 3:
+            claims = chain(((-1, section.heading),), claims)
+        for index, claim in claims:
             if _fixed_explanation(parent, claim):
                 continue
-            if claim == section.heading:
-                times = delivery_times(claim).union(*(delivery_times(item) for item in section.prose))
+            is_fence = index in section.fence_parents
+            if is_fence:
+                parent_index = section.fence_parents[index]
+                if parent_index is None or "⏱" in claim:
+                    continue
+                clusters, _ = _split_time_clusters(section.prose[parent_index])
+                if not clusters or not clusters[-1][1]:
+                    continue
+                check_units = [(claim, clusters[-1][1])]
+            elif index == -1:
+                times = delivery_times(claim).union(*(
+                    delivery_times(item) for idx, item in enumerate(section.prose)
+                    if idx not in section.fence_parents
+                ))
                 check_units = [(claim, times)]
             else:
                 slices, _ = _split_time_clusters(claim)
@@ -2143,29 +2318,49 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                         "values": [number.label for number in numbers],
                     } for quote, numbers in zip(evidence, numbers_by_quote)]
 
+                seen_findings: set[tuple[str, str]] = set()
+
                 def finding(kind: str, term: str, offset: int) -> dict:
                     return {"kind": kind, "term": term, "line": line, "offset": offset,
                             "section": section.heading, "claim": unit_text, "citations": citations}
 
-                def add(kind: str, terms) -> None:
+                def add(kind: str, terms, offset: int | None = None) -> None:
                     if findings is not None:
                         for term in terms:
-                            matches = list(re.finditer(re.escape(term), unit_text, re.IGNORECASE))
-                            for match in matches or (None,):
-                                findings.append(finding(kind, term, match.start() if match else 0))
+                            key = kind, term.casefold()
+                            if key in seen_findings:
+                                continue
+                            seen_findings.add(key)
+                            if offset is None:
+                                pattern = re.escape(term)
+                                if kind == "number":
+                                    pattern = rf"(?<![\d.]){pattern}(?!(?:\d|\.\d))"
+                                match = re.search(pattern, unit_text, re.IGNORECASE)
+                                position = match.start() if match else 0
+                            else:
+                                position = offset
+                            findings.append(finding(kind, term, position))
 
                 excerpts = [quote.text for quote in evidence]
                 screen_excerpts = [quote.text for quote in evidence if quote.screen]
                 local_corrections = [corrected for original, corrected in screen_corrections
                                      if any(term_occurs(original, line) for line in screen_excerpts)]
-                source = excerpts + corrections + local_corrections
+                speech_corrections = corrections
+                if is_fence:
+                    speech_excerpts = [quote.text for quote in evidence if not quote.screen]
+                    speech_corrections = [
+                        corrected for original, corrected in speech_correction_pairs
+                        if any(term_occurs(original, line) for line in speech_excerpts)
+                    ]
+                source = excerpts + speech_corrections + local_corrections
                 prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(unit_text))
                 if parent == _C04_START[1]:
                     prose = _remove_properties(prose, ctx.fields)
                 support = [value for numbers in numbers_by_quote for value in numbers]
                 if not ctx.has_screen_file:
-                    support.extend(value for excerpt in corrections for value in canonical_numbers(excerpt)[1])
-                numeric_text = prose
+                    support.extend(value for excerpt in speech_corrections for value in canonical_numbers(excerpt)[1])
+                # Fence info strings describe highlighting, not code facts.
+                numeric_text = prose.partition("\n")[2] if is_fence else prose
                 for quote in evidence:
                     if quote.screen and quote.text in numeric_text:
                         # An exact reproduction of the cited OCR text is the same date.
@@ -2207,7 +2402,7 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                     else:
                         issues.append(f"{section.heading}: original {original!r} is absent from the end evidence")
                         if findings is not None:
-                            findings.append(finding("original", original, match.start()))
+                            add("original", (original,), match.start())
                 for match in _QUOTED_TERM.finditer(prose):
                     if match.end() in supported_originals:
                         continue
@@ -2244,8 +2439,7 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
         for section in ctx.sections
         for idx in range(len(section.blocks))
     ]
-    cited_screen = tuple(quote.text for quote in ctx.valid_quotes if quote.screen)
-    second_sources = tuple(str(ctx.fields.get(key) or "") for key in ("title", "channel") if ctx.fields.get(key))
+    cited_screen, second_sources = _correction_sources(ctx)
     corrections = caption_corrections(blocks, ctx.speech, cited_screen)
     corrected_spellings = [corrected for _, corrected in corrections]
     issues = explanation_issues(
@@ -2255,6 +2449,12 @@ def c04d_explanations(ctx: RuleContext) -> tuple[str, bool, str]:
         cited_screen,
         block_contexts=block_contexts,
         second_sources=second_sources,
+    )
+    if any("（注：" in _INLINE_CODE.sub(" ", text) for text in _body_prose(ctx)):
+        issues.append("正文不得手写 （注：；请在术语块填写短释")
+    issues.extend(
+        "版本冲突 " + message + "，请用 原文出入 行型 3 登记说明"
+        for hard_fail, message in _version_conflicts(ctx, blocks) if hard_fail
     )
     searchable = [
         (section.heading, _INLINE_CODE.sub(" ", _FENCED_CODE.sub(" ", "\n\n".join([section.heading, *section.prose]))))
@@ -2378,9 +2578,247 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
     return ("R13", True, "today step is a short grounded action")
 
 
+_SCREEN_NARRATION = re.compile(
+    r"(?:画面|幻灯片|屏幕(?:上)?)(?:把|写明|标明|显示|写着|列出|标出|补充|说明|"
+    r"还给出|还说明|还列出|给出|标注|写成|画成|用)"
+)
+_UNIT = re.compile(r"(?<![A-Za-z_])(?:[KMG]i?B)(?![A-Za-z0-9_])")
+_METRIC = re.compile(
+    r"(?<![A-Za-z0-9_.])([0-9]+(?:[.,][0-9]+)?)[ \t]*"
+    r"(KiB|MiB|GiB|KB|MB|GB|Hz|ms|B|M|K|%|s|万|亿)(?![A-Za-z0-9_])"
+)
+_ORDINAL = re.compile(r"第[三四五六七八九十3-9]个([\u4e00-\u9fff]{2,6})")
+_VERSIONED_ENTITY = re.compile(
+    r"(?<![A-Za-z0-9_-])([A-Za-z][A-Za-z0-9-]*?)[-_]?(\d+)[._](\d+)(?![A-Za-z0-9_])"
+)
+_ASR_CANDIDATE = re.compile(r"[A-Za-z][A-Za-z0-9._-]*")
+_HAN = re.compile(r"[\u4e00-\u9fff]")
+_CAPITALIZED_TITLE = re.compile(r"\b[A-Z][a-zA-Z0-9-]*(?:[ \t]+[A-Z][a-zA-Z0-9-]*)+\b")
+_ENGLISH_PHRASE = re.compile(r"\b[a-z]{2,}(?:\s+[a-z]{2,}){2,}\b")
+_ENGLISH_QUANTITY = re.compile(
+    r"\b(?:\d+(?:\s*(?:to|-|or)\s*\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\s+(?:years?|months?|weeks?|days?|hours?|minutes?|seconds?|percent|million|billion|thousand|people|times)\b",
+    re.IGNORECASE,
+)
+
+
+def _correction_sources(ctx: RuleContext) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    cited_screen = tuple(quote.text for quote in ctx.valid_quotes if quote.screen)
+    metadata = tuple(ctx.fields[key] for key in ("title", "channel") if ctx.fields.get(key))
+    return cited_screen, metadata
+
+
+def _body_prose(ctx: RuleContext):
+    for section in ctx.sections:
+        if section.heading:
+            yield section.heading
+        for index, claim in enumerate(section.prose):
+            if index not in section.fence_parents:
+                yield claim
+
+
+def _version_groups(text: str) -> dict[tuple[str, str], dict[str, set[str]]]:
+    versions: dict[tuple[str, str], dict[str, set[str]]] = {}
+    for match in _VERSIONED_ENTITY.finditer(text):
+        base, major, minor = match.groups()
+        major_norm = _norm_ascii_digits(major).lstrip("0") or "0"
+        minor_norm = _norm_ascii_digits(minor).lstrip("0") or "0"
+        key = base.rstrip("-_").casefold(), major_norm
+        versions.setdefault(key, {}).setdefault(minor_norm, set()).add(match[0])
+    return versions
+
+
+def _version_conflicts(ctx: RuleContext, blocks: list[list[str]]):
+    prose = "\n".join(prose_without_times(text) for text in _body_prose(ctx))
+    explanations = "\n".join(
+        line for header, *lines in blocks
+        if (callout := _CALLOUT.fullmatch(header)) and callout.groups() == ("warning", DISCREPANCY_TITLE)
+        for line in lines if _DISCREPANCY_TYPE3.fullmatch(line)
+    )
+    covered = _version_groups(explanations)
+    # Hard-FAIL ONLY when a specific claim writes a version whose own linked quotes
+    # lack that version while containing a different minor version of the same entity
+    # (avoids deadlocking legitimate comparisons like "Tool1.2 is faster than Tool1.1").
+    contradicted_keys: set[tuple[str, str]] = set()
+    valid = ctx.valid_quotes
+    for section in ctx.sections:
+        for index, claim in enumerate(section.prose):
+            if index in section.fence_parents:
+                continue
+            slices, _ = _split_time_clusters(claim)
+            for unit_text, unit_times in (slices or [(claim, set())]):
+                if not unit_times:
+                    continue
+                linked = [q for stamp in sorted(unit_times) for q in match_link(stamp, valid)[0]]
+                if not linked:
+                    continue
+                unit_vers = _version_groups(prose_without_times(unit_text))
+                linked_vers = _version_groups("\n".join(q.text for q in linked))
+                for key, minors in unit_vers.items():
+                    q_minors = linked_vers.get(key, {}).keys()
+                    uncovered_unit = minors.keys() - covered.get(key, {}).keys()
+                    if q_minors and any(m not in q_minors for m in uncovered_unit):
+                        contradicted_keys.add(key)
+
+    for key, minors in _version_groups(prose).items():
+        uncovered = minors.keys() - covered.get(key, {}).keys()
+        if len(uncovered) >= 2:
+            surfaces = sorted(set().union(*(minors[minor] for minor in uncovered)))
+            yield (
+                key in contradicted_keys,
+                "同一实体存在未登记原文出入的版本不一致: " + "、".join(surfaces),
+            )
+
+
+_PERCENTAGE = re.compile(r"(?<![\d.])([+\-\u2212]?\d+(?:\.\d+)?)\s*[%％]")
+_PERCENT_RANGE = re.compile(r"\s*[–\-~～至到]\s*")
+_SCREEN_ASSIGNMENT = re.compile(
+    r"^[ \t]*(?:\[\d{2}:\d{2}(?::\d{2})?\]\[画面\??\]\s*)?([A-Za-z][A-Za-z0-9_]{0,15})\s*=",
+    re.MULTILINE,
+)
+_IDENTIFIER = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]*(?![A-Za-z0-9_])")
+
+
+def _reader_r2_warnings(ctx: RuleContext):
+    for claim in _body_prose(ctx):
+        clean = _INLINE_CODE.sub(" ", prose_without_times(claim))
+        percentages = list(_PERCENTAGE.finditer(_norm_ascii_digits(clean)))
+        if any(
+            ("." in left[1]) != ("." in right[1])
+            and not _PERCENT_RANGE.fullmatch(clean[left.end():right.start()])
+            and not (right[1].startswith(("-", "\u2212")) and clean[left.end():right.start()].strip() == "")
+            and 0 < abs(float(left[1].replace("\u2212", "-")) - float(right[1].replace("\u2212", "-"))) <= 1.0
+            for index, left in enumerate(percentages) for right in percentages[index + 1:]
+        ):
+            yield "约数并列 WARN: 同段出现接近的整数与小数百分比，请核对指标口径"
+            break
+
+    pending = {name.casefold(): name for name in _SCREEN_ASSIGNMENT.findall(ctx.screen_text)
+               if re.search(r"[0-9_]", name)}
+    steps, reuse = [], []
+    for parent, section in _with_parents(ctx.sections):
+        for index, claim in enumerate(section.prose):
+            is_fence = index in section.fence_parents
+            text = claim.partition("\n")[2] if is_fence else prose_without_times(claim)
+            if pending:
+                for match in _IDENTIFIER.finditer(text):
+                    if (name := pending.pop(match[0].casefold(), None)) and not is_fence:
+                        tail = text[match.end():].lstrip()
+                        if not tail.startswith("="):
+                            yield f"标识符未铺垫 WARN: 正文首次出现 {name!r}，请交代来历"
+            if ctx.fields.get("type") == "教程" and not is_fence:
+                if parent == "操作步骤":
+                    steps.extend(match[0].strip("`").strip() for match in _INLINE_CODE.finditer(text))
+                elif parent == "可复用做法":
+                    reuse.extend(match[0].strip("`").strip() for match in _INLINE_CODE.finditer(text))
+    if len(reuse) >= 2 and 2 * sum(span in set(steps) for span in reuse) >= len(reuse):
+        yield "做法重复 WARN: 可复用做法重复操作步骤中的命令，请保留新增检查或判断条件"
+
+
+def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
+    result: list[str] = []
+    review = "（已过检，交复核裁定）"
+    discrepancies = [
+        line for header, *lines in blocks
+        if (callout := _CALLOUT.fullmatch(header)) and callout.groups() == ("warning", DISCREPANCY_TITLE)
+        for line in lines
+    ]
+    screen, metadata = _correction_sources(ctx)
+    doubts = [match for line in discrepancies if (match := _DISCREPANCY_TYPE3.fullmatch(line))]
+    for match in doubts:
+        anchor, explanation = (part.strip() for part in match.groups())
+        words = list(_ASR_CANDIDATE.finditer(explanation))
+        candidates = [word[0].rstrip(".") for word in words]
+        candidates.extend(
+            explanation[left.start():right.end()].rstrip(".")
+            for left, right in zip(words, words[1:]) if explanation[left.end():right.start()].isspace()
+        )
+        for candidate in candidates:
+            if (candidate.casefold() != anchor.casefold()
+                    and not term_occurs(candidate, ctx.speech)
+                    and _discrepancy_type1_laundering_issue(anchor, candidate, (*screen, *metadata)) is None):
+                result.append(f"存疑可降级 WARN: {anchor!r} 可复核为 {candidate!r}（已过检，交复核裁定，勿为 WARN 改稿）")
+                break
+    if len(doubts) > 3:
+        result.append(f"存疑密度 WARN: 全篇共 {len(doubts)} 条存疑"
+                      "（建议 ≤3 条，请复核是否将同音 ASR 错词误标为存疑；已过检，交复核裁定）")
+
+    middle = middle_headings(ctx.fields.get("type"), ctx.sections)
+    narration_count = 0
+    prose: list[str] = []
+    language_parts: list[str] = []
+    metric_counts: dict[str, int] = {}
+    for parent, section in _with_parents(ctx.sections):
+        parts: list[str] = []
+        for index, claim in enumerate(section.prose):
+            if index in section.fence_parents:
+                opening, _, content = claim.partition("\n")
+                fence = _FENCE_OPEN.match(opening)
+                if opening[fence.end():].strip().casefold() in {"", "text", "txt", "markdown", "md"}:
+                    if not section.unclosed_fence or index != len(section.prose) - 1:
+                        content = content.rpartition("\n")[0]
+                    han = len(_HAN.findall(content))
+                    if han >= 15 and 2 * han > len(re.sub(r"\s", "", content)):
+                        result.append(f"围栏滥用 WARN: {section.heading} 的代码围栏疑似包裹中文正文{review}")
+                continue
+            clean = prose_without_times(claim)
+            clean = "\n".join(line for line in clean.splitlines() if not line.lstrip().startswith(">"))
+            parts.append(_INLINE_CODE.sub(" | ", clean))
+            if not _fixed_explanation(parent, claim):
+                language_parts.append(parts[-1])
+        text = "\n".join(parts)
+        if section.heading:
+            prose.append(_INLINE_CODE.sub(" ", prose_without_times(section.heading)))
+        prose.append(text)
+        if parent in middle:
+            narration_count += len(_SCREEN_NARRATION.findall(text))
+            if section.level == 3:
+                for metric in sorted({number + unit for number, unit in _METRIC.findall(text)}):
+                    metric_counts[metric] = metric_counts.get(metric, 0) + 1
+    if narration_count > 2:
+        result.append(
+            f"表达 WARN: 正文出现 {narration_count} 处“画面/幻灯片写明”式机器转述"
+            "（建议 ≤2 处，口语与画面合一直接陈述；已过检，交复核裁定）"
+        )
+    text = "\n".join(prose)
+    units = set(_UNIT.findall(text))
+    if any({f"{scale}B", f"{scale}iB"} <= units for scale in "KMG"):
+        result.append("单位混用 WARN: 正文混用十进制与二进制单位（如 KB/KiB），请核对并统一口径" + review)
+    repeated = [metric for metric, count in metric_counts.items() if count >= 3]
+    if repeated:
+        result.append("重复指标 WARN: 同一量化指标跨 ≥3 个小节重复出现: " + "、".join(repeated) + review)
+
+    for match in _ORDINAL.finditer(text):
+        noun = match[1]
+        earlier = text[:match.start()]
+        # A continuous Han run can include the verb after the noun.
+        if not any(noun[:length] in earlier for length in range(len(noun), 1, -1)):
+            result.append(f"序数未铺垫 WARN: 正文首次直接出现“{match[0]}”，前文未铺垫“{noun}”{review}")
+
+    result.extend("版本冲突 WARN: " + message + review
+                  for cited, message in _version_conflicts(ctx, blocks) if not cited)
+    result.extend(_reader_r2_warnings(ctx))
+
+    language_parts = [_MARKDOWN_LINK_SPAN.sub(" | ", part) for part in language_parts]
+    language_text = "\n".join(language_parts)
+    han = len(_HAN.findall(language_text))
+    heading_han = sum(len(_HAN.findall(section.heading)) for section in ctx.sections)
+    # Standard Chinese headings count toward sample size but do not determine the language.
+    if han + heading_han >= 40 and han > len(_ENGLISH_WORD.findall(language_text)):
+        for part in language_parts:
+            clean = re.sub(r'[“"][^”"\n]*[”"]', " | ", part)
+            clean = _CAPITALIZED_TITLE.sub(" | ", clean)
+            match = _ENGLISH_QUANTITY.search(clean) or _ENGLISH_PHRASE.search(clean)
+            if match:
+                result.append(f"中英混杂 WARN: 中文正文残留未翻译英文短语/时间表达: {match[0]}{review}")
+                break
+    return result
+
+
 def warnings(ctx: RuleContext) -> list[str]:
     result: list[str] = []
     blocks = [block for section in ctx.sections for block in section.blocks]
+    result.extend(_reader_warnings(ctx, blocks))
     seen_terms: set[str] = set()
     dup_terms: list[str] = []
     for block in blocks:
@@ -2409,8 +2847,8 @@ def warnings(ctx: RuleContext) -> list[str]:
     for parent, section in _with_parents(ctx.sections):
         if parent not in middle:
             continue
-        for claim in section.prose:
-            if _fixed_explanation(parent, claim):
+        for index, claim in enumerate(section.prose):
+            if index in section.fence_parents or _fixed_explanation(parent, claim):
                 continue
             for cluster in _TIME_CLUSTER.finditer(claim):
                 marker_count = len(_DELIVERY_TIME.findall(cluster[0]))
