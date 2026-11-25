@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 import tempfile
 import unittest
@@ -105,12 +104,40 @@ class H3TimeLabelTests(Phase6A2Fixture):
         # All-recall section gets no time label
         self.assertIn("### 纯回引小结\n", reading)
         self.assertNotIn("### 纯回引小结 ·", reading)
+        for line in middle.splitlines():
+            if "⏱" in line:
+                self.assertIn(line.split(" ⏱", 1)[0], reading)
+
+    def test_empty_h3_does_not_claim_time_or_set_replay_boundary(self) -> None:
+        note = _build_note(
+            "### 空标题 ⏱ 10:00\n\n"
+            "### 首段正文\n\n"
+            "核对初始缓存，再改写最慢循环。 ⏱ 01:10 ⏱ 10:00",
+            [("01:10", Q0110), ("10:00", Q1000)],
+        )
+        self.assertIn("### 首段正文 · 01:10–10:00\n", _render(note))
+
+    def test_three_replay_segments_and_h2_reset(self) -> None:
+        note = _build_note(
+            "### 回放前的核对\n\n发现偏差后回退改动。 ⏱ 13:00\n\n"
+            "### 三处回放\n\n依次核对缓存、输出和汇报。 ⏱ 01:10 ⏱ 12:00 ⏱ 16:00\n\n"
+            "## 另一主题\n\n"
+            "### 重新定位\n\n从初始缓存和基准函数重新核对。 ⏱ 01:10 ⏱ 07:40",
+            [("01:10", Q0110), ("07:40", Q0740), ("12:00", Q1200), ("13:00", Q1300),
+             ("16:00", "最后整理核对结果并交付汇报。")],
+        )
+        reading = _render(note)
+        self.assertIn("### 三处回放 · 01:10、12:00、16:00\n", reading)
+        self.assertIn("### 重新定位 · 01:10–07:40\n", reading)
 
 
 class ReaderFillerGuardTests(Phase6A2Fixture):
     def test_filler_fails_in_body_but_exempts_quotes_code_callout_and_single_screen_note(self) -> None:
         evidence = [("02:24", Q0224), ("07:40", Q0740)]
-        for bad_phrase in ("若还记得前面函数", "如果还记得基准脚本", "把镜头拉远看整体", "口播当时在读日志", "口播提到需要保存"):
+        for bad_phrase in (
+            "若还记得前面函数", "如果还记得基准脚本", "把镜头拉远看整体", "口播当时在读日志",
+            "[若还记得](https://example.invalid)",
+        ):
             with self.subTest(bad_phrase=bad_phrase):
                 middle = (
                     f"### 排查流程\n\n"
@@ -121,16 +148,18 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
                 self.assertFalse(result["allowed"], f"{bad_phrase} should FAIL")
                 self.assertIn("C04a", failed_ids(result), result["reasons"])
 
-        # Exempt contexts: direct quotes 「」/“”, inline code, fenced code, callout, ## 原文依据
+        # Direct quotes, code, callouts and evidence may contain the original wording.
         safe_evidence = [
             ("02:24", Q0224 + "讲者原话说若还记得镜头拉远口播当时这几个词。"),
             ("07:40", Q0740),
         ]
         safe_middle = (
             "### 合法豁免场景\n\n"
-            "讲者原话提到「若还记得」与“镜头拉远”，示例标记为 `口播提到`；画面上列出初始基准函数与原始耗时日志。 ⏱ 02:24\n\n"
+            "讲者原话提到「若还记得\n前面」与『镜头拉远，口播当时』，示例标记为 `口播当时`；"
+            "画面上列出初始基准函数与原始耗时日志。 ⏱ 02:24\n\n"
             "> [!warning] 原文出入\n"
             "> 存疑｜「原始耗时日志」｜口播当时未报精确行数\n\n"
+            "```python\n# 若还记得前面\n```\n\n"
             "接着用分析工具排序内部耗时并定位瓶颈。 ⏱ 07:40"
         )
         _, safe_result = self.verify(safe_middle, safe_evidence)
@@ -141,10 +170,10 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
             safe_result["warnings"],
         )
 
-        # > 2 occurrences of expanded screen narration ("画面上", "图上", "视频展示了") MUST trigger WARN
+        # Three narration phrases trigger a warning without blocking delivery.
         noisy_middle = (
             "### 过多过滤词\n\n"
-            "画面上给出基准函数，图上标出耗时日志，视频展示了完整运行结果。 ⏱ 02:24\n\n"
+            "口播提到基准函数，图上标出耗时日志，口播里说明了完整运行结果。 ⏱ 02:24\n\n"
             "接着用分析工具排序内部耗时并定位瓶颈。 ⏱ 07:40"
         )
         _, noisy_result = self.verify(noisy_middle, evidence)
@@ -153,6 +182,19 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
             any("机器转述" in w for w in noisy_result["warnings"]),
             noisy_result["warnings"],
         )
+
+    def test_attributions_and_diagram_terms_do_not_trigger_narration_warning(self) -> None:
+        evidence = [("02:24", Q0224), ("07:40", Q0740)]
+        middle = (
+            "### 排查流程\n\n"
+            "讲者在口播里纠正了字幕。变焦时镜头拉近会压缩背景。"
+            "地图上、流程图上、追踪图上和架构图上都有标记。准备基准函数并保存原始耗时日志。 ⏱ 02:24\n\n"
+            "讲者引用『画面上有标记，\n图上有日志』，随后用分析工具排序内部耗时。"
+            " [参见记录](https://example.invalid/视频展示了) ⏱ 07:40"
+        )
+        _, result = self.verify(middle, evidence)
+        self.assertTrue(result["allowed"], result["reasons"])
+        self.assertFalse(any("机器转述" in w for w in result["warnings"]), result["warnings"])
 
 
 class ParagraphBindingAndDocTests(Phase6A2Fixture):
@@ -185,20 +227,26 @@ class ParagraphBindingAndDocTests(Phase6A2Fixture):
         self.assertTrue(ok_res["allowed"], ok_res["reasons"])
         self.assertEqual(ok_res["c04c"], [], ok_res["c04c"])
         cluster_warns = [w for w in ok_res["warnings"] if "簇分片 WARN" in w]
-        self.assertTrue(cluster_warns, ok_res["warnings"])
-        self.assertTrue(
-            all("不要为此拆开因果段" in w for w in cluster_warns),
+        self.assertCountEqual(
             cluster_warns,
+            [
+                "簇分片 WARN: 长因果段 单簇包含 5 个 ⏱（信息性提示，不要为此拆开因果段）",
+                f"簇分片 WARN: 长因果段 单片去代码长度 {len(long_para_body)} 字"
+                "（信息性提示，不要为此拆开因果段）",
+            ],
         )
 
     def test_phase6a2_docs_budget_and_five_book_rules(self) -> None:
-        df = (ROOT / "references/delivery-format.md").read_text(encoding="utf-8")
-        rg = (ROOT / "references/review-guide.md").read_text(encoding="utf-8")
-        writer_bytes = sum(
-            (ROOT / rel).stat().st_size
-            for rel in ("SKILL.md", "references/delivery-format.md", "references/rules.md")
-        )
-        review_bytes = (ROOT / "references/review-guide.md").stat().st_size
+        writer_docs = ("SKILL.md", "references/delivery-format.md", "references/rules.md")
+        review_doc = "references/review-guide.md"
+        docs = {rel: (ROOT / rel).read_bytes() for rel in (*writer_docs, review_doc)}
+        for rel, data in docs.items():
+            with self.subTest(doc=rel):
+                self.assertNotIn(b"\r", data)
+        df = docs["references/delivery-format.md"].decode("utf-8")
+        rg = docs[review_doc].decode("utf-8")
+        writer_bytes = sum(len(docs[rel]) for rel in writer_docs)
+        review_bytes = len(docs[review_doc])
         self.assertLessEqual(writer_bytes, 30720, f"WRITER_REQUIRED={writer_bytes}")
         self.assertLessEqual(review_bytes, 8192, f"review-guide={review_bytes}")
         # Ensure L35 no longer pressures writers to split causal paragraphs at 3/220

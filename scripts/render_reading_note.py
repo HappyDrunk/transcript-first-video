@@ -24,6 +24,8 @@ SPOKEN_CODE_NOTICE = "部分代码按讲者口述整理"
 GLOSSARY_HEADING = "## 术语速查"
 GLOSSARY_NOTICE = "以下为整理者补充，非讲者原话。"
 EMPTY_OMISSION = {"", "无", "无。", "无.", "none"}
+H3_SEGMENT_GAP_SECONDS = 180
+MAX_H3_TIME_SEGMENTS = 3
 
 FRONTMATTER = re.compile(r"\A---(?:\r\n|\r|\n).*?(?:\r\n|\r|\n)---(?:\r\n|\r|\n)", re.DOTALL)
 TIME_GROUP = re.compile(
@@ -554,10 +556,12 @@ def _render_body_details(
             prev_h3_max = None
         elif section.level == 3:
             times = section.times.copy()
+            has_content = bool(section.body.strip())
             for child in kept[index + 1:]:
                 if child.level <= section.level:
                     break
                 times.update(child.times)
+                has_content = has_content or bool(child.body.strip())
             own_times = times - cited_before
             if own_times:
                 start, end = min(own_times), max(own_times)
@@ -566,20 +570,21 @@ def _render_body_details(
                     segments: list[tuple[int, int]] = []
                     segment_start = previous = start
                     for timestamp in sorted(own_times)[1:]:
-                        if timestamp - previous > 180:
+                        if timestamp - previous > H3_SEGMENT_GAP_SECONDS:
                             segments.append((segment_start, previous))
                             segment_start = timestamp
                         previous = timestamp
                     segments.append((segment_start, previous))
-                    if len(segments) <= 2:
+                    if len(segments) <= MAX_H3_TIME_SEGMENTS:
                         ranges = segments
                 time_label = "、".join(
                     rules._fmt(first) if first == last else f"{rules._fmt(first)}–{rules._fmt(last)}"
                     for first, last in ranges
                 )
                 title += f" · {time_label}"
-                cited_before.update(own_times)
-                prev_h3_max = end if prev_h3_max is None else max(prev_h3_max, end)
+                if has_content:
+                    cited_before.update(own_times)
+                    prev_h3_max = end if prev_h3_max is None else max(prev_h3_max, end)
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
