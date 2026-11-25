@@ -8,22 +8,18 @@ Only after verify and coverage pass on the same inputs, give the evidence note, 
 
 Report only located, evidenced issues. Do not repeat mechanical checks or add unrelated preferences.
 
-- Check negation, order, conditions, and causal direction. For each “讲者认为/提出” conclusion, read the transcript ±30 seconds (±30 秒) and require any stated reason or mechanism in the same paragraph. Check prerequisites for `今天立刻动手一步`.
-- Review soft warnings and C04c. Flag machine-like screen narration (“画面写明”), repeated metrics, unit mismatches, and unexplained ordinals.
-- Check English-to-Chinese fidelity sentence by sentence, including subjects, objects, relative-clause attachment, and ambiguous subject switches. Flag untranslated English phrases, idioms, and time expressions.
-- Flag repeated passages, rounded-and-exact double reporting, and duplicated tutorial steps or commands. Check scope, region, and version prerequisites upfront.
-- In interviews, verify attribution and account for all people named in the title. Check speaker identity before attributing an unlabeled claim.
-- Check lists, runnable commands, omitted claims, steps and numbers, and screen-only tables or lists missing from the note and selection. State missing command parameters as omissions.
-- **Bidirectional terminology & readability review**:
-  1. Flag essential terms missing explanation at first technical use (see reading-level section below).
-  2. **Also flag excess/noise**: too many `术语` entries (target ≤12 entries, ≤60 chars each), glossary entries that merely parrot the prose, video facts (numbers/names/causality) smuggled into `术语` blocks instead of prose, and noisy English parentheses (such as `50%（50%）`, common words, or broken ASR fragments). Keep only essential proper names, search terms, and code.
-- **Review `原文出入` direction and neutrality**:
-  1. Type 1 (`字幕/画面写作 A，实为 B`): confirm the context uniquely identifies the intended term, including for phonetic ASR errors resolved from speech alone. Check for changed numbers or versions and unsupported name completion.
-  2. Type 2 (`口述代码`): verify the reconstructed code matches spoken words without inventing parameters or APIs.
-  3. Type 3 (`存疑`): check for overuse and downgradeable phonetic ASR typos. Confirm each remaining entry reflects a real conflict or missing detail, uses a neutral anchor, and preserves uncertainty.
-  4. For `版本冲突`, classify it as `误报` only if cited quotes prove the speaker is intentionally comparing or contrasting distinct versions (such as an upgrade); if one entity is given conflicting versions (such as title vs. config), require a reader-facing Type 3 `原文出入` explanation.
-- Reject unexplained code identifiers and screen numbers without clear labels (标签). Check units, comparison targets, and conditions against the image.
-- Find prose commentary about how the writer prepared, checked, or selected material. Preserve reader-facing scope/uncertainty notes (such as `存疑`, "视频未展开", "视频未给出完整命令") and source attribution.
+### 红帽念读关
+
+- 逐段默念，按「必要／删损／能短／上口」四问删冗赘、重复段落、重复步骤或命令和同指标双报。改写未翻译英文短语（untranslated English）、习语、时间表达及机械直译词。开篇主旨要直白，结尾要收束线头。
+- 拦过滤词和「画面写明」「画面上」「图上」等机器转述。核查删过滤词后未补写视频未讲的画面描述。簇分片 WARN 仅作参考，不要为此拆开因果段。
+
+### 黑帽零脑补关
+
+- 核对否定、顺序、地区、版本、前置条件和因果方向。每处「讲者认为/提出」必查文稿 ±30 秒，将讲者给出的原因或机制写在同段。核对 `今天立刻动手一步` 的前提，并逐句核对译文的主语、宾语、修饰关系和主语切换。区分已核实事实与讲者判断或预测，保留归属和概率语气。
+- 访谈须核实发言归属，覆盖标题所列全部人物。检查遗漏的主张、清单、步骤、数字、可运行命令和画面独有表格或清单，并核对取舍表，指出缺失的命令参数。
+- 双向查术语。标出首次技术用法缺释，也查条目过密（建议 ≤12 条、每条 ≤60 字）、复述正文、藏入视频事实及冗余英文括号。
+- 核对 `原文出入`。行型 1 查语境是否唯一支持纠正（含纯语音高置信同音 ASR），严查数字、版本变更和擅补人名。行型 2 按口述核对代码，严查虚构参数或 API。行型 3 的 `存疑` 须有真实冲突或细节缺失，以中性锚点保留不确定性。勿滥用 `存疑`，可确认的同音 ASR 转行型 1。`版本冲突` 仅在引文明确对比不同版本时标 `误报`，同一对象的版本冲突用行型 3 向读者说明。
+- 拒绝来历不明的代码标识符和无标签画面数字。对照画面核对序数语境、单位、对比对象和条件。删写作者核对或筛选的过程自白，保留来源归属与「视频未展开」「视频未给出完整命令」等读者向边界说明。
 
 Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.
 
