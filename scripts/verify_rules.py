@@ -360,6 +360,8 @@ def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
     return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip(" \t\r") == "")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
+_READER_FILLER = re.compile(r"若还记得|如果还记得|口播当时")
+_DIRECT_QUOTE = re.compile(r'「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"')
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
 _CODE_KEYWORDS = {
     "def", "return", "import", "from", "for", "in", "if", "else", "elif", "while",
@@ -1801,6 +1803,15 @@ def c04a_structure(ctx: RuleContext) -> tuple[str, bool, str]:
     if "gate_passed" in fields and not knowledge_note._truthy(fields["gate_passed"]):
         issues.append("gate_passed must be true when supplied")
     for parent, section in _with_parents(ctx.sections):
+        if parent != EVIDENCE_HEADING:
+            prose = [section.heading]
+            prose.extend(claim for index, claim in enumerate(section.prose)
+                         if index not in section.fence_parents)
+            for block in prose:
+                visible = "\n".join(line for line in block.splitlines() if not line.lstrip().startswith(">"))
+                clean = _DIRECT_QUOTE.sub(" ", _strip_markdown_links(_INLINE_CODE.sub(" ", visible)))
+                if match := _READER_FILLER.search(clean):
+                    issues.append(f"{section.heading}: 禁止在正文残留视频口播/镜头过渡语: {match[0]}")
         for index, claim in enumerate(section.prose):
             if index in section.fence_parents:
                 continue
@@ -2579,6 +2590,7 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
 
 
 _SCREEN_NARRATION = re.compile(
+    r"画面上|(?<![\u4e00-\u9fff])图上|视频展示了|口播提到|(?:把)?镜头(?:拉远|拉近|推近|切到)|"
     r"(?:画面|幻灯片|屏幕(?:上)?)(?:把|写明|标明|显示|写着|列出|标出|补充|说明|"
     r"还给出|还说明|还列出|给出|标注|写成|画成|用)"
 )
@@ -2771,7 +2783,10 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
             prose.append(_INLINE_CODE.sub(" ", prose_without_times(section.heading)))
         prose.append(text)
         if parent in middle:
-            narration_count += len(_SCREEN_NARRATION.findall(text))
+            narration_count += sum(
+                len(_SCREEN_NARRATION.findall(_DIRECT_QUOTE.sub(" ", _strip_markdown_links(part))))
+                for part in parts
+            )
             if section.level == 3:
                 for metric in sorted({number + unit for number, unit in _METRIC.findall(text)}):
                     metric_counts[metric] = metric_counts.get(metric, 0) + 1
@@ -2854,14 +2869,16 @@ def warnings(ctx: RuleContext) -> list[str]:
                 marker_count = len(_DELIVERY_TIME.findall(cluster[0]))
                 if marker_count > MAX_CLUSTER_ANCHORS:
                     result.append(
-                        f"簇分片 WARN: {section.heading} 单簇包含 {marker_count} 个 ⏱（建议 ≤{MAX_CLUSTER_ANCHORS}）"
+                        f"簇分片 WARN: {section.heading} 单簇包含 {marker_count} 个 ⏱"
+                        "（信息性提示，不要为此拆开因果段）"
                     )
             slices, _ = _split_time_clusters(claim)
             for slice_text, _ in slices:
                 slice_len = len(_strip_code(prose_without_times(slice_text)).strip())
                 if slice_len > MAX_SLICE_CHARS:
                     result.append(
-                        f"簇分片 WARN: {section.heading} 单片去代码长度 {slice_len} 字（建议 ≤{MAX_SLICE_CHARS}）"
+                        f"簇分片 WARN: {section.heading} 单片去代码长度 {slice_len} 字"
+                        "（信息性提示，不要为此拆开因果段）"
                     )
     if ctx.gate is None:
         return result
