@@ -532,6 +532,7 @@ class DeliverySection:
     block_contexts: tuple[str | None, ...] = ()
     fence_parents: dict[int, int | None] = field(default_factory=dict)
     unclosed_fence: bool = False
+    list_forms: tuple[bool, ...] = ()
 
 
 def markdown_headings(body: str) -> list[tuple[int, str, int, int]]:
@@ -577,9 +578,9 @@ def delivery_sections(body: str) -> list[DeliverySection]:
     sections: list[DeliverySection] = []
     for index, (level, heading, _, end) in enumerate(headings):
         section_body = body[end : starts[index + 1]]
-        list_forms = [] if heading == CONCISE_ACTION_HEADING else None
+        list_forms: list[bool] = []
         has_fence = False
-        if list_forms is not None:
+        if heading == CONCISE_ACTION_HEADING:
             section_body = _MARKDOWN_CODE_OR_COMMENT.sub(
                 lambda match: "" if match["comment"] else match[0], section_body
             )
@@ -589,10 +590,10 @@ def delivery_sections(body: str) -> list[DeliverySection]:
         prose, blocks, unclosed_fence = delivery_parts(
             section_body, list_forms=list_forms, block_contexts=contexts, fence_parents=fence_parents,
         )
-        mixed_list = bool(list_forms and any(list_forms) and not all(list_forms))
+        mixed_list = bool(heading == CONCISE_ACTION_HEADING and list_forms and any(list_forms) and not all(list_forms))
         sections.append(DeliverySection(
             level, heading, prose, blocks, mixed_list, has_fence or bool(fence_parents),
-            tuple(contexts), fence_parents, unclosed_fence,
+            tuple(contexts), fence_parents, unclosed_fence, tuple(list_forms),
         ))
     return sections
 
@@ -2810,8 +2811,11 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
     metric_counts: dict[str, int] = {}
     for parent, section in _with_parents(ctx.sections):
         parts: list[str] = []
+        single_sentence_run = 0
+        max_single_sentence_run = 0
         for index, claim in enumerate(section.prose):
             if index in section.fence_parents:
+                single_sentence_run = 0
                 opening, _, content = claim.partition("\n")
                 fence = _FENCE_OPEN.match(opening)
                 if opening[fence.end():].strip().casefold() in {"", "text", "txt", "markdown", "md"}:
@@ -2826,7 +2830,30 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
             parts.append(_INLINE_CODE.sub(" | ", clean))
             if not _fixed_explanation(parent, claim):
                 language_parts.append(parts[-1])
+            stripped_claim = clean.strip()
+            is_list_item = index < len(section.list_forms) and section.list_forms[index]
+            if (not stripped_claim
+                    or is_list_item
+                    or stripped_claim.startswith("本文略去")
+                    or _is_table_block(stripped_claim.splitlines())
+                    or any(ln.lstrip().startswith("|") for ln in stripped_claim.splitlines())):
+                single_sentence_run = 0
+            else:
+                sentence_ends = len(re.findall(r"[。！？!?]+|(?<!\d)\.(?!\d)(?=\s|$|[”’\"'])", parts[-1]))
+                if sentence_ends <= 1:
+                    single_sentence_run += 1
+                    if single_sentence_run > max_single_sentence_run:
+                        max_single_sentence_run = single_sentence_run
+                else:
+                    single_sentence_run = 0
         text = "\n".join(parts)
+        if section.heading == "这场在谈什么、谁":
+            published = (ctx.fields.get("published") or "").strip()
+            if (re.fullmatch(r"\d{4}-\d{2}-\d{2}", published)
+                    and re.search(rf"(?<![A-Za-z0-9_-]){re.escape(published)}(?![A-Za-z0-9_-])", text)):
+                result.append(f"文头复读 WARN: 「这场在谈什么、谁」复述了文头已有的发布日期，请直接交代讲者、主题与前提{review}")
+        if parent in middle and section.level == 3 and max_single_sentence_run >= 3:
+            result.append(f"碎段 WARN: {section.heading} 连续 {max_single_sentence_run} 个单句短段，请将因果连贯的句子合为自然段{review}")
         if section.heading:
             prose.append(_INLINE_CODE.sub(" ", prose_without_times(section.heading)))
         prose.append(text)

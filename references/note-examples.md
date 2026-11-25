@@ -27,7 +27,7 @@ tags: [video-note]
 
 ## 这场在谈什么、谁
 
-这场大会演讲于 2026-06-28 在 AI Engineer 频道发布，Agentic AI Foundation 副总裁 Angie Jones 回顾了如何用两年把 Block 约 3500 人的工程组织带向自治，适合关注工程效率和 AI 落地的研发人员与管理者。 ⏱ 00:00 ⏱ 00:02
+Agentic AI Foundation 副总裁 Angie Jones 回顾了如何用两年把 Block 约 3500 人的工程组织带向自治，适合关注工程效率和 AI 落地的研发人员与管理者。 ⏱ 00:00 ⏱ 00:02
 
 ## 发布或主张了什么
 
