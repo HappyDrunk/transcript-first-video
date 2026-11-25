@@ -2836,10 +2836,10 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
                     or is_list_item
                     or stripped_claim.startswith("本文略去")
                     or _is_table_block(stripped_claim.splitlines())
-                    or any(ln.lstrip().startswith((">", "|")) for ln in stripped_claim.splitlines())):
+                    or any(ln.lstrip().startswith("|") for ln in stripped_claim.splitlines())):
                 single_sentence_run = 0
             else:
-                sentence_ends = len(re.findall(r"[。！？!?]|(?<!\d)\.(?!\d)(?=\s|$|[”’\"'])", parts[-1]))
+                sentence_ends = len(re.findall(r"[。！？!?]+|(?<!\d)\.(?!\d)(?=\s|$|[”’\"'])", parts[-1]))
                 if sentence_ends <= 1:
                     single_sentence_run += 1
                     if single_sentence_run > max_single_sentence_run:
@@ -2849,7 +2849,8 @@ def _reader_warnings(ctx: RuleContext, blocks: list[list[str]]) -> list[str]:
         text = "\n".join(parts)
         if section.heading == "这场在谈什么、谁":
             published = (ctx.fields.get("published") or "").strip()
-            if published and published in text:
+            if (re.fullmatch(r"\d{4}-\d{2}-\d{2}", published)
+                    and re.search(rf"(?<![A-Za-z0-9_-]){re.escape(published)}(?!\d)", text)):
                 result.append(f"文头复读 WARN: 「这场在谈什么、谁」复述了文头已有的发布日期，请直接交代讲者、主题与前提{review}")
         if parent in middle and section.level == 3 and max_single_sentence_run >= 3:
             result.append(f"碎段 WARN: {section.heading} 连续 {max_single_sentence_run} 个单句短段，请将因果连贯的句子合为自然段{review}")

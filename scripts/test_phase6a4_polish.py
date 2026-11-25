@@ -14,7 +14,7 @@ import render_reading_note as rrn  # type: ignore
 import verify_note  # type: ignore
 import verify_rules as vr  # type: ignore
 
-BASELINE_DELIVERY_BYTES = 17538
+BASELINE_DELIVERY_BYTES = 17541
 BASELINE_REVIEW_BYTES = 6380
 
 BASE_QUOTE = (
@@ -140,18 +140,65 @@ def test_t1_paren_classification_and_no_double_paren() -> None:
         r_edge = _render(n_edge)
         assert "（注：" not in r_edge and "；注：" not in r_edge, (prose, r_edge)
 
-    # 1f. Fallback branch (term only in inline code) when sentence ends with ')' -> skip inline gloss
-    n_fb = _make_note(
-        "最后把向量送进 `relu`（常见激活函数）。 ⏱ 00:10\n\n"
-        "> [!note] 术语：relu\n"
-        "> 短释：把负数归零的函数\n"
-        "> 神经网络常用激活函数。",
+    # 1f. Fallback branch (term only in inline code) when sentence ends with ')' (even before space) -> skip
+    for fb_prose in (
+        "最后把向量送进 `relu`（常见激活函数）。 ⏱ 00:10",
+        "最后把向量送进 `relu`（常见激活函数） 。 ⏱ 00:10",
+    ):
+        n_fb = _make_note(
+            f"{fb_prose}\n\n"
+            "> [!note] 术语：relu\n"
+            "> 短释：把负数归零的函数\n"
+            "> 神经网络常用激活函数。",
+            q,
+        )
+        r_fb = _render(n_fb)
+        assert "（注：" not in r_fb, r_fb
+        assert not ADJ_PAREN_RE.search(r_fb), r_fb
+        assert "神经网络常用激活函数。" in r_fb
+
+    # 1g. C++ AMP merges inside parens; relu(x) and LLM(s) do NOT merge into function arg/plural
+    n_cpp = _make_note(
+        "系统采用并行扩展（C++ AMP）完成计算。 ⏱ 00:10\n\n"
+        "> [!note] 术语：并行扩展（C++ AMP）\n"
+        "> 短释：显卡加速计算框架\n"
+        "> 用于加速数据并行的扩展库。",
+        q + " C++ AMP",
+    )
+    r_cpp = _render(n_cpp)
+    assert "并行扩展（C++ AMP；注：显卡加速计算框架）" in r_cpp, r_cpp
+
+    for bad_call, term_label in (("调用 relu(x) 处理数据。 ⏱ 00:10", "relu"), ("很多 LLM(s) 都会遇到同样瓶颈。 ⏱ 00:10", "LLM")):
+        n_call = _make_note(
+            f"{bad_call}\n\n"
+            f"> [!note] 术语：{term_label}\n"
+            "> 短释：常见基础概念\n"
+            "> 通用的技术定义。",
+            q + " relu LLM",
+        )
+        r_call = _render(n_call)
+        assert "；注：" not in r_call, (bad_call, r_call)
+
+    # 1h. Literal `；注：` in prose must NEVER break invariant #7 when combined with doubt or gloss (Codex BLOCKING + Claude #1)
+    n_lit1 = _make_note(
+        "先校验；注：见附录。 ⏱ 00:10\n\n"
+        "> [!warning] 原文出入\n"
+        "> 存疑｜「先校验」｜口播未交代校验对象",
         q,
     )
-    r_fb = _render(n_fb)
-    assert "（注：" not in r_fb, r_fb
-    assert not ADJ_PAREN_RE.search(r_fb), r_fb
-    assert "神经网络常用激活函数。" in r_fb
+    r_lit1 = _render(n_lit1)
+    assert "先校验；注：见附录（存疑：口播未交代校验对象）。" in r_lit1, r_lit1
+
+    n_lit2 = _make_note(
+        "参见附录；注：此处口误，后面讲 RAG 的做法。 ⏱ 00:10\n\n"
+        "> [!note] 术语：RAG\n"
+        "> 短释：检索增强生成\n"
+        "> 先检索外部文档再生成的架构。",
+        q + " RAG",
+    )
+    r_lit2 = _render(n_lit2)
+    assert "RAG（注：检索增强生成）" in r_lit2, r_lit2
+    assert "参见附录；注：此处口误" in r_lit2, r_lit2
 
 
 def test_t2_in_sentence_definition_and_ji_guard() -> None:
@@ -214,6 +261,19 @@ def test_t3_doubt_and_gloss_same_position_collision_both_orders() -> None:
     assert "（注：" not in r2, f"gloss must yield to doubt at same position (order 2): {r2}"
     assert "神经网络常用激活函数。" in r2
 
+    # Non-colliding positions in same paragraph: BOTH doubt and gloss are kept!
+    n3 = _make_note(
+        "先启用甲级模式，最后完成全部输出。 ⏱ 00:10\n\n"
+        "> [!note] 术语：甲级模式（alpha mode）\n"
+        "> 短释：只读不写的保护态\n"
+        "> 防止意外写入的安全状态。\n\n"
+        "> [!warning] 原文出入\n"
+        "> 存疑｜「最后」｜口播未交代输出目录",
+        q + " alpha mode",
+    )
+    r3 = _render(n3)
+    assert "甲级模式（注：只读不写的保护态）" in r3 and "（存疑：口播未交代输出目录）。" in r3, r3
+
 
 def test_t4_header_echo_and_choppy_paragraph_soft_warnings() -> None:
     # 4a. Header date echo in 这场在谈什么、谁 -> soft WARN (allowed=True)
@@ -225,18 +285,18 @@ def test_t4_header_echo_and_choppy_paragraph_soft_warnings() -> None:
     assert res_echo["allowed"], res_echo["reasons"]
     assert any("文头复读 WARN" in w for w in res_echo["warnings"]), res_echo["warnings"]
 
-    # 4b. Citing channel/speaker WITHOUT published date -> NO 文头复读 WARN
+    # 4b. Citing channel/speaker or hyphenated backup tag WITHOUT standalone published date -> NO 文头复读 WARN
     n_clean_intro = _make_note(
         "第一步核对本地缓存。接着运行脚本并记录输出。 ⏱ 00:10",
-        intro="Example Channel 讲者演示本地脚本耗时排查，面向想理解基础流程的读者。 ⏱ 00:10",
+        intro="Example Channel 讲者演示如何读取 backup-2026-01-15 日志并排查耗时。 ⏱ 00:10",
     )
     res_clean = _verify(n_clean_intro)
     assert res_clean["allowed"], res_clean["reasons"]
     assert not any("文头复读 WARN" in w for w in res_clean["warnings"]), res_clean["warnings"]
 
-    # 4c. 3 consecutive 1-sentence prose paragraphs in H3 -> 碎段 WARN (allowed=True)
+    # 4c. 3 consecutive 1-sentence prose paragraphs in H3 (including '？！') -> 碎段 WARN (allowed=True)
     choppy = "\n\n".join([
-        "第一步先核对本地缓存。 ⏱ 00:10",
+        "第一步先核对本地缓存？！ ⏱ 00:10",
         "第二步运行性能分析脚本。 ⏱ 00:10",
         "第三步查看每条耗时记录。 ⏱ 00:10",
     ])

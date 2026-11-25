@@ -40,13 +40,13 @@ EMPTY_SECTION = re.compile(
 )
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 ANY_OMISSION_LINE = re.compile(r"^本文略去[｜|]", re.MULTILINE)
-GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）|；注：[^）)\n]+")
+GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）|；注：[^（(）)\n]+(?=[）)])")
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u9fff]")
-_ORIG_ENGLISH_PAREN_RE = re.compile(r"[A-Za-z][A-Za-z0-9 .'&/\-]*")
+_ORIG_ENGLISH_PAREN_RE = re.compile(r"[A-Za-z][A-Za-z0-9 .'&/\-+#]*")
 _TAIL_EXPLAINED_RE = re.compile(
-    r"[，,]\s*(?:也就是|即(?!(?:使|将|便|可|刻|时|日|席|兴|墨))|指的是|是指|意思是|就是说)|——|："
+    r"[，,]?\s*(?:是指|指的是)|[，,]\s*(?:也就是|即(?!(?:使|将|便|可|刻|时|日|席|兴|墨|插|位|逝|期|食))|意思是|就是说)|——|："
 )
-_HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「]?$")
+_HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「『]?$")
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
@@ -265,7 +265,7 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
         first = min(matches)
         start, end = first[0], first[2]
         j = end
-        while j < len(block_text) and block_text[j] in " \t":
+        while j < len(block_text) and block_text[j] in " \t\n":
             j += 1
         if j < len(block_text) and block_text[j] in "（(":
             open_ch = block_text[j]
@@ -278,7 +278,8 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
             inner = block_text[j + 1:close].strip()
             if (_CJK_CHAR_RE.search(inner)
                     or not _ORIG_ENGLISH_PAREN_RE.fullmatch(inner)
-                    or (close_ch == ")" and ")" in gloss)):
+                    or (open_ch == "(" and j == end and not (" " in inner or any(c.isupper() for c in inner)))
+                    or any(ch in gloss for ch in "（(）)")):
                 return None
             return close, f"；注：{gloss}"
         if _TAIL_EXPLAINED_RE.match(block_text, end) or _HEAD_EXPLAINED_RE.search(block_text[:start]):
@@ -286,7 +287,8 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
         return end, f"（注：{gloss}）"
     if any_occurrence:
         fallback = _sentence_insertion_index(block_text, len(block_text))
-        if not _in_unclosed_paren(block_text, fallback) and not (fallback > 0 and block_text[fallback - 1] in "）)"):
+        if (not _in_unclosed_paren(block_text, fallback)
+                and not block_text[:fallback].rstrip().endswith(("）", ")"))):
             return fallback, f"（注：{gloss}）"
     return None
 
