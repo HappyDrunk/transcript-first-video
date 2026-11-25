@@ -131,11 +131,27 @@ class H3TimeLabelTests(Phase6A2Fixture):
         self.assertIn("### 重新定位 · 01:10–07:40\n", reading)
 
 
+    def test_replay_gap_boundary_and_four_segment_fallback(self) -> None:
+        for stamps, expected in (
+            (("01:10", "04:10"), "01:10–04:10"),
+            (("01:10", "04:11"), "01:10、04:11"),
+            (("01:10", "04:11", "07:40", "12:00"), "01:10–12:00"),
+        ):
+            with self.subTest(stamps=stamps):
+                anchors = " ".join(f"⏱ {stamp}" for stamp in stamps)
+                note = _build_note(
+                    "### 先核对输出\n\n发现偏差后回退改动。 ⏱ 13:00\n\n"
+                    f"### 回放排查过程\n\n依次核对排查步骤。 {anchors}",
+                    [("13:00", Q1300), *((stamp, Q0110) for stamp in stamps)],
+                )
+                self.assertIn(f"### 回放排查过程 · {expected}\n", _render(note))
+
+
 class ReaderFillerGuardTests(Phase6A2Fixture):
-    def test_filler_fails_in_body_but_exempts_quotes_code_callout_and_single_screen_note(self) -> None:
+    def test_filler_fails_in_body_but_exempts_quotes_code_callout_and_evidence(self) -> None:
         evidence = [("02:24", Q0224), ("07:40", Q0740)]
         for bad_phrase in (
-            "若还记得前面函数", "如果还记得基准脚本", "把镜头拉远看整体", "口播当时在读日志",
+            "若还记得前面函数", "如果还记得基准脚本", "口播当时在读日志",
             "[若还记得](https://example.invalid)",
         ):
             with self.subTest(bad_phrase=bad_phrase):
@@ -149,17 +165,18 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
                 self.assertIn("C04a", failed_ids(result), result["reasons"])
 
         # Direct quotes, code, callouts and evidence may contain the original wording.
+        filler = "若还记得、如果还记得、口播当时与[若还记得](https://example.invalid)"
         safe_evidence = [
-            ("02:24", Q0224 + "讲者原话说若还记得镜头拉远口播当时这几个词。"),
+            ("02:24", Q0224 + filler),
             ("07:40", Q0740),
         ]
         safe_middle = (
             "### 合法豁免场景\n\n"
-            "讲者原话提到「若还记得\n前面」与『镜头拉远，口播当时』，示例标记为 `口播当时`；"
+            f"讲者原话提到「{filler}」与『{filler}』，又说「请看\n{filler}」，示例标记为 `{filler}`；"
             "画面上列出初始基准函数与原始耗时日志。 ⏱ 02:24\n\n"
             "> [!warning] 原文出入\n"
-            "> 存疑｜「原始耗时日志」｜口播当时未报精确行数\n\n"
-            "```python\n# 若还记得前面\n```\n\n"
+            f"> 存疑｜「原始耗时日志」｜{filler}\n\n"
+            f"```python\n# {filler}\n```\n\n"
             "接着用分析工具排序内部耗时并定位瓶颈。 ⏱ 07:40"
         )
         _, safe_result = self.verify(safe_middle, safe_evidence)
@@ -170,10 +187,11 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
             safe_result["warnings"],
         )
 
-        # Three narration phrases trigger a warning without blocking delivery.
+    def test_three_screen_narration_phrases_include_visible_link_text(self) -> None:
+        evidence = [("02:24", Q0224), ("07:40", Q0740)]
         noisy_middle = (
             "### 过多过滤词\n\n"
-            "口播提到基准函数，图上标出耗时日志，口播里说明了完整运行结果。 ⏱ 02:24\n\n"
+            "[镜头切到](https://example.invalid)基准函数，画面上列出耗时日志，图上标出运行结果。 ⏱ 02:24\n\n"
             "接着用分析工具排序内部耗时并定位瓶颈。 ⏱ 07:40"
         )
         _, noisy_result = self.verify(noisy_middle, evidence)
@@ -187,7 +205,8 @@ class ReaderFillerGuardTests(Phase6A2Fixture):
         evidence = [("02:24", Q0224), ("07:40", Q0740)]
         middle = (
             "### 排查流程\n\n"
-            "讲者在口播里纠正了字幕。变焦时镜头拉近会压缩背景。"
+            "讲者在口播里纠正了字幕，讲者在口播里纠正了字幕，讲者在口播里纠正了字幕。"
+            "变焦时，镜头拉近会压缩背景。"
             "地图上、流程图上、追踪图上和架构图上都有标记。准备基准函数并保存原始耗时日志。 ⏱ 02:24\n\n"
             "讲者引用『画面上有标记，\n图上有日志』，随后用分析工具排序内部耗时。"
             " [参见记录](https://example.invalid/视频展示了) ⏱ 07:40"
@@ -253,6 +272,8 @@ class ParagraphBindingAndDocTests(Phase6A2Fixture):
         self.assertNotIn("≤220 字", df)
         self.assertIn("不要为此拆开因果段", df)
         self.assertIn("不得补写视觉描述", df)
+        self.assertIn("不强补原文未讲环节", df)
+        self.assertIn("不替讲者作答", df)
         # Ensure review-guide adopts two-pass single-focus review and preserves informational cluster rule
         self.assertIn("红帽念读关", rg)
         self.assertIn("黑帽零脑补关", rg)

@@ -360,7 +360,7 @@ def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
     return bool(m and m[1][0] == ch and len(m[1]) >= min_len and raw[m.end():].strip(" \t\r") == "")
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
-_READER_FILLER = re.compile(r"若还记得|如果还记得|(?:^|[，,；;。！？\s])(?:把)?镜头(?:拉远|拉近|推近|切到)|口播当时")
+_READER_FILLER = re.compile(r"若还记得|如果还记得|口播当时")
 _DIRECT_QUOTE = re.compile(r'「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"')
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
 _CODE_KEYWORDS = {
@@ -2590,7 +2590,7 @@ def r13_today_step(ctx: RuleContext) -> tuple[str, bool, str]:
 
 
 _SCREEN_NARRATION = re.compile(
-    r"画面上|(?<![\u4e00-\u9fff])图上|视频展示了|口播提到|口播里|"
+    r"画面上|(?<![\u4e00-\u9fff])图上|视频展示了|口播提到|(?:把)?镜头(?:拉远|拉近|推近|切到)|"
     r"(?:画面|幻灯片|屏幕(?:上)?)(?:把|写明|标明|显示|写着|列出|标出|补充|说明|"
     r"还给出|还说明|还列出|给出|标注|写成|画成|用)"
 )
