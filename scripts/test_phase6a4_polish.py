@@ -168,7 +168,11 @@ def test_t1_paren_classification_and_no_double_paren() -> None:
     r_cpp = _render(n_cpp)
     assert "并行扩展（C++ AMP；注：显卡加速计算框架）" in r_cpp, r_cpp
 
-    for bad_call, term_label in (("调用 relu(x) 处理数据。 ⏱ 00:10", "relu"), ("很多 LLM(s) 都会遇到同样瓶颈。 ⏱ 00:10", "LLM")):
+    for bad_call, term_label in (
+        ("调用 relu(x) 处理数据。 ⏱ 00:10", "relu"),
+        ("调用 relu(x+Y) 处理数据。 ⏱ 00:10", "relu"),
+        ("很多 LLM(s) 都会遇到同样瓶颈。 ⏱ 00:10", "LLM"),
+    ):
         n_call = _make_note(
             f"{bad_call}\n\n"
             f"> [!note] 术语：{term_label}\n"
@@ -179,15 +183,19 @@ def test_t1_paren_classification_and_no_double_paren() -> None:
         r_call = _render(n_call)
         assert "；注：" not in r_call, (bad_call, r_call)
 
-    # 1h. Literal `；注：` in prose must NEVER break invariant #7 when combined with doubt or gloss (Codex BLOCKING + Claude #1)
-    n_lit1 = _make_note(
-        "先校验；注：见附录。 ⏱ 00:10\n\n"
-        "> [!warning] 原文出入\n"
-        "> 存疑｜「先校验」｜口播未交代校验对象",
-        q,
-    )
-    r_lit1 = _render(n_lit1)
-    assert "先校验；注：见附录（存疑：口播未交代校验对象）。" in r_lit1, r_lit1
+    # 1h. Literal `；注：` in prose (even before backticked `)`) must NEVER break invariant #7 (Codex R1/R2 BLOCKING)
+    for lit_prose, expected_sub in (
+        ("先校验；注：见附录。 ⏱ 00:10", "先校验；注：见附录（存疑：口播未交代校验对象）。"),
+        ("先校验；注：见附录。结束标记是 `)`。 ⏱ 00:10", "先校验；注：见附录（存疑：口播未交代校验对象）。结束标记是 `)`。"),
+    ):
+        n_lit1 = _make_note(
+            f"{lit_prose}\n\n"
+            "> [!warning] 原文出入\n"
+            "> 存疑｜「先校验」｜口播未交代校验对象",
+            q,
+        )
+        r_lit1 = _render(n_lit1)
+        assert expected_sub in r_lit1, r_lit1
 
     n_lit2 = _make_note(
         "参见附录；注：此处口误，后面讲 RAG 的做法。 ⏱ 00:10\n\n"
@@ -285,10 +293,10 @@ def test_t4_header_echo_and_choppy_paragraph_soft_warnings() -> None:
     assert res_echo["allowed"], res_echo["reasons"]
     assert any("文头复读 WARN" in w for w in res_echo["warnings"]), res_echo["warnings"]
 
-    # 4b. Citing channel/speaker or hyphenated backup tag WITHOUT standalone published date -> NO 文头复读 WARN
+    # 4b. Citing channel/speaker or hyphenated/suffixed backup tag WITHOUT standalone published date -> NO 文头复读 WARN
     n_clean_intro = _make_note(
         "第一步核对本地缓存。接着运行脚本并记录输出。 ⏱ 00:10",
-        intro="Example Channel 讲者演示如何读取 backup-2026-01-15 日志并排查耗时。 ⏱ 00:10",
+        intro="Example Channel 讲者演示如何读取 backup-2026-01-15 与 2026-01-15-backup 日志。 ⏱ 00:10",
     )
     res_clean = _verify(n_clean_intro)
     assert res_clean["allowed"], res_clean["reasons"]

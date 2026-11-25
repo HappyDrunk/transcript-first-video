@@ -40,7 +40,7 @@ EMPTY_SECTION = re.compile(
 )
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 ANY_OMISSION_LINE = re.compile(r"^本文略去[｜|]", re.MULTILINE)
-GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）|；注：[^（(）)\n]+(?=[）)])")
+GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）|；注：[^（(）)`。！？\n]+(?=[）)])")
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u9fff]")
 _ORIG_ENGLISH_PAREN_RE = re.compile(r"[A-Za-z][A-Za-z0-9 .'&/\-+#]*")
 _TAIL_EXPLAINED_RE = re.compile(
@@ -278,8 +278,8 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
             inner = block_text[j + 1:close].strip()
             if (_CJK_CHAR_RE.search(inner)
                     or not _ORIG_ENGLISH_PAREN_RE.fullmatch(inner)
-                    or (open_ch == "(" and j == end and not (" " in inner or any(c.isupper() for c in inner)))
-                    or any(ch in gloss for ch in "（(）)")):
+                    or (open_ch == "(" and j == end)
+                    or any(ch in gloss for ch in "（(）)`。！？")):
                 return None
             return close, f"；注：{gloss}"
         if _TAIL_EXPLAINED_RE.match(block_text, end) or _HEAD_EXPLAINED_RE.search(block_text[:start]):
