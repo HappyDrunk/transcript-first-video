@@ -545,20 +545,41 @@ def _render_body_details(
             kept.append(section)
 
     parts: list[str] = []
+    cited_before: set[int] = set()
+    prev_h3_max: int | None = None
     for index, section in enumerate(kept):
         title = remove_times(section.title)
-        if section.level == 3:
+        if section.level == 2:
+            cited_before.clear()
+            prev_h3_max = None
+        elif section.level == 3:
             times = section.times.copy()
             for child in kept[index + 1:]:
                 if child.level <= section.level:
                     break
                 times.update(child.times)
-            if times:
-                start, end = min(times), max(times)
-                time_label = rules._fmt(start)
-                if end > start:
-                    time_label += f"–{rules._fmt(end)}"
+            own_times = times - cited_before
+            if own_times:
+                start, end = min(own_times), max(own_times)
+                ranges = [(start, end)]
+                if prev_h3_max is not None and start < prev_h3_max:
+                    segments: list[tuple[int, int]] = []
+                    segment_start = previous = start
+                    for timestamp in sorted(own_times)[1:]:
+                        if timestamp - previous > 180:
+                            segments.append((segment_start, previous))
+                            segment_start = timestamp
+                        previous = timestamp
+                    segments.append((segment_start, previous))
+                    if len(segments) <= 2:
+                        ranges = segments
+                time_label = "、".join(
+                    rules._fmt(first) if first == last else f"{rules._fmt(first)}–{rules._fmt(last)}"
+                    for first, last in ranges
+                )
                 title += f" · {time_label}"
+                cited_before.update(own_times)
+                prev_h3_max = end if prev_h3_max is None else max(prev_h3_max, end)
         content = section.body
         if content == "\n" or (content.startswith("\n") and content.split("\n", 2)[1].strip()):
             content = "\n" + content
