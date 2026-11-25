@@ -103,6 +103,18 @@ def test_t2_billions_scale_label_and_exact_reject() -> None:
     )
     assert not ok_bad2, "T2 bad2 ('十亿' vs 'two billion') MUST fail C04c"
 
+    ok_bad3, _ = _run_c04c(
+        "地震造成的损失达到十亿美元。 ⏱ 00:10",
+        "Billions of dollars of damages were inflicted on garages, offices, and warehouses.",
+    )
+    assert not ok_bad3, "T2 bad3 (exact '损失达到十亿美元' vs 'billions') MUST fail C04c"
+
+    ok_bad4, _ = _run_c04c(
+        "整个步骤耗时十秒。 ⏱ 00:10",
+        "This browser engine has evolved over decades in active development.",
+    )
+    assert not ok_bad4, "T2 bad4 ('耗时十秒' vs 'decades') MUST fail C04c"
+
 
 def test_t3_dozens_and_decades_guard() -> None:
     for body, quote in [
@@ -117,7 +129,13 @@ def test_t3_dozens_and_decades_guard() -> None:
     for body, quote in [
         ("需要处理 12 个样本。 ⏱ 00:10", "We need to process dozens of samples across the benchmark suite every week."),
         ("这套技术演进了 10 年。 ⏱ 00:10", "This engineering approach has evolved over decades in real production systems."),
+        ("这套技术演进了十年。 ⏱ 00:10", "This engineering approach has evolved over decades in real production systems."),
+        ("这种做法延续了百年。 ⏱ 00:10", "This practice has been around for centuries in many historic buildings around the world."),
         ("整个过程大约十秒。 ⏱ 00:10", "The whole step took about 80 seconds on a warm local machine."),
+        ("样本总数十二个。 ⏱ 00:10", "The benchmark contained 80 samples across the entire evaluation suite."),
+        ("实验分成十组进行。 ⏱ 00:10", "The study split participants into 80 groups across the entire evaluation."),
+        ("他登上十楼查看设备。 ⏱ 00:10", "The engineer inspected equipment on floor 80 of the high-rise tower."),
+        ("模型参数十个即可。 ⏱ 00:10", "The compact controller requires 80 parameters for stable operation."),
     ]:
         ok, _ = _run_c04c(body, quote)
         assert not ok, f"T3 bad MUST fail C04c for {body!r} vs {quote!r}"
@@ -198,14 +216,47 @@ def test_t5_original_english_hyphen_and_same_slice_type1() -> None:
         assert term_issues, "T5 bad4 (fabricated glossary term) MUST fail explanation_issues"
 
 
+    # Bad 5: Type-1 laundering that changes English spoken number words ('two dozen' -> 'ten dozen')
+    assert vr._discrepancy_type1_laundering_issue("two dozen", "ten dozen") is not None, (
+        "T5 bad5 ('two dozen' -> 'ten dozen') MUST be rejected by Type-1 laundering guard"
+    )
+    assert vr._discrepancy_type1_laundering_issue("cap Theory", "CAP theorem") is None, (
+        "T5 good ('cap Theory' -> 'CAP theorem') should pass Type-1 laundering guard"
+    )
+
+    # Bad 6: cross-section borrowed correction even when original text appears in both sections
+    cross_sec_note = _make_note(
+        "大家常谈 CAP 定理（CAP theorem）。 ⏱ 00:10\n\n### 第二小节\n\n这里又提到定理。 ⏱ 00:40",
+        [
+            "> [00:10] We can talk about cap Theory in distributed systems when making resilience tradeoffs.",
+            "> [00:40] Later we can talk about cap Theory again in distributed systems tradeoffs.",
+        ],
+        extra_blocks=corr_block,
+    )
+    with tempfile.TemporaryDirectory() as td:
+        tp = Path(td) / "transcript.txt"
+        tp.write_text(
+            "[00:10] We can talk about cap Theory in distributed systems when making resilience tradeoffs.\n"
+            "[00:40] Later we can talk about cap Theory again in distributed systems tradeoffs.\n",
+            encoding="utf-8",
+        )
+        ctx_cs = vr.build_context(tp, cross_sec_note)
+        _n, ok_cs, _d = vr.c04c_grounding(ctx_cs, findings=[])
+        assert not ok_cs, "T5 bad6 (cross-section borrowed Type-1 correction) MUST fail C04c"
+
+
 def test_t6_fluency_doc_contracts_and_byte_caps() -> None:
     df_path = ROOT / "references" / "delivery-format.md"
     rg_path = ROOT / "references" / "review-guide.md"
-    df_bytes = df_path.stat().st_size
-    rg_bytes = rg_path.stat().st_size
-    df_text = df_path.read_text(encoding="utf-8")
-    rg_text = rg_path.read_text(encoding="utf-8")
+    df_raw = df_path.read_bytes()
+    rg_raw = rg_path.read_bytes()
+    df_bytes = len(df_raw)
+    rg_bytes = len(rg_raw)
+    df_text = df_raw.decode("utf-8")
+    rg_text = rg_raw.decode("utf-8")
 
+    assert b"\r" not in df_raw, "delivery-format.md must use LF line endings"
+    assert b"\r" not in rg_raw, "review-guide.md must use LF line endings"
     assert df_bytes <= BASELINE_DELIVERY_BYTES, f"delivery-format.md grew: {df_bytes} > {BASELINE_DELIVERY_BYTES}"
     assert rg_bytes <= BASELINE_REVIEW_BYTES, f"review-guide.md grew: {rg_bytes} > {BASELINE_REVIEW_BYTES}"
     assert "每段 2–4 句" not in df_text, "Rigid '每段 2–4 句' constraint must be removed"

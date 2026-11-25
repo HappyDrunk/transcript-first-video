@@ -197,7 +197,13 @@ _ARABIC_MAGNITUDE = re.compile(
 )
 _ZH_APPROXIMATE_COUNT = re.compile(
     r"(?P<prefix>上|成|数|數|约|約|大约|大約)"
-    r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億]|十(?![万萬亿億百千]))"
+    r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
+    r"|(?<![总總参參函次点點指常变變倍分系度基整小实實虚虛正负負奇偶质質合对對倒余餘模阶階导導级級人年天字词詞条條项項行列表页頁节節量值率比差和])"
+    r"(?P<tens>[数數]十)(?![一二两兩三四五六七八九十零〇万萬亿億百千])"
+)
+_ZH_UNIT_SCALE_COUNT = re.compile(
+    r"以(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
+    r"(?:[^\n，。；！？、]{0,4})?[计計]"
 )
 _EN_APPROXIMATE_COUNT = re.compile(
     r"\b(?P<scale>hundreds|thousands|millions|billions)"
@@ -808,6 +814,16 @@ def _discrepancy_type1_laundering_issue(
         if not homophone_ok and not same_digits_backed:
             return (
                 f"原文出入 行型 1 数字/版本不一致 ({original!r} -> {corrected!r})，"
+                "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
+            )
+    elif not orig_nums:
+        orig_words = [m.group() for m in _EN_NUMBER.finditer(original)]
+        corr_words = [m.group() for m in _EN_NUMBER.finditer(corrected)]
+        if (orig_words or corr_words) and (
+            [_english_integer(w) for w in orig_words] != [_english_integer(w) for w in corr_words]
+        ):
+            return (
+                f"原文出入 行型 1 英文数词不一致 ({original!r} -> {corrected!r})，"
                 "禁止静默更正，请升级为行型 3（存疑｜「…」｜…）"
             )
     a, b = map(_normalized_correction, (original, corrected))
@@ -2095,14 +2111,10 @@ class NumericValue:
         if claim.kind == "count_range":
             return ((self.kind == claim.kind and self.value == claim.value)
                     or (self.kind == "open_count" and self.value == claim.value.low))
-        if self.kind == "approximate_count":
-            if not isinstance(claim.value, NumberRange):
-                return False
-            if claim.value.low == claim.value.high:
-                return (
-                    bool(re.fullmatch(r"[十百千万萬亿億]+", claim.label))
-                    and claim.value.low == self.value.low
-                )
+        if self.kind == "approximate_count" and (
+            not isinstance(claim.value, NumberRange) or claim.value.low == claim.value.high
+        ):
+            return False
         if {self.kind, claim.kind} == {"year", "bare_year"}:
             return self.value == claim.value
         source_value = NumberRange(self.value, self.value) if self.kind == "bare_year" else self.value
@@ -2149,12 +2161,17 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
                 return match[0]
             low, high = _EN_BARE_APPROXIMATE_RANGES[match["bare"].casefold()]
             label = match[0]
-        elif match.re is _ZH_APPROXIMATE_COUNT:
-            if match["scale"] == "十" and match["prefix"] in {"约", "約", "大约", "大約"}:
-                return match[0]
+        elif match.re is _ZH_UNIT_SCALE_COUNT:
             low = _APPROXIMATE_SCALE[match["scale"]]
             high = 10 * low - 1
-            label = match["scale"] if match["prefix"] == "上" else match[0]
+            label = match["scale"]
+        elif match.re is _ZH_APPROXIMATE_COUNT:
+            if match["tens"]:
+                low, high, label = 10, 99, match["tens"]
+            else:
+                low = _APPROXIMATE_SCALE[match["scale"]]
+                high = 10 * low - 1
+                label = match["scale"] if match["prefix"] == "上" else match[0]
         else:
             low = _APPROXIMATE_SCALE[match["scale"].casefold()[:-1]]
             if match["of"]:
@@ -2165,6 +2182,7 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
         return " " * len(match[0])
 
     text = _ARABIC_MAGNITUDE.sub(magnitude, text)
+    text = _ZH_UNIT_SCALE_COUNT.sub(approximate, text)
     text = _ZH_APPROXIMATE_COUNT.sub(approximate, text)
     text = _EN_APPROXIMATE_COUNT.sub(approximate, text)
 
@@ -2425,9 +2443,11 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                     )
                 }
                 supported_originals = set()
+                section_speech_pairs = caption_corrections(section.blocks, ctx.speech)
                 original_speech_corrections = [
-                    corrected for original, corrected in local_speech_pairs
-                    if _discrepancy_type1_laundering_issue(original, corrected, tuple(screen_excerpts)) is None
+                    corrected for original, corrected in section_speech_pairs
+                    if any(term_occurs(original, line) for line in speech_excerpts)
+                    and _discrepancy_type1_laundering_issue(original, corrected, tuple(screen_excerpts)) is None
                 ]
                 original_excerpts = [
                     *excerpts, *local_corrections, *original_speech_corrections, *_adjacent_screen_excerpts(evidence),
