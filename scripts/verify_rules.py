@@ -140,6 +140,8 @@ def _english_integer(text: str) -> float:
             section = max(section, 1) * 12
         elif word in {"decade", "decades"}:
             section = max(section, 1) * 10
+        elif word in {"century", "centuries"}:
+            section = max(section, 1) * 100
         elif word in _EN_MAGNITUDE:
             scale = _EN_MAGNITUDE[word]
             total += max(section, 1) * scale
@@ -195,13 +197,15 @@ _ARABIC_MAGNITUDE = re.compile(
 )
 _ZH_APPROXIMATE_COUNT = re.compile(
     r"(?P<prefix>上|成|数|數|约|約|大约|大約)"
-    r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億])"
+    r"(?P<scale>十[万萬]|十[亿億]|[万萬][亿億]|百[万萬]|千[万萬]|百|千|[万萬]|[亿億]|十(?![万萬亿億百千]))"
 )
 _EN_APPROXIMATE_COUNT = re.compile(
     r"\b(?P<scale>hundreds|thousands|millions|billions)"
-    r"(?:[ \t]+of[ \t]+(?P<of>thousands|millions|billions))?\b", re.IGNORECASE,
+    r"(?:[ \t]+of[ \t]+(?P<of>thousands|millions|billions))?\b"
+    r"|\b(?P<bare>dozens|decades|centuries)\b", re.IGNORECASE,
 )
-_APPROXIMATE_SCALE = {"百": 100, "千": 1_000, "十万": 100_000, "十萬": 100_000,
+_EN_BARE_APPROXIMATE_RANGES = {"dozens": (12, 99), "decades": (10, 99), "centuries": (100, 999)}
+_APPROXIMATE_SCALE = {"十": 10, "百": 100, "千": 1_000, "十万": 100_000, "十萬": 100_000,
                       "百万": 1_000_000, "百萬": 1_000_000, "千万": 10_000_000, "千萬": 10_000_000,
                       "十亿": 1_000_000_000, "十億": 1_000_000_000,
                       "hundred": 100, **_ZH_MAGNITUDE, **_EN_MAGNITUDE}
@@ -228,7 +232,8 @@ _URL = re.compile(r"https?://[^\s`<>。！？、，；）]+", re.IGNORECASE)
 
 _EN_SOURCE_NUMBER = re.compile(
     r"(?<![A-Za-z0-9])(?:\d+(?:,\d{3})*(?:\.\d+)?%?"
-    r"(?:[ -]+(?:hundred|thousand|million|billion|trillion|dozen|dozens|decade|decades))?%?)(?![A-Za-z0-9]|[.,][0-9])",
+    r"(?:[ \t-]+(?:hundred|thousand|million|billion|trillion|dozens?|decades?|century|centuries))?%?)"
+    r"(?![A-Za-z0-9]|[.,][0-9])",
     re.IGNORECASE,
 )
 _EN_PLUS_SCALE = re.compile(
@@ -239,13 +244,13 @@ _EN_PLUS_SCALE = re.compile(
 
 
 def _arabic_number_value(raw: str) -> float:
-    parsed = re.match(r"(\d+(?:\.\d+)?)(?:[ -]+([a-z]+))?", raw.replace(",", ""), re.IGNORECASE)
+    parsed = re.match(r"(\d+(?:\.\d+)?)(?:[ \t-]+([a-z]+))?", raw.replace(",", ""), re.IGNORECASE)
     assert parsed is not None
     value = float(parsed.group(1))
     scale = (parsed.group(2) or "").casefold()
     return value * {
         "hundred": 100, **_EN_MAGNITUDE, "dozen": 12, "dozens": 12,
-        "decade": 10, "decades": 10,
+        "decade": 10, "decades": 10, "century": 100, "centuries": 100,
     }.get(scale, 1)
 
 
@@ -255,11 +260,15 @@ _EN_NUMBER_WORD_PATTERN = (
     r"nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|"
     r"couple|hundred|thousand|million|billion|trillion|dozens?|decades?"
 )
+_EN_QUANTIFIED_COUNT_PREFIX = re.compile(
+    rf"(?:\d|\b(?:{_EN_NUMBER_WORD_PATTERN}))[ \t-]+\Z", re.IGNORECASE,
+)
 # A scale may introduce the rest of one number. A plain "one and two"
 # enumerates two values, so neither endpoint can be replaced with their sum.
 _EN_SCALE_AND = r"(?:(?<=hundred)|(?<=thousand)|(?<=million)|(?<=billion)|(?<=trillion))[ -]+and[ -]+"
 _EN_NUMBER = re.compile(
-    rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:(?:[ -]+|{_EN_SCALE_AND})(?:{_EN_NUMBER_WORD_PATTERN}))*\b",
+    rf"\b(?:{_EN_NUMBER_WORD_PATTERN})(?:(?:[ \t-]+|{_EN_SCALE_AND})(?:{_EN_NUMBER_WORD_PATTERN}))*"
+    r"(?:[ \t-]+(?:century|centuries))?\b",
     re.IGNORECASE,
 )
 
@@ -1043,7 +1052,7 @@ def explanation_issues(
             word = term[1].strip()
             aliases = _TERM_ALIAS_SEPARATOR.split(_HYPHEN.sub(" ", word))
             if not any(term_occurs(alias, source) for alias in map(str.strip, aliases) if alias for source in sources):
-                hint = "（英文文稿请写成「术语：中文（English）」，括号内英文须逐字出现在文稿或更正结果中）"
+                hint = "（英文文稿请写成「术语：中文（English）」，括号内英文按词匹配文稿或更正结果（可用规范大小写与连字符））"
                 letters = sum(ch.isalpha() for ch in transcript)
                 if not re.search(r"[A-Za-z]", word) and 2 * len(re.findall(r"[A-Za-z]", transcript)) > letters:
                     hint += " 英文文稿术语标题缺少原文英文别名"
@@ -2086,10 +2095,14 @@ class NumericValue:
         if claim.kind == "count_range":
             return ((self.kind == claim.kind and self.value == claim.value)
                     or (self.kind == "open_count" and self.value == claim.value.low))
-        if self.kind == "approximate_count" and (
-            not isinstance(claim.value, NumberRange) or claim.value.low == claim.value.high
-        ):
-            return False
+        if self.kind == "approximate_count":
+            if not isinstance(claim.value, NumberRange):
+                return False
+            if claim.value.low == claim.value.high:
+                return (
+                    bool(re.fullmatch(r"[十百千万萬亿億]+", claim.label))
+                    and claim.value.low == self.value.low
+                )
         if {self.kind, claim.kind} == {"year", "bare_year"}:
             return self.value == claim.value
         source_value = NumberRange(self.value, self.value) if self.kind == "bare_year" else self.value
@@ -2131,15 +2144,24 @@ def canonical_numbers(text: str, *, screen: bool = False) -> tuple[str, list[Num
         return " " * len(match[0])
 
     def approximate(match: re.Match[str]) -> str:
-        if match.re is _ZH_APPROXIMATE_COUNT:
+        if match.re is _EN_APPROXIMATE_COUNT and match["bare"]:
+            if _EN_QUANTIFIED_COUNT_PREFIX.search(match.string, 0, match.start()):
+                return match[0]
+            low, high = _EN_BARE_APPROXIMATE_RANGES[match["bare"].casefold()]
+            label = match[0]
+        elif match.re is _ZH_APPROXIMATE_COUNT:
+            if match["scale"] == "十" and match["prefix"] in {"约", "約", "大约", "大約"}:
+                return match[0]
             low = _APPROXIMATE_SCALE[match["scale"]]
+            high = 10 * low - 1
             label = match["scale"] if match["prefix"] == "上" else match[0]
         else:
             low = _APPROXIMATE_SCALE[match["scale"].casefold()[:-1]]
             if match["of"]:
                 low *= _APPROXIMATE_SCALE[match["of"].casefold()[:-1]]
+            high = 10 * low - 1
             label = match[0]
-        values.append(NumericValue("approximate_count", NumberRange(low, 10 * low - 1), label))
+        values.append(NumericValue("approximate_count", NumberRange(low, high), label))
         return " " * len(match[0])
 
     text = _ARABIC_MAGNITUDE.sub(magnitude, text)
@@ -2266,6 +2288,7 @@ def _grounding_word(match: re.Match[str]) -> str:
 def _grounded_term_occurs(term: str, source: str) -> bool:
     """Accept regular English plurals and possessives in the same evidence."""
     source = _ACCELERATOR_HOUR.sub(r"\1 hours", source) if term.casefold() in {"gpu", "vcpu"} else source
+    term, source = (_HYPHEN.sub(" ", text) for text in (term, source))
     if term_occurs(term, source) or term_occurs(
         _LATIN_WORD.sub(_grounding_word, term), _LATIN_WORD.sub(_grounding_word, source)
     ):
@@ -2356,13 +2379,12 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                 screen_excerpts = [quote.text for quote in evidence if quote.screen]
                 local_corrections = [corrected for original, corrected in screen_corrections
                                      if any(term_occurs(original, line) for line in screen_excerpts)]
-                speech_corrections = corrections
-                if is_fence:
-                    speech_excerpts = [quote.text for quote in evidence if not quote.screen]
-                    speech_corrections = [
-                        corrected for original, corrected in speech_correction_pairs
-                        if any(term_occurs(original, line) for line in speech_excerpts)
-                    ]
+                speech_excerpts = [quote.text for quote in evidence if not quote.screen]
+                local_speech_pairs = [
+                    (original, corrected) for original, corrected in speech_correction_pairs
+                    if any(term_occurs(original, line) for line in speech_excerpts)
+                ]
+                speech_corrections = [corrected for _, corrected in local_speech_pairs] if is_fence else corrections
                 source = excerpts + speech_corrections + local_corrections
                 prose = _INLINE_LIST_ITEM.sub(r"\1 ", prose_without_times(unit_text))
                 if parent == _C04_START[1]:
@@ -2403,7 +2425,13 @@ def c04c_grounding(ctx: RuleContext, findings: list[dict] | None = None) -> tupl
                     )
                 }
                 supported_originals = set()
-                original_excerpts = [*excerpts, *local_corrections, *_adjacent_screen_excerpts(evidence)]
+                original_speech_corrections = [
+                    corrected for original, corrected in local_speech_pairs
+                    if _discrepancy_type1_laundering_issue(original, corrected, tuple(screen_excerpts)) is None
+                ]
+                original_excerpts = [
+                    *excerpts, *local_corrections, *original_speech_corrections, *_adjacent_screen_excerpts(evidence),
+                ]
                 for match in _PARENTHESIZED_ORIGINAL.finditer(prose):
                     original = (match[1] or match[2]).strip()
                     if not re.search(r"[A-Za-z]", original) or _CJK_RUN.search(original):
