@@ -10,7 +10,7 @@ Report only located, evidenced issues. Do not repeat mechanical checks or add un
 
 ### 红帽念读关
 
-- 默念，以「必要／删损／承接／上口」四问删赘句和重复段落、步骤、命令及指标。英文短语、习语及时间译成自然中文。开篇和节首压缩时保留讲者限定，不把个例升格为全称，口径以正文为准。结尾收束。
+- 默念，以「必要／删损／承接／上口」四问删赘句、合并单句碎段，删与文头或正文重复的段落、步骤、命令及指标。英文短语、习语及时间译成自然中文。开篇和节首压缩时保留讲者限定，不把个例升格为全称，口径以正文为准。结尾收束。
 - 拦过滤词和「画面写明」「画面上」「图上」等机器转述。核查删过滤词后未补写视频未讲的画面描述。簇分片 WARN 仅作参考，不要为此拆开因果段。
 
 ### 黑帽零脑补关
@@ -23,7 +23,7 @@ Report only located, evidenced issues. Do not repeat mechanical checks or add un
 
 Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.
 
-- Plain and legacy use `## 未解释的术语和基础词`. Check essential terms, abbreviations, and basic words at first technical use (without pushing redundant entries beyond the glossary budget).
+- Plain and legacy use `## 未解释的术语和基础词`. Check essential terms, abbreviations, and basic words at first technical use.
 - Concise uses `## 精炼版也必须解释的词`. 逐节只查四类：`视频自造`、`冷门专名`、首次出现且需要解释的`缩写`、讲者用法与`通行定义`不一致的词（`W8`）。`PR、CTO、LLM、IDE、JVM` 在常规用法下不必标出。
 
 In either section, write one bullet per unexplained term in exact `词 | 首次出现的小节 | 原句` format, quoting the first-use sentence verbatim. If empty after checking every section, write exactly `已逐节查过，没有`. Include these findings in the same batch.

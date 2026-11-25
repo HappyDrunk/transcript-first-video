@@ -40,7 +40,13 @@ EMPTY_SECTION = re.compile(
 )
 OMISSION = re.compile(r"^本文略去[｜|]([^\n]*)(?=[ \t\n]*\Z)", re.MULTILINE)
 ANY_OMISSION_LINE = re.compile(r"^本文略去[｜|]", re.MULTILINE)
-GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）")
+GENERATED_NOTE_RE = re.compile(r"（(?:存疑|注)：[^）\n]+）|；注：[^）)\n]+")
+_CJK_CHAR_RE = re.compile(r"[\u3400-\u9fff]")
+_ORIG_ENGLISH_PAREN_RE = re.compile(r"[A-Za-z][A-Za-z0-9 .'&/\-]*")
+_TAIL_EXPLAINED_RE = re.compile(
+    r"[，,]\s*(?:也就是|即(?!(?:使|将|便|可|刻|时|日|席|兴|墨))|指的是|是指|意思是|就是说)|——|："
+)
+_HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「]?$")
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
@@ -257,10 +263,30 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
                 matches.append((start, -len(match[0]), end))
     if matches:
         first = min(matches)
-        return first[2], f"（注：{gloss}）"
+        start, end = first[0], first[2]
+        j = end
+        while j < len(block_text) and block_text[j] in " \t":
+            j += 1
+        if j < len(block_text) and block_text[j] in "（(":
+            open_ch = block_text[j]
+            close_ch = "）" if open_ch == "（" else ")"
+            code_spans = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(block_text)]
+            paren_end = _scan_balanced(block_text, j, open_ch, close_ch, code_spans)
+            if paren_end is None:
+                return None
+            close = paren_end - 1
+            inner = block_text[j + 1:close].strip()
+            if (_CJK_CHAR_RE.search(inner)
+                    or not _ORIG_ENGLISH_PAREN_RE.fullmatch(inner)
+                    or (close_ch == ")" and ")" in gloss)):
+                return None
+            return close, f"；注：{gloss}"
+        if _TAIL_EXPLAINED_RE.match(block_text, end) or _HEAD_EXPLAINED_RE.search(block_text[:start]):
+            return None
+        return end, f"（注：{gloss}）"
     if any_occurrence:
         fallback = _sentence_insertion_index(block_text, len(block_text))
-        if not _in_unclosed_paren(block_text, fallback):
+        if not _in_unclosed_paren(block_text, fallback) and not (fallback > 0 and block_text[fallback - 1] in "）)"):
             return fallback, f"（注：{gloss}）"
     return None
 
@@ -455,6 +481,14 @@ def render_lines(
                                 f"存疑 anchor {anchor!r} must occur exactly once verbatim without crossing ⏱"
                             )
                     last_block_doubts.extend(doubts)
+                    doubt_positions = {
+                        _resolve_doubt_insertion(last_block_original, anchor, explanation)[0]
+                        for anchor, explanation in last_block_doubts
+                    }
+                    if last_block_gloss is not None and last_block_gloss[0] in doubt_positions:
+                        last_block_gloss = None
+                        if inline_glosses:
+                            inline_glosses.pop()
                     updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
                     rendered[last_block_start:last_block_end] = updated_block.split("\n")
                     doubt_count += len(doubts)
@@ -473,10 +507,15 @@ def render_lines(
                     gloss = glosses[0]
                     resolved_gloss = _resolve_gloss_insertion(last_block_original, label, gloss)
                     if resolved_gloss is not None:
-                        last_block_gloss = resolved_gloss
-                        updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
-                        rendered[last_block_start:last_block_end] = updated_block.split("\n")
-                        inline_glosses.append(gloss)
+                        doubt_positions = {
+                            _resolve_doubt_insertion(last_block_original, anchor, explanation)[0]
+                            for anchor, explanation in last_block_doubts
+                        }
+                        if resolved_gloss[0] not in doubt_positions:
+                            last_block_gloss = resolved_gloss
+                            updated_block = _apply_annotations(last_block_original, last_block_doubts, last_block_gloss)
+                            rendered[last_block_start:last_block_end] = updated_block.split("\n")
+                            inline_glosses.append(gloss)
                 if terms is not None and seen_terms is not None:
                     norm = " ".join(label.split()).casefold()
                     if norm not in seen_terms:
