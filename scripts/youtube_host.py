@@ -1219,8 +1219,12 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                         and value >= 0
                         for value in (intervals, download_seconds, extract_per_interval, group_per_frame, read_per_frame)
                     ) and effective_intervals != intervals:
-                        seconds_per_interval = float(extract_per_interval) + float(group_per_frame) + float(read_per_frame)
-                        adjusted = float(download_seconds) + seconds_per_interval * effective_intervals
+                        effective_ocr_frames = screen_ocr.estimate_ocr_frames(effective_intervals)
+                        adjusted = (
+                            float(download_seconds)
+                            + (float(extract_per_interval) + float(group_per_frame)) * effective_intervals
+                            + float(read_per_frame) * effective_ocr_frames
+                        )
                         estimated = adjusted if math.isfinite(adjusted) and adjusted > 0 else None
             if estimated is None:
                 if sample.get("calibration_status") == "calibrated":
@@ -1242,7 +1246,9 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                         or sample_extract < 0
                     ):
                         sample_extract = 0.0
-                    estimated = (latency * screen_ocr.SLIDE_OCR_PASSES + sample_extract) * frames
+                    ocr_frames = screen_ocr.estimate_ocr_frames(frames)
+                    estimated = sample_extract * frames + latency * screen_ocr.SLIDE_OCR_PASSES * ocr_frames
+                    sample["ocr_frame_ratio_assumed"] = screen_ocr.SLIDE_OCR_FRAME_RATIO
             sample["estimated_seconds"] = round(estimated, 3) if estimated is not None and math.isfinite(estimated) else None
             if sample.get("calibration_status") in ("timeout_fallback", "fallback"):
                 est_value = sample["estimated_seconds"]
@@ -1271,7 +1277,12 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             )
         if result.get("state") == "ready":
             return {**screen, **result, "result": "slides_detected" if mode == "slides" else "nameplate_ready"}
-        screen.update({key: result[key] for key in ("versions", "elapsed_seconds", "timeout_seconds") if key in result})
+        observability = (
+            "versions", "elapsed_seconds", "wall_elapsed_seconds", "timeout_seconds",
+            "stage_seconds", "frames_extracted", "frames_selected", "frames_ocred", "frames_skipped_timeout",
+            "frames_capped", "skipped_timestamps",
+        )
+        screen.update({key: result[key] for key in observability if key in result})
         fallback = _screen_fallback(screen, result.get("failure", "error"), result.get("reason", ""))
         if result.get("overrun_aborted"):
             rem_est = result.get("estimated_remaining_seconds")

@@ -322,28 +322,29 @@ class S7SlideBudgetFloorTests(unittest.TestCase):
         self.assertEqual(budget_fn(None), 600.0)
         self.assertEqual(budget_fn(0), 600.0)
         self.assertEqual(budget_fn(float("nan")), 600.0)
-        self.assertEqual(budget_fn(3600), 1800.0)
+        self.assertEqual(budget_fn(3600), 900.0)
+        self.assertEqual(budget_fn(5082), 900.0)
 
         result, extract_calls = self._run_auto_host(796, 320.0)
         self.assertEqual(extract_calls, 1, result["screen_ocr"])
         self.assertEqual(result["screen_ocr"]["state"], "ready")
         self.assertEqual(result["screen_ocr"]["mode"], "slides")
 
-    def test_s7_3600s_video_over_1260s_still_skipped_with_factual_hint(self) -> None:
+    def test_s7_3600s_video_over_630s_still_skipped_with_factual_hint(self) -> None:
         result, extract_calls = self._run_auto_host(3600, 1300.0)
         self.assertEqual(extract_calls, 0)
         screen = result["screen_ocr"]
         self.assertEqual((screen["mode"], screen["state"], screen["result"]), ("off", "fallback", "timeout"))
-        self.assertEqual(screen["timeout_seconds"], 1800)
-        self.assertEqual(screen["safe_budget_seconds"], 1260.0)
-        expected_hint = "预估 1300.0 秒超过按片长算的预算 1260.0 秒，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
+        self.assertEqual(screen["timeout_seconds"], 900)
+        self.assertEqual(screen["safe_budget_seconds"], 630.0)
+        expected_hint = "预估 1300.0 秒超过按片长算的预算 630.0 秒，只用了字幕；需要画面可设 TFV_SCREEN_MODE=slides"
         self.assertEqual(screen["hint"], expected_hint)
         self.assertNotIn("这台机器识别太慢", screen["hint"])
 
     def test_s7_real_frames_path_preserves_600s_budget_floor_on_802s_video(self) -> None:
         for duration_str, duration_sec, expected_budget in (
             ("00:13:22.00", 802.0, 600.0),
-            ("01:00:00.00", 3600.0, 1800.0),
+            ("01:00:00.00", 3600.0, 900.0),
         ):
             with self.subTest(duration=duration_str), tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp)
