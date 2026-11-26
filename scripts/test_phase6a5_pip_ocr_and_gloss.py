@@ -399,6 +399,7 @@ class OverlayFullScanTests(unittest.TestCase):
                 return SimpleNamespace(stdout="", stderr="")
 
             with (
+                patch.object(screen_ocr, "_crop", return_value=""),
                 patch.object(screen_ocr, "_measure_download_seconds", return_value=1.0),
                 patch.object(screen_ocr.Scan, "run", autospec=True, side_effect=fake_cal_run),
                 patch.object(screen_ocr, "_frames", return_value=[]),
@@ -492,6 +493,9 @@ class GlossDedupTests(unittest.TestCase):
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block_neg, "偏度", "衡量分布是否对称的统计量"))
         block_neg2 = "这并不是在衡量分布是否对称的偏度。"
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block_neg2, "偏度", "衡量分布是否对称的统计量"))
+        # '非常' must NOT trigger negation guard
+        block_feichang = "这个非常适合衡量分布是否对称的指标叫偏度。"
+        self.assertIsNone(rrn._resolve_gloss_insertion(block_feichang, "偏度", "衡量分布是否对称的统计量"))
 
         # Protected-anchor fallback path must obey Invariant #7
         block_fallback = "先看 `偏度`。这个数值很高。"

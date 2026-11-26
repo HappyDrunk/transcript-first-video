@@ -54,7 +54,7 @@ _NEXT_SENT_DEF_RE = re.compile(
 )
 _SENTENCE_END_PUNCT_RE = re.compile(r"[。！？!?.]+(?:[”’」』\"' \t]*)")
 _CLAUSE_DELIMITERS = "，,。；;：！？、（）()\n"
-_NEGATION_RE = re.compile(r"(?:并不是|不是|并非|并不|不太|绝非|无|没|非|不)")
+_NEGATION_RE = re.compile(r"(?:并不是|不是|并非|并不|不太|绝非|不再|不能|不会|没有|没|不)")
 _GLOSS_ECHO_MIN_CJK = 4
 _GLOSS_ECHO_MIN_RATIO = 0.50
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
