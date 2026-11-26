@@ -49,12 +49,14 @@ _TAIL_EXPLAINED_RE = re.compile(
 _HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「『]?$")
 _NEXT_SENT_PREFIX_RE = re.compile(r"^\s*(?:这个|所谓|而|其中)?\s*")
 _NEXT_SENT_DEF_RE = re.compile(
-    r"\s*(?:衡量|是指|指的是|就是指|指|表示|描述|代表|反映|用来(?:衡量|描述|表示|刻画|说明)|意思是|定义为|定义是)"
+    r"\s*(?:衡量|是指|指的是|就是指|指的|意思是|定义为|定义是"
+    r"|用来(?:衡量|描述|表示|刻画|说明)|描述的是|表示的是|代表的是|反映的是)"
 )
 _SENTENCE_END_PUNCT_RE = re.compile(r"[。！？!?.]+(?:[”’」』\"' \t]*)")
-_CLAUSE_DELIMITERS = "，,。；：！？\n"
+_CLAUSE_DELIMITERS = "，,。；;：！？、（）()\n"
+_NEGATION_PREFIX_RE = re.compile(r"(?:不是|并非|并不|非|不)$")
 _GLOSS_ECHO_MIN_CJK = 4
-_GLOSS_ECHO_MIN_RATIO = 0.40
+_GLOSS_ECHO_MIN_RATIO = 0.50
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
@@ -272,8 +274,10 @@ def _next_sentence_defines_term(block_text: str, end: int, aliases: list[str]) -
     return False
 
 
-def _longest_common_cjk_substring_len(left: str, right: str) -> int:
-    best = 0
+def _longest_common_cjk_substring(left: str, right: str) -> tuple[int, int]:
+    """Return (max CJK count, start index in left) for the longest common substring."""
+    best_cjk = 0
+    best_start = -1
     prev = [0] * (len(right) + 1)
     for i, ch_l in enumerate(left, 1):
         curr = [0] * (len(right) + 1)
@@ -281,12 +285,14 @@ def _longest_common_cjk_substring_len(left: str, right: str) -> int:
             if ch_l == ch_r:
                 span = prev[j - 1] + 1
                 curr[j] = span
-                if span > best:
-                    cjk = len(_CJK_CHAR_RE.findall(left[i - span:i]))
-                    if cjk > best:
-                        best = cjk
+                if span > best_cjk:
+                    start_idx = i - span
+                    cjk = len(_CJK_CHAR_RE.findall(left[start_idx:i]))
+                    if cjk > best_cjk:
+                        best_cjk = cjk
+                        best_start = start_idx
         prev = curr
-    return best
+    return best_cjk, best_start
 
 
 def _gloss_echoes_preceding_clause(block_text: str, start: int, gloss: str) -> bool:
@@ -297,8 +303,12 @@ def _gloss_echoes_preceding_clause(block_text: str, start: int, gloss: str) -> b
     gloss_cjk = len(_CJK_CHAR_RE.findall(gloss_clean))
     if gloss_cjk < _GLOSS_ECHO_MIN_CJK or len(pre) < _GLOSS_ECHO_MIN_CJK:
         return False
-    common_cjk = _longest_common_cjk_substring_len(pre, gloss_clean)
-    return common_cjk >= _GLOSS_ECHO_MIN_CJK and (common_cjk / gloss_cjk) >= _GLOSS_ECHO_MIN_RATIO
+    common_cjk, match_start = _longest_common_cjk_substring(pre, gloss_clean)
+    if common_cjk < _GLOSS_ECHO_MIN_CJK or (common_cjk / gloss_cjk) < _GLOSS_ECHO_MIN_RATIO:
+        return False
+    if match_start > 0 and _NEGATION_PREFIX_RE.search(pre[:match_start]):
+        return False
+    return True
 
 
 def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:

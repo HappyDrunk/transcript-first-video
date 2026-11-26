@@ -1198,6 +1198,7 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
             calibration = sample.get("calibration")
             calibrated = calibration.get("estimated_total_seconds") if isinstance(calibration, dict) else None
             latency = sample.get("mean_frame_ocr_seconds")
+            sample_profile = sample.get("profile")
             if (
                 isinstance(calibrated, (int, float))
                 and not isinstance(calibrated, bool)
@@ -1219,7 +1220,10 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                         and value >= 0
                         for value in (intervals, download_seconds, extract_per_interval, group_per_frame, read_per_frame)
                     ) and effective_intervals != intervals:
-                        effective_ocr_frames = screen_ocr.estimate_ocr_frames(effective_intervals)
+                        effective_ocr_frames = (
+                            screen_ocr.estimate_ocr_frames(effective_intervals, profile=sample_profile)
+                            if sample_profile else screen_ocr.estimate_ocr_frames(effective_intervals)
+                        )
                         adjusted = (
                             float(download_seconds)
                             + (float(extract_per_interval) + float(group_per_frame)) * effective_intervals
@@ -1246,9 +1250,15 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                         or sample_extract < 0
                     ):
                         sample_extract = 0.0
-                    ocr_frames = screen_ocr.estimate_ocr_frames(frames)
+                    ocr_frames = (
+                        screen_ocr.estimate_ocr_frames(frames, profile=sample_profile)
+                        if sample_profile else screen_ocr.estimate_ocr_frames(frames)
+                    )
                     estimated = sample_extract * frames + latency * screen_ocr.SLIDE_OCR_PASSES * ocr_frames
-                    sample["ocr_frame_ratio_assumed"] = screen_ocr.SLIDE_OCR_FRAME_RATIO
+                    sample["ocr_frame_ratio_assumed"] = (
+                        screen_ocr.AUTO_OVERLAY_OCR_FRAME_RATIO
+                        if sample_profile == "overlay" else screen_ocr.SLIDE_OCR_FRAME_RATIO
+                    )
             sample["estimated_seconds"] = round(estimated, 3) if estimated is not None and math.isfinite(estimated) else None
             if sample.get("calibration_status") in ("timeout_fallback", "fallback"):
                 est_value = sample["estimated_seconds"]

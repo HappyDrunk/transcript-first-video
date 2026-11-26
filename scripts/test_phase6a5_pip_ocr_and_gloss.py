@@ -50,11 +50,16 @@ def _gray_png_grid(width: int, height: int, tile_shades: dict[tuple[int, int], i
     )
 
 
-def _ocr_result(lines: list[tuple[str, float, float]]):
-    """Build a RapidOCR-like result from (text, y_center, score) tuples."""
+def _ocr_result(lines: list[tuple[str, float, float] | tuple[str, float, float, float, float]]):
+    """Build a RapidOCR-like result from (text, y_center, score[, x0, x1]) tuples."""
     boxes, txts, scores = [], [], []
-    for text, y_center, score in lines:
-        boxes.append([(20.0, y_center - 8.0), (220.0, y_center - 8.0), (220.0, y_center + 8.0), (20.0, y_center + 8.0)])
+    for item in lines:
+        if len(item) == 5:
+            text, y_center, score, x0, x1 = item
+        else:
+            text, y_center, score = item
+            x0, x1 = 20.0, 220.0
+        boxes.append([(x0, y_center - 8.0), (x1, y_center - 8.0), (x1, y_center + 8.0), (x0, y_center + 8.0)])
         txts.append(text)
         scores.append(score)
     return SimpleNamespace(boxes=boxes, txts=txts, scores=scores)
@@ -173,11 +178,82 @@ class OverlaySampleTests(unittest.TestCase):
             800: [],
             220: [("ERUS YTD", 60.0, 0.94), ("-99.86%", 76.0, 0.92)],
         }
-        # 4 pairs * 9.5s = 38.0s elapsed out of 44.5s budget -> remaining 6.5s < 2*9.5 + 0.5
+        # 4 pairs * 9.5s = 38.0s elapsed out of 44.5s budget -> remaining 6.5s <= 1.5*9.5 + 0.5
         result, windows = self._run_sample(frame_results, fake_elapsed_per_pair=9.5)
 
         self.assertEqual(result["result"], "not_found")
         self.assertEqual(windows, [100, 330, 560, 800])
+        self.assertEqual(result["groups_checked"], 4)
+
+    def test_fm1_short_video_repeated_seeks_do_not_self_classify_as_persistent(self):
+        """A 4s video seeks [0, 1, 2, 2]; repeating at=2 must not treat card@2 as persistent."""
+        frame_results = {
+            0: [("ERUS YTD", 60.0, 0.92), ("-99.86%", 78.0, 0.91)],
+            1: [],
+            2: [("Albuquerque (2012)", 410.0, 0.93), ("Journal of Financial Economics", 426.0, 0.90)],
+        }
+        result, windows = self._run_sample(frame_results, duration=4)
+
+        self.assertEqual(windows, [0, 1, 2, 2])
+        self.assertEqual(result["result"], "slides_detected")
+        self.assertEqual(result.get("profile"), "overlay")
+        self.assertEqual(result.get("overlay_positions"), [0, 2])
+
+    def test_fm1_burned_in_bottom_center_subtitles_do_not_trigger_overlay(self):
+        """Two-line burned-in subtitles centered in the bottom band must stay not_found."""
+        frame_results = {
+            100: [],
+            330: [
+                ("This is a long burned in subtitle line", 420.0, 0.95, 180.0, 680.0),
+                ("continuing across the bottom center", 442.0, 0.95, 210.0, 650.0),
+            ],
+            560: [],
+            800: [
+                ("Another spoken sentence shown here", 420.0, 0.95, 190.0, 670.0),
+                ("still inside the subtitle region", 442.0, 0.95, 220.0, 640.0),
+            ],
+        }
+        result, _ = self._run_sample(frame_results)
+
+        self.assertEqual(result["result"], "not_found")
+        self.assertNotIn("profile", result)
+
+    def test_fm1_extra_probe_failure_degrades_cleanly_to_not_found(self):
+        """An error or timeout during an optional extra probe must preserve clean not_found."""
+        stream = json.dumps({
+            "duration": 1000, "height": 480, "url": "https://media.example/480.mp4",
+            "ext": "mp4", "protocol": "https",
+        })
+        frame_results = {
+            330: [("Albuquerque (2012)", 410.0, 0.93), ("Review of Financial Studies", 426.0, 0.91)],
+        }
+
+        def fake_run(scan, args, description, **kwargs):
+            if args[0] == "ffmpeg":
+                output = Path(args[-1])
+                at = int(output.stem.split("-")[0])
+                if at == 220:
+                    raise screen_ocr.ScreenTimeout("extra probe stalled")
+                for idx in (1, 2):
+                    output.with_name(output.name.replace("%02d", f"{idx:02d}")).write_bytes(f"frame-{at}-{idx}".encode())
+            return SimpleNamespace(stdout=stream)
+
+        def fake_recognize(scan, func, *args, **kwargs):
+            if func is screen_ocr._rapidocr:
+                return object()
+            at = int(args[0].decode().split("-")[1])
+            return _ocr_result(frame_results.get(at, []))
+
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(screen_ocr.Scan, "probe", return_value="ffmpeg"),
+            patch.object(screen_ocr.Scan, "run", autospec=True, side_effect=fake_run),
+            patch.object(screen_ocr.Scan, "recognize", autospec=True, side_effect=fake_recognize),
+            patch.object(screen_ocr, "getproxies", return_value={}),
+        ):
+            result = screen_ocr.sample_slides(Path(folder), SOURCE, ["yt-dlp"], lambda: [])
+
+        self.assertEqual(result["result"], "not_found")
         self.assertEqual(result["groups_checked"], 4)
 
 
@@ -264,6 +340,64 @@ class OverlayFullScanTests(unittest.TestCase):
             self.assertEqual(res2["state"], "ready")
             self.assertEqual(calls[-1][1], {})
 
+    def test_fm2_overlay_budget_estimation_uses_overlay_ratio(self):
+        """Overlay profile budgets for 100% of intervals so frequent static changes don't surprise overrun."""
+        self.assertEqual(screen_ocr.estimate_ocr_frames(16), 8)
+        self.assertEqual(screen_ocr.estimate_ocr_frames(16, profile="overlay"), 16)
+
+        with tempfile.TemporaryDirectory() as folder:
+            staged = Path(folder)
+            sample = {
+                "result": "slides_detected",
+                "profile": "overlay",
+                "duration": 128.0,  # 16 intervals
+                "mean_frame_ocr_seconds": 15.0,  # 15 * 2 * 16 = 480s > safe_budget (420s)
+                "mean_sample_extract_seconds": 0.0,
+            }
+            with (
+                patch.object(screen_ocr, "sample_slides", return_value=sample),
+                patch.object(screen_ocr, "extract", side_effect=AssertionError("should be budget-rejected")),
+            ):
+                res = youtube_host._screen_result(staged, "auto", SOURCE, ["yt-dlp"], 128.0)
+        self.assertEqual(res["state"], "fallback")
+        self.assertEqual(res["result"], "timeout")
+        self.assertEqual(res["sample"]["ocr_frame_ratio_assumed"], screen_ocr.AUTO_OVERLAY_OCR_FRAME_RATIO)
+
+    def test_fm2_extract_records_overlay_profile_in_status(self):
+        """screen_ocr.extract(profile='overlay') records profile='overlay' in returned status."""
+        with tempfile.TemporaryDirectory() as folder:
+            staged = Path(folder)
+
+            def fake_frames(scan, ffmpeg, video, work, mode):
+                paths = []
+                for idx in range(4):
+                    p = work / f"frame-{idx:06d}.png"
+                    p.write_bytes(_gray_png_grid(160, 90, {(7, 0): 240 if idx == 2 else 30}))
+                    paths.append(screen_ocr.Frame(p, float(idx * 8)))
+                return paths
+
+            def fake_download(scan, cmd, source, work):
+                v = work / "video.mp4"
+                v.write_bytes(b"vid")
+                return v
+
+            def fake_read(scan, ffmpeg, ocr, mode, crop, frame, **kwargs):
+                if frame.seconds == 16.0:
+                    return [(screen_ocr.Line("Albuquerque (2012)", 20, 410, 200, 16, 95.0), True)]
+                return []
+
+            with (
+                patch.object(screen_ocr.Scan, "probe", return_value="ffmpeg"),
+                patch.object(screen_ocr, "_download", side_effect=fake_download),
+                patch.object(screen_ocr, "_frames", side_effect=fake_frames),
+                patch.object(screen_ocr.Scan, "recognize", return_value=object()),
+                patch.object(screen_ocr, "_read_frame", side_effect=fake_read),
+            ):
+                status = screen_ocr.extract(staged, "slides", SOURCE, ["yt-dlp"], 32.0, list, True, profile="overlay")
+
+        self.assertEqual(status["state"], "ready")
+        self.assertEqual(status.get("profile"), "overlay")
+
 
 class GlossDedupTests(unittest.TestCase):
     def test_fm3_rule_a_skips_when_next_sentence_defines_term(self):
@@ -281,6 +415,12 @@ class GlossDedupTests(unittest.TestCase):
         self.assertIsNotNone(res2)
         self.assertEqual(res2[1], "（注：把房子和地面松开）")
 
+        # Non-definitional prefixes like 指标 / 表示 must NOT be falsely suppressed
+        block3 = "这里需要考虑偏度。偏度指标很高。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block3, "偏度", "涨跌分布够不够对称"))
+        block4 = "市场紧盯美联储动向。美联储表示将加息。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block4, "美联储", "美国中央银行"))
+
     def test_fm3_rule_b_skips_preceding_clause_echo(self):
         block = "人们往往先划一条多少有些任意的风险线，比如防洪里常用的 1-percent storm；地震规范也是同一思路。"
         self.assertIsNone(rrn._resolve_gloss_insertion(block, "1-percent storm", "防洪里常用的风险门槛"))
@@ -290,6 +430,21 @@ class GlossDedupTests(unittest.TestCase):
         block_short = "这是防洪里 1-percent storm 概念。"
         res_short = rrn._resolve_gloss_insertion(block_short, "1-percent storm", "防洪里的风险门槛")
         self.assertIsNotNone(res_short)
+
+        # Single shared 4-char common word (< 50% of gloss) must still be kept
+        block_common = "构建投资组合时会画出有效前沿。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block_common, "有效前沿", "投资组合的最优边界"))
+
+        # Negated preceding clause must NOT suppress gloss
+        block_neg = "这不是衡量分布是否对称的偏度。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block_neg, "偏度", "衡量分布是否对称的统计量"))
+
+        # Protected-anchor fallback path must obey Invariant #7
+        block_fallback = "先看 `偏度`。这个数值很高。"
+        res_fb = rrn._resolve_gloss_insertion(block_fallback, "偏度", "涨跌分布够不够对称")
+        self.assertIsNotNone(res_fb)
+        rendered_fb = block_fallback[:res_fb[0]] + res_fb[1] + block_fallback[res_fb[0]:]
+        self.assertEqual(rrn.GENERATED_NOTE_RE.sub("", rendered_fb), block_fallback)
 
         helpful_cases = [
             ("从物理上把上部结构和地面脱开。", "上部结构", "地面以上的房子主体"),

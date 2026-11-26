@@ -70,6 +70,7 @@ AUTO_OVERLAY_MIN_MULTI_CHARS = 10
 AUTO_OVERLAY_MIN_SINGLE_CHARS = 14
 AUTO_OVERLAY_MIN_POSITIONS = 2
 AUTO_OVERLAY_MIN_ACTIVE_TILES = 16
+AUTO_OVERLAY_OCR_FRAME_RATIO = 1.0
 _OCR_SLOTS = BoundedSemaphore(2)
 _OCR_WORKER = "tfv-rapidocr"
 
@@ -164,10 +165,11 @@ def slide_full_budget(duration: float | None) -> float:
     return float(UNKNOWN_DURATION_TIMEOUT)
 
 
-def estimate_ocr_frames(intervals: int) -> int:
+def estimate_ocr_frames(intervals: int, *, profile: str | None = None) -> int:
     if intervals <= 0:
         return 0
-    return min(intervals, max(1, math.ceil(intervals * SLIDE_OCR_FRAME_RATIO)))
+    ratio = AUTO_OVERLAY_OCR_FRAME_RATIO if profile == "overlay" else SLIDE_OCR_FRAME_RATIO
+    return min(intervals, max(1, math.ceil(intervals * ratio)))
 
 
 class Scan:
@@ -615,12 +617,56 @@ def _rapidocr(mode: str):
     return RapidOCR(params=params)
 
 
+def _image_width(frame: bytes, height: int) -> float:
+    if len(frame) >= 24 and frame.startswith(b"\x89PNG\r\n\x1a\n") and frame[12:16] == b"IHDR":
+        width = int.from_bytes(frame[16:20], "big")
+        if width > 0:
+            return float(width)
+    if len(frame) >= 4 and frame.startswith(b"\xff\xd8"):
+        pos = 2
+        while pos + 4 <= len(frame):
+            if frame[pos] != 0xFF:
+                break
+            marker = frame[pos + 1]
+            pos += 2
+            if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+                continue
+            if pos + 2 > len(frame):
+                break
+            seg_len = int.from_bytes(frame[pos:pos + 2], "big")
+            if seg_len < 2 or pos + seg_len > len(frame):
+                break
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3) and seg_len >= 7:
+                width = int.from_bytes(frame[pos + 5:pos + 7], "big")
+                if width > 0:
+                    return float(width)
+            pos += seg_len
+    return height * 16.0 / 9.0
+
+
+def _is_bottom_center_caption(box, height: int, width: float) -> bool:
+    xs = [point[0] for point in box]
+    ys = [point[1] for point in box]
+    if not xs or not ys or height <= 0 or width <= 0:
+        return False
+    y_center = sum(ys) / len(ys)
+    if y_center < height * 0.80:
+        return False
+    x_min, x_max = min(xs), max(xs)
+    x_center = (x_min + x_max) / 2.0
+    return (
+        0.35 * width <= x_center <= 0.65 * width
+        or (x_min < 0.40 * width and x_max > 0.60 * width)
+    )
+
+
 def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> bool:
     readings = []
     overlay_readings = []
     frame_ocr_times = getattr(scan, "frame_ocr_times", None)
     for path in paths:
         frame = path.read_bytes()
+        frame_width = _image_width(frame, height)
         started = time.monotonic()
         result = scan.recognize(ocr, frame)
         elapsed = time.monotonic() - started
@@ -632,7 +678,7 @@ def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> b
                                     result.txts or (), result.scores or ()):
             key = "".join(char for char in text.casefold() if char.isalnum())
             if score >= AUTO_MIN_CONFIDENCE:
-                if len(key) >= AUTO_OVERLAY_MIN_LINE_LENGTH:
+                if len(key) >= AUTO_OVERLAY_MIN_LINE_LENGTH and not _is_bottom_center_caption(box, height, frame_width):
                     overlay_keys.add(key)
                 if len(key) >= AUTO_MIN_LINE_LENGTH:
                     lines[key] = sum(point[1] for point in box) / len(box)
@@ -655,15 +701,18 @@ def _counted_overlay_positions(
     evidence: list[tuple[int | None, set[str]]],
 ) -> list[tuple[int, set[str], int]]:
     """Return overlay sample positions with transient non-watermark text cards."""
+    by_at: dict[int, set[str]] = {}
+    for at, keys in evidence:
+        if at is None:
+            continue
+        by_at.setdefault(at, set()).update(keys)
     key_counts: dict[str, int] = defaultdict(int)
-    for _, keys in evidence:
+    for keys in by_at.values():
         for key in keys:
             key_counts[key] += 1
     persistent = {key for key, count in key_counts.items() if count >= 2}
     counted: list[tuple[int, set[str], int]] = []
-    for at, keys in evidence:
-        if at is None:
-            continue
+    for at, keys in by_at.items():
         transient = keys - persistent
         if not transient:
             continue
@@ -728,6 +777,7 @@ def _measure_download_seconds(
 
 def _calibrate_full_scan(
     ffmpeg: str, ocr, full_fmt: dict, duration: float, hit_at: int, proxy: str, work: Path,
+    *, profile: str | None = None,
 ) -> dict:
     cal_scan = Scan("slides", None, budget=AUTO_CALIBRATION_TIMEOUT)
     full_url = full_fmt["url"]
@@ -785,8 +835,11 @@ def _calibrate_full_scan(
     intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
     extract_seconds = decode_seconds * intervals
     group_seconds = group_per_frame * intervals
-    ratio = 1.0 if crop else SLIDE_OCR_FRAME_RATIO
-    ocr_frames = intervals if crop else estimate_ocr_frames(intervals)
+    ratio = (
+        1.0 if crop
+        else (AUTO_OVERLAY_OCR_FRAME_RATIO if profile == "overlay" else SLIDE_OCR_FRAME_RATIO)
+    )
+    ocr_frames = intervals if crop else estimate_ocr_frames(intervals, profile=profile)
     ocr_seconds = mean_read_frame * ocr_frames
     return {
         "intervals": intervals,
@@ -926,6 +979,7 @@ def sample_slides(
             status["result"] = "not_found"
             scan.overlay_evidence = []
             pair_durations: list[float] = []
+            probed_ats: set[int] = set()
 
             def probe_position(fraction: float) -> tuple[int, bool]:
                 nonlocal ocr
@@ -954,6 +1008,7 @@ def sample_slides(
                 if math.isfinite(pair_elapsed) and pair_elapsed >= 0:
                     pair_durations.append(pair_elapsed)
                 scan.remaining()
+                probed_ats.add(at)
                 status["groups_checked"] += 1
                 return at, qualifies
 
@@ -968,10 +1023,16 @@ def sample_slides(
                 if len(counted) == 1:
                     mean_pair = sum(pair_durations) / len(pair_durations) if pair_durations else 0.0
                     for extra_fraction in AUTO_OVERLAY_EXTRA_POSITIONS:
+                        extra_at = min(round(duration * extra_fraction), max(0, int(duration) - 2))
+                        if extra_at in probed_ats:
+                            continue
                         left = scan.budget - (time.monotonic() - scan.started)
                         if left <= 1.5 * mean_pair + AUTO_SAMPLE_CLEANUP_SECONDS:
                             break
-                        at, qualifies = probe_position(extra_fraction)
+                        try:
+                            at, qualifies = probe_position(extra_fraction)
+                        except (OSError, ScreenError):
+                            break
                         if qualifies:
                             status["result"] = "slides_detected"
                             hit_at = at
@@ -986,7 +1047,10 @@ def sample_slides(
                     hit_at = max(counted, key=lambda item: (len(item[1]), item[2]))[0]
             if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:
                 try:
-                    status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
+                    cal_kwargs = {"profile": status["profile"]} if status.get("profile") else {}
+                    status["calibration"] = _calibrate_full_scan(
+                        ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work, **cal_kwargs,
+                    )
                     status["calibration_status"] = "calibrated"
                 except Exception as exc:
                     kind = failure_result(exc)
