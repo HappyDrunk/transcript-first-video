@@ -1268,9 +1268,16 @@ def _screen_result(staged: Path, request: str, source: str, command: list[str], 
                 return fallback
             mode = "slides"
         if request == "auto":
-            result = screen_ocr.extract(
-                staged, mode, source, command, duration, _screen_download_options, True,
-            )
+            profile = sample.get("profile")
+            if profile:
+                result = screen_ocr.extract(
+                    staged, mode, source, command, duration, _screen_download_options, True,
+                    profile=profile,
+                )
+            else:
+                result = screen_ocr.extract(
+                    staged, mode, source, command, duration, _screen_download_options, True,
+                )
         else:
             result = screen_ocr.extract(
                 staged, mode, source, command, duration, _screen_download_options,

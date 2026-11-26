@@ -41,6 +41,8 @@ jobs:
         run: python3 scripts/test_phase6a3_fluency_guards.py
       - name: Test Phase 6A.4 polish and anti-repetition
         run: python3 scripts/test_phase6a4_polish.py
+      - name: Test Phase 6A.5 PiP OCR and gloss dedup
+        run: python3 scripts/test_phase6a5_pip_ocr_and_gloss.py
       - name: Phase 6B long-video OCR speedup and fault tolerance
         run: python3 scripts/test_phase6b_ocr.py
       - name: Read-only speech quote extraction
