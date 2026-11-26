@@ -64,7 +64,7 @@ AUTO_MIN_LINE_LENGTH = 6
 AUTO_MIN_LINES = 3
 AUTO_MIN_TEXT_LENGTH = 42
 AUTO_MIN_VERTICAL_SPAN = 0.12
-AUTO_OVERLAY_EXTRA_POSITIONS = (0.22, 0.68)
+AUTO_OVERLAY_EXTRA_POSITIONS = (0.22, 0.44, 0.68)
 AUTO_OVERLAY_MIN_LINE_LENGTH = 4
 AUTO_OVERLAY_MIN_MULTI_CHARS = 10
 AUTO_OVERLAY_MIN_SINGLE_CHARS = 14
@@ -1018,10 +1018,11 @@ def sample_slides(
                     status["result"] = "slides_detected"
                     hit_at = at
                     break
-            if status["result"] != "slides_detected" and scan.overlay_evidence:
+            if status["result"] != "slides_detected":
                 counted = _counted_overlay_positions(scan.overlay_evidence)
-                if len(counted) == 1:
-                    mean_pair = sum(pair_durations) / len(pair_durations) if pair_durations else 0.0
+                if len(counted) < AUTO_OVERLAY_MIN_POSITIONS:
+                    steady_pairs = pair_durations[1:] if len(pair_durations) >= 2 else pair_durations
+                    mean_pair = sum(steady_pairs) / len(steady_pairs) if steady_pairs else 0.0
                     for extra_fraction in AUTO_OVERLAY_EXTRA_POSITIONS:
                         extra_at = min(round(duration * extra_fraction), max(0, int(duration) - 2))
                         if extra_at in probed_ats:
@@ -1035,6 +1036,8 @@ def sample_slides(
                             break
                         if qualifies:
                             status["result"] = "slides_detected"
+                            status["profile"] = "overlay"
+                            status["profile_reason"] = "sparse_strict_hit"
                             hit_at = at
                             break
                         counted = _counted_overlay_positions(scan.overlay_evidence)
@@ -1043,6 +1046,7 @@ def sample_slides(
                 if status["result"] != "slides_detected" and len(counted) >= AUTO_OVERLAY_MIN_POSITIONS:
                     status["result"] = "slides_detected"
                     status["profile"] = "overlay"
+                    status["profile_reason"] = "overlay_cards"
                     status["overlay_positions"] = [item[0] for item in counted]
                     hit_at = max(counted, key=lambda item: (len(item[1]), item[2]))[0]
             if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:

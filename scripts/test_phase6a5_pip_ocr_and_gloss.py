@@ -112,15 +112,15 @@ class OverlaySampleTests(unittest.TestCase):
         return result, windows
 
     def test_fm1_persistent_watermark_never_triggers_overlay(self):
-        """Persistent corner watermark at all 4 positions must stay not_found with 4 groups."""
+        """Persistent corner watermark at all probed positions must stay not_found."""
         watermark = [("CommonSenseInvesting2024", 440.0, 0.95), ("BenFelixChannel", 455.0, 0.95)]
-        frame_results = {100: watermark, 330: watermark, 560: watermark, 800: watermark}
+        frame_results = {at: watermark for at in (100, 330, 560, 800, 220, 440, 680)}
         result, windows = self._run_sample(frame_results)
 
         self.assertEqual(result["result"], "not_found")
         self.assertNotIn("profile", result)
-        self.assertEqual(result["groups_checked"], 4)
-        self.assertEqual(windows, [100, 330, 560, 800])
+        self.assertEqual(result["groups_checked"], 7)
+        self.assertEqual(windows, [100, 330, 560, 800, 220, 440, 680])
 
     def test_fm1_transient_corner_cards_trigger_overlay_profile(self):
         """Two distinct transient corner cards at 0.33 and 0.80 must trigger slides_detected + overlay."""
@@ -150,7 +150,23 @@ class OverlaySampleTests(unittest.TestCase):
 
         self.assertEqual(result["result"], "not_found")
         self.assertNotIn("profile", result)
-        self.assertEqual(windows, [100, 330, 560, 800])
+        self.assertEqual(windows, [100, 330, 560, 800, 220, 440, 680])
+
+    def test_fm1_sparse_midpoint_strict_hit_selects_overlay_profile(self):
+        """When all 4 primary positions are empty talking-head gaps, a strict chart hit at 0.68 triggers overlay."""
+        chart_lines = [
+            ("Growth of Wealth", 95.0, 0.99, 375.0, 469.0),
+            ("1/31/2003 5/31/2005 1/31/2017", 340.0, 0.98, 193.0, 573.0),
+            ("DATA SOURCE: DIMENSIONAL RETURNS WEB", 395.0, 0.99, 303.0, 551.0),
+        ]
+        frame_results = {680: chart_lines}
+        result, windows = self._run_sample(frame_results, fake_elapsed_per_pair=3.5)
+
+        self.assertEqual(result["result"], "slides_detected")
+        self.assertEqual(result.get("profile"), "overlay")
+        self.assertEqual(result.get("profile_reason"), "sparse_strict_hit")
+        self.assertEqual(windows, [100, 330, 560, 800, 220, 440, 680])
+        self.assertEqual(result["groups_checked"], 7)
 
     def test_fm1_single_hit_triggers_conditional_extra_probes_when_budget_allows(self):
         """Exactly 1 transient hit runs extra probes at 0.22/0.68 if budget permits, stopping on 2nd hit."""
