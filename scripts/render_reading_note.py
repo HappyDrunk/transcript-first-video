@@ -47,6 +47,16 @@ _TAIL_EXPLAINED_RE = re.compile(
     r"[，,]?\s*(?:是指|指的是)|[，,]\s*(?:也就是|即(?!(?:使|将|便|可|刻|时|日|席|兴|墨|插|位|逝|期|食))|意思是|就是说)|——|："
 )
 _HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「『]?$")
+_NEXT_SENT_PREFIX_RE = re.compile(r"^\s*(?:这个|所谓|而|其中)?\s*")
+_NEXT_SENT_DEF_RE = re.compile(
+    r"\s*(?:衡量|是指|指的是|就是指|意思是|定义为|定义是"
+    r"|用来(?:衡量|描述|表示|刻画|说明)|描述的是|表示的是|代表的是|反映的是)"
+)
+_SENTENCE_END_PUNCT_RE = re.compile(r"[。！？!?.]+(?:[”’」』\"' \t]*)")
+_CLAUSE_DELIMITERS = "，,。；;：！？、（）()\n"
+_NEGATION_RE = re.compile(r"(?:并不是|不是|并非|并不|不太|绝非|不再|不能|不会|没有|没|不)")
+_GLOSS_ECHO_MIN_CJK = 4
+_GLOSS_ECHO_MIN_RATIO = 0.50
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
 DISCREPANCY_TYPE2 = re.compile(r"^口述代码[｜|]\s*\S.*$")
 DISCREPANCY_TYPE3 = re.compile(r"^存疑[｜|]\s*「([^」\n]+)」\s*[｜|]\s*([^\n]+)$")
@@ -246,24 +256,82 @@ def _in_unclosed_paren(text: str, pos: int) -> bool:
     return full_depth > 0 or half_depth > 0
 
 
+def _next_sentence_defines_term(block_text: str, end: int, aliases: list[str]) -> bool:
+    sent_end = _sentence_insertion_index(block_text, end)
+    punct = _SENTENCE_END_PUNCT_RE.match(block_text, sent_end)
+    if punct is None:
+        return False
+    next_sent = block_text[punct.end():].lstrip()
+    if not next_sent:
+        return False
+    prefix = _NEXT_SENT_PREFIX_RE.match(next_sent)
+    rest = next_sent[prefix.end():] if prefix else next_sent
+    for alias in aliases:
+        flags = re.IGNORECASE | re.ASCII if alias.isascii() else 0
+        matched = re.match(_alias_pattern(alias), rest, flags)
+        if matched and _NEXT_SENT_DEF_RE.match(rest, matched.end()):
+            return True
+    return False
+
+
+def _longest_common_cjk_substring(left: str, right: str) -> tuple[int, int]:
+    """Return (max CJK count, start index in left) for the longest common substring."""
+    best_cjk = 0
+    best_start = -1
+    prev = [0] * (len(right) + 1)
+    for i, ch_l in enumerate(left, 1):
+        curr = [0] * (len(right) + 1)
+        for j, ch_r in enumerate(right, 1):
+            if ch_l == ch_r:
+                span = prev[j - 1] + 1
+                curr[j] = span
+                if span > best_cjk:
+                    start_idx = i - span
+                    cjk = len(_CJK_CHAR_RE.findall(left[start_idx:i]))
+                    if cjk > best_cjk:
+                        best_cjk = cjk
+                        best_start = start_idx
+        prev = curr
+    return best_cjk, best_start
+
+
+def _gloss_echoes_preceding_clause(block_text: str, start: int, gloss: str) -> bool:
+    pre_full = block_text[:start]
+    last_sep = max((pre_full.rfind(ch) for ch in _CLAUSE_DELIMITERS), default=-1)
+    pre = re.sub(r"\s+", "", pre_full[last_sep + 1:])
+    gloss_clean = re.sub(r"\s+", "", gloss)
+    gloss_cjk = len(_CJK_CHAR_RE.findall(gloss_clean))
+    if gloss_cjk < _GLOSS_ECHO_MIN_CJK or len(pre) < _GLOSS_ECHO_MIN_CJK:
+        return False
+    common_cjk, match_start = _longest_common_cjk_substring(pre, gloss_clean)
+    if common_cjk < _GLOSS_ECHO_MIN_CJK or (common_cjk / gloss_cjk) < _GLOSS_ECHO_MIN_RATIO:
+        return False
+    if match_start > 0 and _NEGATION_RE.search(pre[:match_start]):
+        return False
+    return True
+
+
 def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[int, str] | None:
     aliases = sorted({part.strip() for part in rules._TERM_ALIAS_SEPARATOR.split(label) if part.strip()},
                      key=lambda alias: (-len(alias), alias))
     protected_all = _protected_spans(block_text, include_parens=True)
     matches = []
-    any_occurrence = False
+    any_occurrences = []
     for alias in aliases:
         flags = re.IGNORECASE | re.ASCII if alias.isascii() else 0
         for match in re.finditer(_alias_pattern(alias), block_text, flags):
             start, end = match.start(), match.end()
             if _in_unclosed_paren(block_text, start):
                 continue
-            any_occurrence = True
+            any_occurrences.append((start, -len(match[0]), end))
             if not any(s < end and start < e for s, e in protected_all):
                 matches.append((start, -len(match[0]), end))
     if matches:
         first = min(matches)
         start, end = first[0], first[2]
+        if (_next_sentence_defines_term(block_text, end, aliases)
+                or _gloss_echoes_preceding_clause(block_text, start, gloss)):
+            return None
         j = end
         while j < len(block_text) and block_text[j] in " \t\n":
             j += 1
@@ -285,7 +353,12 @@ def _resolve_gloss_insertion(block_text: str, label: str, gloss: str) -> tuple[i
         if _TAIL_EXPLAINED_RE.match(block_text, end) or _HEAD_EXPLAINED_RE.search(block_text[:start]):
             return None
         return end, f"（注：{gloss}）"
-    if any_occurrence:
+    if any_occurrences:
+        first_occ = min(any_occurrences)
+        occ_start, occ_end = first_occ[0], first_occ[2]
+        if (_next_sentence_defines_term(block_text, occ_end, aliases)
+                or _gloss_echoes_preceding_clause(block_text, occ_start, gloss)):
+            return None
         fallback = _sentence_insertion_index(block_text, len(block_text))
         if (not _in_unclosed_paren(block_text, fallback)
                 and not block_text[:fallback].rstrip().endswith(("）", ")"))):

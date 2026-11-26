@@ -64,6 +64,13 @@ AUTO_MIN_LINE_LENGTH = 6
 AUTO_MIN_LINES = 3
 AUTO_MIN_TEXT_LENGTH = 42
 AUTO_MIN_VERTICAL_SPAN = 0.12
+AUTO_OVERLAY_EXTRA_POSITIONS = (0.22, 0.44, 0.68)
+AUTO_OVERLAY_MIN_LINE_LENGTH = 4
+AUTO_OVERLAY_MIN_MULTI_CHARS = 10
+AUTO_OVERLAY_MIN_SINGLE_CHARS = 14
+AUTO_OVERLAY_MIN_POSITIONS = 2
+AUTO_OVERLAY_MIN_ACTIVE_TILES = 16
+AUTO_OVERLAY_OCR_FRAME_RATIO = 1.0
 _OCR_SLOTS = BoundedSemaphore(2)
 _OCR_WORKER = "tfv-rapidocr"
 
@@ -158,10 +165,11 @@ def slide_full_budget(duration: float | None) -> float:
     return float(UNKNOWN_DURATION_TIMEOUT)
 
 
-def estimate_ocr_frames(intervals: int) -> int:
+def estimate_ocr_frames(intervals: int, *, profile: str | None = None) -> int:
     if intervals <= 0:
         return 0
-    return min(intervals, max(1, math.ceil(intervals * SLIDE_OCR_FRAME_RATIO)))
+    ratio = AUTO_OVERLAY_OCR_FRAME_RATIO if profile == "overlay" else SLIDE_OCR_FRAME_RATIO
+    return min(intervals, max(1, math.ceil(intervals * ratio)))
 
 
 class Scan:
@@ -431,9 +439,16 @@ def _ffmpeg_thumbnail(scan: Scan, ffmpeg: str, frame: Frame, filters: str, step:
         thumbnail.unlink(missing_ok=True)
 
 
-def _group_frames(scan: Scan, ffmpeg: str, frames: list[Frame]) -> list[list[Frame]]:
+def _group_frames(
+    scan: Scan, ffmpeg: str, frames: list[Frame], *, profile: str | None = None,
+) -> list[list[Frame]]:
     if len(frames) < 2:
         return [frames] if frames else []
+    if profile == "overlay":
+        return [
+            frames[index:index + SLIDE_MAX_GROUP_FRAMES]
+            for index in range(0, len(frames), SLIDE_MAX_GROUP_FRAMES)
+        ]
     groups: list[list[Frame]] = []
     previous = None
     width, height = SLIDE_GROUP_SIZE
@@ -520,7 +535,7 @@ def _tile_differences(
 
 
 def _select_representative_frames(
-    scan: Scan, ffmpeg: str, groups: list[list[Frame]],
+    scan: Scan, ffmpeg: str, groups: list[list[Frame]], *, profile: str | None = None,
 ) -> tuple[list[list[Frame]], int]:
     thumbnails = {}
     tile_count = math.prod(SLIDE_TILE_GRID)
@@ -565,7 +580,11 @@ def _select_representative_frames(
         if index not in thumbnails:
             selected.append(_cap_group(group))
             continue
-        if len(dynamic) > SLIDE_DYNAMIC_MAX_MASKED_TILES:
+        if profile == "overlay":
+            if len(active) < AUTO_OVERLAY_MIN_ACTIVE_TILES:
+                selected.append([group[0], group[-1]])
+                continue
+        elif len(dynamic) > SLIDE_DYNAMIC_MAX_MASKED_TILES:
             selected.append([group[0], group[-1]])
             continue
         grids = thumbnails[index]
@@ -598,29 +617,113 @@ def _rapidocr(mode: str):
     return RapidOCR(params=params)
 
 
+def _image_width(frame: bytes, height: int) -> float:
+    if len(frame) >= 24 and frame.startswith(b"\x89PNG\r\n\x1a\n") and frame[12:16] == b"IHDR":
+        width = int.from_bytes(frame[16:20], "big")
+        if width > 0:
+            return float(width)
+    if len(frame) >= 4 and frame.startswith(b"\xff\xd8"):
+        pos = 2
+        while pos + 4 <= len(frame):
+            if frame[pos] != 0xFF:
+                break
+            marker = frame[pos + 1]
+            pos += 2
+            if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+                continue
+            if pos + 2 > len(frame):
+                break
+            seg_len = int.from_bytes(frame[pos:pos + 2], "big")
+            if seg_len < 2 or pos + seg_len > len(frame):
+                break
+            if marker in (0xC0, 0xC1, 0xC2, 0xC3) and seg_len >= 7:
+                width = int.from_bytes(frame[pos + 5:pos + 7], "big")
+                if width > 0:
+                    return float(width)
+            pos += seg_len
+    return height * 16.0 / 9.0
+
+
+def _is_bottom_center_caption(box, height: int, width: float) -> bool:
+    xs = [point[0] for point in box]
+    ys = [point[1] for point in box]
+    if not xs or not ys or height <= 0 or width <= 0:
+        return False
+    y_center = sum(ys) / len(ys)
+    if y_center < height * 0.80:
+        return False
+    x_min, x_max = min(xs), max(xs)
+    x_center = (x_min + x_max) / 2.0
+    return (
+        0.35 * width <= x_center <= 0.65 * width
+        or (x_min < 0.40 * width and x_max > 0.60 * width)
+    )
+
+
 def _sample_pair_qualifies(scan: Scan, ocr, paths: list[Path], height: int) -> bool:
     readings = []
+    overlay_readings = []
     frame_ocr_times = getattr(scan, "frame_ocr_times", None)
     for path in paths:
         frame = path.read_bytes()
+        frame_width = _image_width(frame, height)
         started = time.monotonic()
         result = scan.recognize(ocr, frame)
         elapsed = time.monotonic() - started
         if frame_ocr_times is not None and math.isfinite(elapsed) and elapsed > 0:
             frame_ocr_times.append(elapsed)
         lines = {}
+        overlay_keys = set()
         for box, text, score in zip(result.boxes if result.boxes is not None else (),
                                     result.txts or (), result.scores or ()):
             key = "".join(char for char in text.casefold() if char.isalnum())
-            if score >= AUTO_MIN_CONFIDENCE and len(key) >= AUTO_MIN_LINE_LENGTH:
-                lines[key] = sum(point[1] for point in box) / len(box)
+            if score >= AUTO_MIN_CONFIDENCE:
+                if len(key) >= AUTO_OVERLAY_MIN_LINE_LENGTH and not _is_bottom_center_caption(box, height, frame_width):
+                    overlay_keys.add(key)
+                if len(key) >= AUTO_MIN_LINE_LENGTH:
+                    lines[key] = sum(point[1] for point in box) / len(box)
         readings.append(lines)
+        overlay_readings.append(overlay_keys)
     first, second = readings
     stable = first.keys() & second.keys()
-    if len(stable) < AUTO_MIN_LINES or sum(map(len, stable)) < AUTO_MIN_TEXT_LENGTH:
-        return False
-    positions = [first[key] for key in stable]
-    return max(positions) - min(positions) >= height * AUTO_MIN_VERTICAL_SPAN
+    if len(stable) >= AUTO_MIN_LINES and sum(map(len, stable)) >= AUTO_MIN_TEXT_LENGTH:
+        positions = [first[key] for key in stable]
+        if max(positions) - min(positions) >= height * AUTO_MIN_VERTICAL_SPAN:
+            return True
+    overlay_evidence = getattr(scan, "overlay_evidence", None)
+    if isinstance(overlay_evidence, list):
+        stable_overlay = overlay_readings[0] & overlay_readings[1]
+        overlay_evidence.append((getattr(scan, "current_sample_at", None), set(stable_overlay)))
+    return False
+
+
+def _counted_overlay_positions(
+    evidence: list[tuple[int | None, set[str]]],
+) -> list[tuple[int, set[str], int]]:
+    """Return overlay sample positions with transient non-watermark text cards."""
+    by_at: dict[int, set[str]] = {}
+    for at, keys in evidence:
+        if at is None:
+            continue
+        by_at.setdefault(at, set()).update(keys)
+    key_counts: dict[str, int] = defaultdict(int)
+    for keys in by_at.values():
+        for key in keys:
+            key_counts[key] += 1
+    persistent = {key for key, count in key_counts.items() if count >= 2}
+    counted: list[tuple[int, set[str], int]] = []
+    for at, keys in by_at.items():
+        transient = keys - persistent
+        if not transient:
+            continue
+        total_chars = sum(len(key) for key in transient)
+        has_digit = any(any(ch.isdigit() for ch in key) for key in transient)
+        if (
+            (len(transient) >= 2 and total_chars >= AUTO_OVERLAY_MIN_MULTI_CHARS)
+            or (len(transient) == 1 and total_chars >= AUTO_OVERLAY_MIN_SINGLE_CHARS and has_digit)
+        ):
+            counted.append((at, transient, total_chars))
+    return counted
 
 
 def _measure_download_seconds(
@@ -674,6 +777,7 @@ def _measure_download_seconds(
 
 def _calibrate_full_scan(
     ffmpeg: str, ocr, full_fmt: dict, duration: float, hit_at: int, proxy: str, work: Path,
+    *, profile: str | None = None,
 ) -> dict:
     cal_scan = Scan("slides", None, budget=AUTO_CALIBRATION_TIMEOUT)
     full_url = full_fmt["url"]
@@ -731,8 +835,11 @@ def _calibrate_full_scan(
     intervals = max(1, math.ceil(duration / SLIDE_INTERVAL))
     extract_seconds = decode_seconds * intervals
     group_seconds = group_per_frame * intervals
-    ratio = 1.0 if crop else SLIDE_OCR_FRAME_RATIO
-    ocr_frames = intervals if crop else estimate_ocr_frames(intervals)
+    ratio = (
+        1.0 if crop
+        else (AUTO_OVERLAY_OCR_FRAME_RATIO if profile == "overlay" else SLIDE_OCR_FRAME_RATIO)
+    )
+    ocr_frames = intervals if crop else estimate_ocr_frames(intervals, profile=profile)
     ocr_seconds = mean_read_frame * ocr_frames
     return {
         "intervals": intervals,
@@ -870,10 +977,16 @@ def sample_slides(
             work = Path(temp)
             ocr = None
             status["result"] = "not_found"
-            for fraction in AUTO_SAMPLE_POSITIONS:
+            scan.overlay_evidence = []
+            pair_durations: list[float] = []
+            probed_ats: set[int] = set()
+
+            def probe_position(fraction: float) -> tuple[int, bool]:
+                nonlocal ocr
                 at = min(round(duration * fraction), max(0, int(duration) - 2))
                 result_path = work / f"{at:04d}-%02d.jpg"
-                started = time.monotonic()
+                pair_started = time.monotonic()
+                started = pair_started
                 scan.run([
                     ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
                     "-rw_timeout", "8000000", *network, "-ss", str(at), "-i", media,
@@ -887,18 +1000,61 @@ def sample_slides(
                     raise ScreenError("FFmpeg did not return two sample frames")
                 if ocr is None:
                     ocr = scan.recognize(_rapidocr, "slides")
+                scan.current_sample_at = at
                 qualifies = _sample_pair_qualifies(scan, ocr, paths, height)
                 for path in paths:
                     path.unlink()
+                pair_elapsed = time.monotonic() - pair_started
+                if math.isfinite(pair_elapsed) and pair_elapsed >= 0:
+                    pair_durations.append(pair_elapsed)
                 scan.remaining()
+                probed_ats.add(at)
                 status["groups_checked"] += 1
+                return at, qualifies
+
+            for fraction in AUTO_SAMPLE_POSITIONS:
+                at, qualifies = probe_position(fraction)
                 if qualifies:
                     status["result"] = "slides_detected"
                     hit_at = at
                     break
+            if status["result"] != "slides_detected":
+                counted = _counted_overlay_positions(scan.overlay_evidence)
+                if len(counted) < AUTO_OVERLAY_MIN_POSITIONS:
+                    steady_pairs = pair_durations[1:] if len(pair_durations) >= 2 else pair_durations
+                    mean_pair = sum(steady_pairs) / len(steady_pairs) if steady_pairs else 0.0
+                    for extra_fraction in AUTO_OVERLAY_EXTRA_POSITIONS:
+                        extra_at = min(round(duration * extra_fraction), max(0, int(duration) - 2))
+                        if extra_at in probed_ats:
+                            continue
+                        left = scan.budget - (time.monotonic() - scan.started)
+                        if left <= 1.5 * mean_pair + AUTO_SAMPLE_CLEANUP_SECONDS:
+                            break
+                        try:
+                            at, qualifies = probe_position(extra_fraction)
+                        except (OSError, ScreenError):
+                            break
+                        if qualifies:
+                            status["result"] = "slides_detected"
+                            status["profile"] = "overlay"
+                            status["profile_reason"] = "sparse_strict_hit"
+                            hit_at = at
+                            break
+                        counted = _counted_overlay_positions(scan.overlay_evidence)
+                        if len(counted) >= AUTO_OVERLAY_MIN_POSITIONS:
+                            break
+                if status["result"] != "slides_detected" and len(counted) >= AUTO_OVERLAY_MIN_POSITIONS:
+                    status["result"] = "slides_detected"
+                    status["profile"] = "overlay"
+                    status["profile_reason"] = "overlay_cards"
+                    status["overlay_positions"] = [item[0] for item in counted]
+                    hit_at = max(counted, key=lambda item: (len(item[1]), item[2]))[0]
             if status["result"] == "slides_detected" and full_fmt is not None and ocr is not None:
                 try:
-                    status["calibration"] = _calibrate_full_scan(ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work)
+                    cal_kwargs = {"profile": status["profile"]} if status.get("profile") else {}
+                    status["calibration"] = _calibrate_full_scan(
+                        ffmpeg, ocr, full_fmt, duration, hit_at, proxy, work, **cal_kwargs,
+                    )
                     status["calibration_status"] = "calibrated"
                 except Exception as exc:
                     kind = failure_result(exc)
@@ -1191,10 +1347,13 @@ def _write_evidence(
 def extract(
     staged: Path, mode: str, source: str, download_command: list[str], duration: float | None,
     download_options: Callable[[], list[str]], abort_on_overrun: bool = False,
+    profile: str | None = None,
 ) -> dict:
     scan = Scan(mode, duration)
     versions: dict[str, str] = {}
     status: dict = {"mode": mode, "versions": versions}
+    if profile:
+        status["profile"] = profile
     consecutive_timeouts = 0
     skipped_timestamps: list[float] = []
     stage_seconds: dict[str, float] = {}
@@ -1229,9 +1388,11 @@ def extract(
             groups = None
             if mode == "slides":
                 with measure_stage("group"):
-                    groups = _group_frames(scan, ffmpeg, frames)
+                    groups = _group_frames(scan, ffmpeg, frames, profile=profile)
                     if not crop and len(groups) > 1:
-                        groups, frames_capped = _select_representative_frames(scan, ffmpeg, groups)
+                        groups, frames_capped = _select_representative_frames(
+                            scan, ffmpeg, groups, profile=profile,
+                        )
                     ocr_frames = [frame for group in groups for frame in group]
             else:
                 ocr_frames = frames

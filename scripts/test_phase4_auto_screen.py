@@ -303,10 +303,10 @@ class SampleTests(unittest.TestCase):
         for args in commands[1:]:
             self.assertEqual(args[args.index("-http_proxy") + 1], "http://proxy.test:8080")
 
-    def test_probe_uses_at_most_four_pairs(self):
-        result, _, windows, _ = self.trial(iter((False, False, False, False)))
+    def test_probe_uses_at_most_seven_pairs(self):
+        result, _, windows, _ = self.trial(iter((False,) * 7))
 
-        self.assertEqual(windows, [100, 330, 560, 800])
+        self.assertEqual(windows, [100, 330, 560, 800, 220, 440, 680])
         self.assertEqual(result["result"], "not_found")
 
     def test_timed_out_media_fetch_stops_probe(self):
