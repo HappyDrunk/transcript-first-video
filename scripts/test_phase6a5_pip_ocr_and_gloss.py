@@ -363,6 +363,56 @@ class OverlayFullScanTests(unittest.TestCase):
         self.assertEqual(res["result"], "timeout")
         self.assertEqual(res["sample"]["ocr_frame_ratio_assumed"], screen_ocr.AUTO_OVERLAY_OCR_FRAME_RATIO)
 
+        # Calibrated duration-adjustment path also uses overlay ratio (1.0)
+        with tempfile.TemporaryDirectory() as folder:
+            staged = Path(folder)
+            cal_sample = {
+                "result": "slides_detected",
+                "profile": "overlay",
+                "duration": 160.0,  # 20 intervals (differs from calibration.intervals=16)
+                "calibration_status": "calibrated",
+                "calibration": {
+                    "intervals": 16,
+                    "download_seconds": 10.0,
+                    "extract_seconds_per_interval": 0.5,
+                    "group_seconds_per_frame": 0.0,
+                    "read_frame_seconds": 25.0,  # 20 * 25 + 20 = 520s > 420s safe_budget (ordinary 9*25+20=245s would pass!)
+                    "estimated_total_seconds": 200.0,
+                },
+            }
+            with (
+                patch.object(screen_ocr, "sample_slides", return_value=cal_sample),
+                patch.object(screen_ocr, "extract", side_effect=AssertionError("calibrated overlay should be rejected")),
+            ):
+                res_cal = youtube_host._screen_result(staged, "auto", SOURCE, ["yt-dlp"], 160.0)
+        self.assertEqual(res_cal["state"], "fallback")
+        self.assertEqual(res_cal["result"], "timeout")
+        self.assertGreater(res_cal["estimated_seconds"], 500.0)
+
+        # _calibrate_full_scan(profile="overlay") directly records ocr_frame_ratio_assumed=1.0
+        with tempfile.TemporaryDirectory() as folder:
+            work = Path(folder)
+
+            def fake_cal_run(scan, args, step, **kwargs):
+                output = Path(args[-1])
+                output.write_bytes(_gray_png_grid(160, 90, {}))
+                return SimpleNamespace(stdout="", stderr="")
+
+            with (
+                patch.object(screen_ocr, "_measure_download_seconds", return_value=1.0),
+                patch.object(screen_ocr.Scan, "run", autospec=True, side_effect=fake_cal_run),
+                patch.object(screen_ocr, "_frames", return_value=[]),
+                patch.object(screen_ocr, "_group_frames", return_value=[]),
+                patch.object(screen_ocr, "_read_frame", return_value=[]),
+            ):
+                cal = screen_ocr._calibrate_full_scan(
+                    "ffmpeg", object(),
+                    {"url": "https://media.example/1080.mp4", "height": 1080, "filesize": 10_000_000, "http_headers": {}},
+                    128.0, 32, "", work, profile="overlay",
+                )
+        self.assertEqual(cal["ocr_frame_ratio_assumed"], 1.0)
+        self.assertEqual(cal["ocr_frames_estimated"], 16)
+
     def test_fm2_extract_records_overlay_profile_in_status(self):
         """screen_ocr.extract(profile='overlay') records profile='overlay' in returned status."""
         with tempfile.TemporaryDirectory() as folder:
@@ -415,11 +465,13 @@ class GlossDedupTests(unittest.TestCase):
         self.assertIsNotNone(res2)
         self.assertEqual(res2[1], "（注：把房子和地面松开）")
 
-        # Non-definitional prefixes like 指标 / 表示 must NOT be falsely suppressed
+        # Non-definitional prefixes like 指标 / 表示 / 指的方向 must NOT be falsely suppressed
         block3 = "这里需要考虑偏度。偏度指标很高。"
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block3, "偏度", "涨跌分布够不够对称"))
         block4 = "市场紧盯美联储动向。美联储表示将加息。"
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block4, "美联储", "美国中央银行"))
+        block5 = "先看指针。指针指的方向是北。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block5, "指针", "用来显示方向或读数的细杆"))
 
     def test_fm3_rule_b_skips_preceding_clause_echo(self):
         block = "人们往往先划一条多少有些任意的风险线，比如防洪里常用的 1-percent storm；地震规范也是同一思路。"
@@ -435,9 +487,11 @@ class GlossDedupTests(unittest.TestCase):
         block_common = "构建投资组合时会画出有效前沿。"
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block_common, "有效前沿", "投资组合的最优边界"))
 
-        # Negated preceding clause must NOT suppress gloss
+        # Negated preceding clause (adjacent or with intervening words) must NOT suppress gloss
         block_neg = "这不是衡量分布是否对称的偏度。"
         self.assertIsNotNone(rrn._resolve_gloss_insertion(block_neg, "偏度", "衡量分布是否对称的统计量"))
+        block_neg2 = "这并不是在衡量分布是否对称的偏度。"
+        self.assertIsNotNone(rrn._resolve_gloss_insertion(block_neg2, "偏度", "衡量分布是否对称的统计量"))
 
         # Protected-anchor fallback path must obey Invariant #7
         block_fallback = "先看 `偏度`。这个数值很高。"

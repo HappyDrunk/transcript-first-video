@@ -49,12 +49,12 @@ _TAIL_EXPLAINED_RE = re.compile(
 _HEAD_EXPLAINED_RE = re.compile(r"(?:也就是(?:所谓)?|叫做|称为|称作|简称|(?<=[，,：:])\s*即)[“「『]?$")
 _NEXT_SENT_PREFIX_RE = re.compile(r"^\s*(?:这个|所谓|而|其中)?\s*")
 _NEXT_SENT_DEF_RE = re.compile(
-    r"\s*(?:衡量|是指|指的是|就是指|指的|意思是|定义为|定义是"
+    r"\s*(?:衡量|是指|指的是|就是指|意思是|定义为|定义是"
     r"|用来(?:衡量|描述|表示|刻画|说明)|描述的是|表示的是|代表的是|反映的是)"
 )
 _SENTENCE_END_PUNCT_RE = re.compile(r"[。！？!?.]+(?:[”’」』\"' \t]*)")
 _CLAUSE_DELIMITERS = "，,。；;：！？、（）()\n"
-_NEGATION_PREFIX_RE = re.compile(r"(?:不是|并非|并不|非|不)$")
+_NEGATION_RE = re.compile(r"(?:并不是|不是|并非|并不|不太|绝非|无|没|非|不)")
 _GLOSS_ECHO_MIN_CJK = 4
 _GLOSS_ECHO_MIN_RATIO = 0.50
 DISCREPANCY_TYPE1 = re.compile(r"^(?:字幕|画面)写作\s*[:：]?\s*.+?[，,]\s*实为\s*[:：]?\s*\S.*$")
@@ -306,7 +306,7 @@ def _gloss_echoes_preceding_clause(block_text: str, start: int, gloss: str) -> b
     common_cjk, match_start = _longest_common_cjk_substring(pre, gloss_clean)
     if common_cjk < _GLOSS_ECHO_MIN_CJK or (common_cjk / gloss_cjk) < _GLOSS_ECHO_MIN_RATIO:
         return False
-    if match_start > 0 and _NEGATION_PREFIX_RE.search(pre[:match_start]):
+    if match_start > 0 and _NEGATION_RE.search(pre[:match_start]):
         return False
     return True
 
