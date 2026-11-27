@@ -959,8 +959,7 @@ def render_job(
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
         self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
-        screen = status.get("screen_ocr")
-        screen_unread = isinstance(screen, dict) and screen.get("state") == "fallback" and screen.get("result") != "not_found"
+        screen_unread = rules.screen_unread(status.get("screen_ocr"))
         try:
             reading_level = knowledge_note.read_reading_level(status)
             verify_note.check_closing_heading_pair(note, reading_level)

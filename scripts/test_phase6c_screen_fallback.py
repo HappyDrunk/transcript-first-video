@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the reading notice for screen OCR fallback and its doc contract."""
+"""Exercise the screen OCR fallback notice, absence guard, and doc contract."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import verify_note
 from render_reading_note import render_job, render_note
 from test_phase6_render_contract import _make_note
 from test_render_reading_note import ROOT, write_job
@@ -88,7 +89,7 @@ class ScreenFallbackTests(unittest.TestCase):
                 "专名、检索术语和口述代码标识符保留原拼写",
                 "严禁自行补全；画面识别失败时改写“口述未给出”",
             )),
-            ("review-guide.md", ("等读者向边界说明；画面识别失败时勿断言画面没有",)),
+            ("review-guide.md", ("等读者向边界说明",)),
         ):
             with self.subTest(filename=filename):
                 raw = (ROOT / "references" / filename).read_bytes()
@@ -96,6 +97,96 @@ class ScreenFallbackTests(unittest.TestCase):
                 document = raw.decode("utf-8")
                 for phrase in phrases:
                     self.assertIn(phrase, document)
+                if filename == "review-guide.md":
+                    self.assertNotIn("画面识别失败时勿断言画面没有", document)
+
+
+class ScreenAbsenceGuardTests(unittest.TestCase):
+    R1 = "这次没有可用的画面识别结果，下面只根据口述整理，视频未给出可完整复制的源码。"
+    R2 = "视频未给出完整可运行代码，正文只保留讲者口述到的结构和名称。"
+    GUARD = "画面识别失败时勿断言"
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        job = Path(folder.name) / "job"
+        write_job(job)
+        self.transcript = job / "transcript.txt"
+        self.status_path = job / "status.json"
+        self.original_status = self.status_path.read_text(encoding="utf-8")
+        self.fallback_status = json.dumps({
+            **json.loads(self.original_status),
+            "screen_ocr": {"requested_mode": "auto", "state": "fallback"},
+        })
+        self.status_path.write_text(self.fallback_status, encoding="utf-8")
+
+    def _note(self, content: str, **kwargs) -> str:
+        return _make_note(f"## 话题\n\n先检查标签。 ⏱ 00:20\n\n{content}", **kwargs).replace(
+            "transcript_path: transcript.txt", f"transcript_path: {self.transcript.as_posix()}",
+        )
+
+    def test_fallback_without_result_rejects_screen_absence_claims(self):
+        for claim, hit in (
+            (self.R1, "视频未给出"),
+            (self.R2, "视频未给出"),
+            (f"> [!warning]\n> {self.R2}", "视频未给出"),
+            ("视频未给出 `main.py` 源码", "视频未给出"),
+            ("画面上没有代码", "画面上没有代码"),
+            ("屏幕中无任何命令", "屏幕中无任何"),
+            ("视频中并未展示", "视频中并未展示"),
+            ("视频画面中未出现", "画面中未出现"),
+        ):
+            with self.subTest(claim=claim):
+                result = verify_note.verify(self.transcript, self._note(claim), job=True)
+                c04b = "\n".join(reason for reason in result["reasons"] if reason.startswith("C04b FAIL:"))
+                self.assertIn(f"话题: {self.GUARD}视频/画面没有某内容（「{hit}」）；改写为“口述未给出…”", c04b)
+
+    def test_fallback_allows_quotes_code_and_transcript_boundaries(self):
+        for claim in (
+            f"```text\n{self.R2}\n```",
+            f"> [!warning]\n> ```text\n> {self.R2}\n> ```",
+            f"讲者说：“{self.R2}”",
+            f"说明：{self.R2}",
+            "视频说明了没有提供代码",
+            "讲者提到没有公开源码",
+            FALLBACK_NOTICE,
+            f"{FALLBACK_NOTICE}代码。",
+            "口述未给出",
+            "视频未展开",
+            "视频没有提到",
+            "画面无法识别",
+            "画面没能识别",
+            "这次没有可用的画面识别结果",
+        ):
+            with self.subTest(claim=claim):
+                result = verify_note.verify(self.transcript, self._note(claim), job=True)
+                self.assertNotIn(self.GUARD, "\n".join(result["reasons"]))
+
+    def test_fallback_allows_end_evidence(self):
+        note = self._note("", evidence=f"> [00:20] {self.R2}\n")
+        result = verify_note.verify(self.transcript, note, job=True)
+        self.assertNotIn(self.GUARD, "\n".join(result["reasons"]))
+
+    def test_guard_is_off_without_a_failed_screen_reading_job(self):
+        not_found = json.loads(self.fallback_status)
+        not_found["screen_ocr"]["result"] = "not_found"
+        for case, status in (
+            ("not_found", json.dumps(not_found)),
+            ("no screen_ocr", self.original_status),
+            ("invalid JSON", "{"),
+        ):
+            self.status_path.write_text(status, encoding="utf-8")
+            for claim in (self.R1, self.R2):
+                with self.subTest(case=case, claim=claim):
+                    result = verify_note.verify(self.transcript, self._note(claim), job=True)
+                    self.assertNotIn(self.GUARD, "\n".join(result["reasons"]))
+
+        self.status_path.write_text(self.fallback_status, encoding="utf-8")
+        transcript = self.transcript.read_text(encoding="utf-8")
+        for claim in (self.R1, self.R2):
+            with self.subTest(case="verify_text", claim=claim):
+                result = verify_note.verify_text(self._note(claim), transcript)
+                self.assertNotIn(self.GUARD, "\n".join(result["reasons"]))
 
 
 if __name__ == "__main__":
