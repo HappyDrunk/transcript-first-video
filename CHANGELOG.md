@@ -4,14 +4,6 @@ This repository is the portable gate and skill. A production host may live in an
 
 ## Unreleased
 
-- **Screen-reading fallback guard** shares the reading-note notice's condition. When `screen_ocr.state` is `fallback` and `result` differs from `not_found`, C04b fails body prose that asserts the video or screen lacks content (e.g. 「视频未给出…代码」) and asks for 「口述未给出」.
-- The **blind pairwise eval** counted all 7 pairs as recorded. Overall **3W/1T/3L**. With working screen text, **2W/0T/0L**. Without usable screen text, **1W/1T/3L**. Each pair had one judge, and single-pair results are within judge noise.
-- **Known limits**
-  1. Under the 420 s budget, dense live-coding long videos fall back to transcript-only as a whole.
-  2. Fluency 0/10 is a deliberate trade for a checkable study note.
-  3. Same-kind absence claims outside the guard's wording can still appear.
-  4. Picture-in-picture talk slides (e.g. TED) can contain visible text and still return `not_found` with no fallback notice.
-
 - Coverage C checks the note against the inventory the job already wrote (C01–C03: inventory present, quartile spread, at least 9/10 of those rows). It does not prove the inventory was complete against the full transcript. A thin inventory can still pass. The gate stops "wrote an inventory and then ignored it," not "under-extracted at inventory time." A long job may print `C WARN` when the row count is under one line per 10 minutes, or lower than the `chunks/NN.txt` count. That warning does not change pass/fail and does not loosen C01–C04. Documented in `scripts/README.md` and `references/rules.md`. R01–R17 and Hall thresholds are unchanged. This is not a 9 score.
 - Mechanical held-out receipt: `evals/results/held_out_mechanical_receipt.md`. Ten YouTube videos, verify 10/10, Coverage C 10/10, measured 2026-11-04T20:06:06-0800. Draft gold was assistant-proposed and not user-signed. Hall `skill_hallucinations_per_note` / `skill_core_recall` against signed gold was not completed. `held_out_nine_claimed=false`. Draft-gold overlap figures in that file are circular with the inventory and are not the hall≤0.2 / recall≥0.85 bar. A signed or blind gold held-out, with hall and recall scored against that gold, is still required before any 9 claim. This is not 冲9 and not a held-out 9.
 - Good fixtures under `evals/good/` are rewritten in the chair-example voice. Each section explains that section's own quote in plain words (why, what, and the benefit) and no longer pads with 「这里要守住的是」, 「单独留在这一节」, or "Keep X, Y, and Z in this claim". `good_zh_03` puts the cheap-plan limit under 翻车或别用 and the ask-three-customers line under 今天立刻动手一步. The four long notes quote different stretches of the long pricing transcript. R01–R17 and Coverage C are unchanged. This is not a held-out score.
@@ -22,6 +14,16 @@ This repository is the portable gate and skill. A production host may live in an
 - Coverage gate C (`scripts/coverage_check.py`) always runs after verify and before finished or delivery. It is not opt-in. The human bar is 9/10 detail depth and 9/10 summary completeness. Both count. The script does not score 9/10 and does not call a model. On a video longer than 5 minutes it refuses a missing inventory (C01), quotes in fewer than 3 quartiles (C02), or fewer than 9/10 of the inventory lines (C03, at least 3). `--delivery` refuses a Feishu or chat body under 0.9× the local prose letter count (C04). A thin grounded stub fails. A full-arc note passes. At or under 5 minutes, C01–C03 are skipped and the command still runs. `scripts/test_coverage_check.py` is on the offline smoke path and in CI. R01–R17 and Hall thresholds are unchanged. Spotcheck stays human.
 - `SKILL.md` hard gates no longer name eval-set people, works, mechanisms, or ordinal frames, and no longer paste the Hall J scoreboard. The receipt stays in `evals/results/hall_j_retest_receipt.md`. `test_no_overfit.py` scans `SKILL.md` and `references/note-examples.md` as well as `scripts/`. The 1.0.0 Hall J run used in-distribution eval notes. A held-out set is still required before a 9 claim. That run is not a completed 冲9. R01–R17 and coverage C are unchanged.
 - R17 requires same-section overlap. Same-script prose must share at least three content tokens with that section's quotes, and a number in the prose must be in those quotes. A swapped quote fails. `evals/good/good_en_*` and `good_zh_*` (and the long English notes) were rewritten so each claim sits on its own quote, without the repeated boilerplate sentence. `references/note-examples.md` has two synthetic good notes and three bad ones (quote swap, invented vehicle, title-as-watch). R01–R16 were not loosened. Coverage C is unchanged. This is not a 9 score.
+
+## v1.1.0 — 2026-11-27
+
+- **Screen-reading fallback guard** shares the reading-note notice's condition. When `screen_ocr.state` is `fallback` and `result` differs from `not_found`, C04b fails body prose that asserts the video or screen lacks content (e.g. 「视频未给出…代码」) and asks for 「口述未给出」.
+- The **blind pairwise eval** counted all 7 pairs as recorded. Overall **3W/1T/3L**. With working screen text, **2W/0T/0L**. Without usable screen text, **1W/1T/3L**. Each pair had one judge, and single-pair results are within judge noise.
+- **Known limits**
+  1. Under the 420 s budget, dense live-coding long videos fall back to transcript-only as a whole.
+  2. Fluency 0/10 is a deliberate trade for a checkable study note.
+  3. Same-kind absence claims outside the guard's wording can still appear (including rare colon/conjunction clause-scope edge cases accepted under G-09).
+  4. Picture-in-picture talk slides (e.g. TED) can contain visible text and still return `not_found` with no fallback notice.
 
 ## 1.0.0 — 2026-11-05
 

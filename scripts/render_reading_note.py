@@ -807,7 +807,7 @@ def render_note(
             SPOKEN_CODE_NOTICE if has_spoken_code else None,
             "正文中「（注：…）」为整理者补充的极短术语解释，非视频原话" if gloss_count else None,
             "人名 " + "、".join(names) + " 按自动字幕转写，未经画面核对" if names else None,
-            "画面文字未能识别，本文仅据语音整理，未写到的画面内容不代表视频没有" if screen_unread else None,
+            rules.SCREEN_FALLBACK_NOTICE if screen_unread else None,
         )
         if part is not None
     ]

@@ -12,9 +12,9 @@ import verify_note
 from render_reading_note import render_job, render_note
 from test_phase6_render_contract import _make_note
 from test_render_reading_note import ROOT, write_job
+from verify_rules import SCREEN_FALLBACK_NOTICE as FALLBACK_NOTICE
 
 
-FALLBACK_NOTICE = "画面文字未能识别，本文仅据语音整理，未写到的画面内容不代表视频没有"
 NOTE = _make_note("## 话题\n\n先检查标签。 ⏱ 00:20").encode("utf-8")
 BASELINE = """\
 # 整理种子盒
