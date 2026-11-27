@@ -376,11 +376,12 @@ def is_fence_close(raw: str, ch: str, min_len: int) -> bool:
 _TABLE_SEP = re.compile(r"^[ \t]*\|?[\s:-]+\|[\s|:-]*$")
 _MARKDOWN_LINK_SPAN = re.compile(r"\[[^\]\n]+\]\([^)\n]+\)")
 _READER_FILLER = re.compile(r"若还记得|如果还记得|口播当时")
+SCREEN_FALLBACK_NOTICE = "画面文字未能识别，本文仅据语音整理，未写到的画面内容不代表视频没有"
 _SCREEN_ABSENCE = re.compile(
     r"(?:(?:视频|画面|屏幕|幻灯片|界面)(?:里|中|上|内)?|演示(?:里|中|上|内))(?:并|也|始终|全程|都|均|根本)?"
     r"(?:未曾|未|没有|没|无|不含|不包含)"
     r"(?:给出|出现|展示|显示|提供|包含|附上|附|贴出|放出|写出|列出|可见"
-    r"|任何|完整|可运行|可复制|代码|源码|命令)"
+    r"|任何|完整(?!识别|读出|读取|提取|解析|辨认|展开)|可运行|可复制|代码|源码|命令)"
 )
 _DIRECT_QUOTE = re.compile(r'「[^」]*」|『[^』]*』|“[^”]*”|"[^"]*"')
 _CODE_IDENT = re.compile(r"(?<![A-Za-z0-9_])([a-z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(\s*\()?")
@@ -2056,11 +2057,9 @@ def c04b_trace(ctx: RuleContext) -> tuple[str, bool, str]:
             for part in chain(prose, ("\n".join(block) for block in section.blocks)):
                 part = re.sub(r"(?m)^ {0,3}>[ \t]?", "", part)
                 clean = _DIRECT_QUOTE.sub(" ", _strip_code(part)).replace("**", "").replace("__", "")
-                for line in clean.splitlines():
-                    if line.lstrip().startswith("说明："):
-                        continue
+                for line in clean.replace(SCREEN_FALLBACK_NOTICE, " ").splitlines():
                     for hit in _SCREEN_ABSENCE.finditer(line):
-                        prefix = re.split(r'[，。；！？,.;!?]', line[:hit.start()])[-1]
+                        prefix = re.split(r'[，。；！？：:,.;!?]|但是|但|不过|然而|却|可是', line[:hit.start()])[-1]
                         if re.search(r"无法判定|无法确认|无法判断|不能判定|不能确认|不确定|不代表|不表示|不等于|不说明|不意味着|并非|未必", prefix):
                             continue
                         issues.append(f"{section.heading}: 画面识别失败时勿断言视频/画面没有某内容（「{hit.group(0)}」）；改写为“口述未给出…”")
