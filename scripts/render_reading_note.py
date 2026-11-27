@@ -744,6 +744,7 @@ def render_note(
     reading_level: str | None = None,
     delivery_language: str | None = None,
     inline_terms: bool = False,
+    screen_unread: bool = False,
 ) -> bytes:
     if reading_level is not None and reading_level not in knowledge_note.READING_LEVELS:
         raise RenderError(f"invalid reading_level: {reading_level!r}")
@@ -806,6 +807,7 @@ def render_note(
             SPOKEN_CODE_NOTICE if has_spoken_code else None,
             "正文中「（注：…）」为整理者补充的极短术语解释，非视频原话" if gloss_count else None,
             "人名 " + "、".join(names) + " 按自动字幕转写，未经画面核对" if names else None,
+            "画面文字未能识别，本文仅据语音整理，未写到的画面内容不代表视频没有" if screen_unread else None,
         )
         if part is not None
     ]
@@ -957,6 +959,8 @@ def render_job(
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
         self_review = review is not None and status.get("review", {}).get("reviewer") == "self"
+        screen = status.get("screen_ocr")
+        screen_unread = isinstance(screen, dict) and screen.get("state") == "fallback" and screen.get("result") != "not_found"
         try:
             reading_level = knowledge_note.read_reading_level(status)
             verify_note.check_closing_heading_pair(note, reading_level)
@@ -969,6 +973,7 @@ def render_job(
             reading_level=reading_level,
             delivery_language=delivery_language,
             inline_terms=inline_terms,
+            screen_unread=screen_unread,
         )
         if output is None:
             output = reading_path(output_dir, job, note)
