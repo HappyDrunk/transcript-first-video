@@ -135,6 +135,8 @@ class ScreenAbsenceGuardTests(unittest.TestCase):
             ("屏幕中无任何命令", "屏幕中无任何"),
             ("视频中并未展示", "视频中并未展示"),
             ("视频画面中未出现", "画面中未出现"),
+            ("演示中未出现源码", "演示中未出现"),
+            ("**视频**没有提供代码", "视频没有提供"),
         ):
             with self.subTest(claim=claim):
                 result = verify_note.verify(self.transcript, self._note(claim), job=True)
@@ -144,6 +146,7 @@ class ScreenAbsenceGuardTests(unittest.TestCase):
     def test_fallback_allows_quotes_code_and_transcript_boundaries(self):
         for claim in (
             f"```text\n{self.R2}\n```",
+            f"> ```text\n> {self.R2}\n> ```",
             f"> [!warning]\n> ```text\n> {self.R2}\n> ```",
             f"讲者说：“{self.R2}”",
             f"说明：{self.R2}",
@@ -157,6 +160,10 @@ class ScreenAbsenceGuardTests(unittest.TestCase):
             "画面无法识别",
             "画面没能识别",
             "这次没有可用的画面识别结果",
+            "只凭口述无法判定视频没有提供代码",
+            "不代表这段视频没有给出源码",
+            "接下来演示没有代码基础也能完成的流程",
+            "演示未完整展开",
         ):
             with self.subTest(claim=claim):
                 result = verify_note.verify(self.transcript, self._note(claim), job=True)
@@ -172,6 +179,7 @@ class ScreenAbsenceGuardTests(unittest.TestCase):
         not_found["screen_ocr"]["result"] = "not_found"
         for case, status in (
             ("not_found", json.dumps(not_found)),
+            ("ok", json.dumps({**not_found, "screen_ocr": {"state": "ok"}})),
             ("no screen_ocr", self.original_status),
             ("invalid JSON", "{"),
         ):
