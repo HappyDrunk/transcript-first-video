@@ -438,6 +438,18 @@ class SampleTests(unittest.TestCase):
         self.assertEqual(result["result"], "not_found")
         self.assertNotIn("probe_failures", result)
 
+    def test_failed_duplicate_probe_keeps_earlier_success_at_same_timestamp(self):
+        fault = screen_ocr.ScreenError(self.TRANSIENT)
+        status, commands, windows, _ = self.trial(
+            iter((False,) * 3), failures={1: [None, None, fault, fault]},
+            stream_info={"duration": 3},
+        )
+
+        self.assertEqual(self.probe_calls(commands), [0, 1, 1, 1, 1])
+        self.assertEqual(windows, [0, 1, 1])
+        self.assertEqual(status["result"], "not_found")
+        self.assertNotIn("probe_failures", status)
+
     def test_non_retryable_sample_errors_stop_probe(self):
         for fault, outcome in (
             (screen_ocr.ScreenError("Server returned 403 Forbidden"), "error"),

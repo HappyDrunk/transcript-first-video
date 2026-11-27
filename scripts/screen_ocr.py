@@ -1073,9 +1073,10 @@ def sample_slides(
                     at, qualifies = probe_position(fraction)
                 except _TransientSampleFrameError as exc:
                     last_probe_error = exc.error
-                    status.setdefault("probe_failures", []).append({
-                        "at": exc.at, "reason": re.sub(r"\w+://\S+", "<URL>", str(exc)),
-                    })
+                    if exc.at not in probed_ats:
+                        status.setdefault("probe_failures", []).append({
+                            "at": exc.at, "reason": re.sub(r"\w+://\S+", "<URL>", str(exc)),
+                        })
                     continue
                 if qualifies:
                     status["result"] = "slides_detected"
