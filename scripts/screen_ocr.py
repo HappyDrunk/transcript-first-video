@@ -78,8 +78,13 @@ _OCR_WORKER = "tfv-rapidocr"
 _sleep = time.sleep
 
 _TRANSIENT_FFMPEG = re.compile(
-    r"Connection (?:timed out|reset|refused)|Operation timed out|End of file|I/O error|"
-    r"Network is unreachable|Temporary failure|Server returned 5\d\d",
+    r"Server returned 5(?:\d\d|XX)|(?:Input/output|I/O) error|"
+    r"Connection (?:timed out|reset|refused)|Operation timed out|Error number -138|"
+    r"End of file|Network is unreachable|Temporary failure",
+    re.IGNORECASE,
+)
+_NON_RETRYABLE_HTTP = re.compile(
+    r"\b(?:HTTP (?:error )?|Server returned )(?:403|404)\b",
     re.IGNORECASE,
 )
 _SHOWINFO = re.compile(
@@ -234,9 +239,15 @@ class Scan:
             if time.monotonic() > frame_deadline:
                 raise FrameTimeout("RapidOCR timed out")
         if result.returncode:
-            lines = (result.stderr or result.stdout).splitlines()
-            detail = lines[-1].strip() if lines else f"exit {result.returncode}"
-            raise ScreenError(f"{step} failed: {detail}")
+            lines = (result.stderr or result.stdout).rstrip().splitlines()
+            detail = lines[-1] if lines else f"exit {result.returncode}"
+            if result.stderr and len(lines) > 1:
+                # A trailing output error can mask a failure during input decoding.
+                detail = (
+                    next((line for line in lines if _NON_RETRYABLE_HTTP.search(line)), None)
+                    or next((line for line in reversed(lines) if _TRANSIENT_FFMPEG.search(line)), detail)
+                )
+            raise ScreenError(f"{step} failed: {detail.strip()}")
         return result
 
     def probe(self, versions: dict[str, str]) -> str:
@@ -1015,24 +1026,23 @@ def sample_slides(
                     except ScreenError as exc:
                         message = str(exc)
                         if (not _TRANSIENT_FFMPEG.search(message)
-                                or re.search(r"\b(?:HTTP (?:error )?|Server returned )(?:403|404)\b",
-                                             message, re.IGNORECASE)):
+                                or _NON_RETRYABLE_HTTP.search(message)):
                             raise
                         for path in work.glob(f"{at:04d}-*.jpg"):
                             path.unlink()
-                        steady_pairs = pair_durations[1:] if len(pair_durations) >= 2 else pair_durations
-                        mean_pair = sum(steady_pairs) / len(steady_pairs) if steady_pairs else 0.0
-                        left = scan.budget - (time.monotonic() - scan.started)
-                        retry_budget = (
-                            AUTO_SAMPLE_RETRY_BACKOFF + max(1.5 * mean_pair, 8.0)
-                            + AUTO_SAMPLE_CLEANUP_SECONDS
-                        )
-                        if attempt == AUTO_SAMPLE_PROBE_ATTEMPTS or left <= retry_budget:
-                            raise _TransientSampleFrameError(at, exc) from exc
-                        _sleep(AUTO_SAMPLE_RETRY_BACKOFF)
-                        started = time.monotonic()
-                    else:
-                        break
+                        if attempt < AUTO_SAMPLE_PROBE_ATTEMPTS:
+                            try:
+                                left = scan.remaining()
+                            except ScreenTimeout:
+                                left = 0.0
+                            steady_pairs = pair_durations[1:] if len(pair_durations) >= 2 else pair_durations
+                            mean_pair = sum(steady_pairs) / len(steady_pairs) if steady_pairs else 0.0
+                            if left > AUTO_SAMPLE_RETRY_BACKOFF + max(1.5 * mean_pair, 8.0):
+                                _sleep(AUTO_SAMPLE_RETRY_BACKOFF)
+                                started = time.monotonic()
+                                continue
+                        raise _TransientSampleFrameError(at, exc) from exc
+                    break
                 extract_elapsed = time.monotonic() - started
                 paths = sorted(work.glob(f"{at:04d}-*.jpg"))
                 if paths and math.isfinite(extract_elapsed) and extract_elapsed > 0:
@@ -1051,6 +1061,10 @@ def sample_slides(
                 scan.remaining()
                 probed_ats.add(at)
                 status["groups_checked"] += 1
+                if failures := status.get("probe_failures"):
+                    failures[:] = [item for item in failures if item["at"] != at]
+                    if not failures:
+                        del status["probe_failures"]
                 return at, qualifies
 
             last_probe_error = None

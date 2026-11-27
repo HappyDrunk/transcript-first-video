@@ -1,6 +1,6 @@
 # Review guide
 
-Reviewer-required guidance for an independent Task or the self-review fallback.
+Required for an independent Task or self-review.
 
 ## Independent semantic review
 
