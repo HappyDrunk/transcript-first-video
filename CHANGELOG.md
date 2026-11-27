@@ -15,6 +15,16 @@ This repository is the portable gate and skill. A production host may live in an
 - `SKILL.md` hard gates no longer name eval-set people, works, mechanisms, or ordinal frames, and no longer paste the Hall J scoreboard. The receipt stays in `evals/results/hall_j_retest_receipt.md`. `test_no_overfit.py` scans `SKILL.md` and `references/note-examples.md` as well as `scripts/`. The 1.0.0 Hall J run used in-distribution eval notes. A held-out set is still required before a 9 claim. That run is not a completed 冲9. R01–R17 and coverage C are unchanged.
 - R17 requires same-section overlap. Same-script prose must share at least three content tokens with that section's quotes, and a number in the prose must be in those quotes. A swapped quote fails. `evals/good/good_en_*` and `good_zh_*` (and the long English notes) were rewritten so each claim sits on its own quote, without the repeated boilerplate sentence. `references/note-examples.md` has two synthetic good notes and three bad ones (quote swap, invented vehicle, title-as-watch). R01–R16 were not loosened. Coverage C is unchanged. This is not a 9 score.
 
+## v1.1.0 — 2026-11-27
+
+- **Screen-reading fallback guard** shares the reading-note notice's condition. When `screen_ocr.state` is `fallback` and `result` differs from `not_found`, C04b fails body prose that asserts the video or screen lacks content (e.g. 「视频未给出…代码」) and asks for 「口述未给出」.
+- The **blind pairwise eval** counted all 7 pairs as recorded. Overall **3W/1T/3L**. With working screen text, **2W/0T/0L**. Without usable screen text, **1W/1T/3L**. Each pair had one judge, and single-pair results are within judge noise.
+- **Known limits**
+  1. Under the 420 s budget, dense live-coding long videos fall back to transcript-only as a whole.
+  2. Fluency 0/10 is a deliberate trade for a checkable study note.
+  3. Same-kind absence claims outside the guard's wording can still appear (including rare colon/conjunction clause-scope edge cases accepted under G-09).
+  4. Picture-in-picture talk slides (e.g. TED) can contain visible text and still return `not_found` with no fallback notice.
+
 ## 1.0.0 — 2026-11-05
 
 Skill and scripts, with a measured Hall J pass. R01–R16 are unchanged. The annotated tag `v1.0.0` belongs on the squash-merge commit on `main` after this section lands. Do not force-push `main`.
