@@ -59,6 +59,8 @@ AUTO_BUDGET_HEADROOM = 0.70
 AUTO_LIVE_OVERRUN_MIN_FRAMES = 4
 AUTO_SAMPLE_CLEANUP_SECONDS = 0.5
 AUTO_SAMPLE_POSITIONS = (0.10, 0.33, 0.56, 0.80)
+AUTO_SAMPLE_PROBE_ATTEMPTS = 2
+AUTO_SAMPLE_RETRY_BACKOFF = 1.0
 AUTO_MIN_CONFIDENCE = 0.80
 AUTO_MIN_LINE_LENGTH = 6
 AUTO_MIN_LINES = 3
@@ -73,7 +75,18 @@ AUTO_OVERLAY_MIN_ACTIVE_TILES = 16
 AUTO_OVERLAY_OCR_FRAME_RATIO = 1.0
 _OCR_SLOTS = BoundedSemaphore(2)
 _OCR_WORKER = "tfv-rapidocr"
+_sleep = time.sleep
 
+_TRANSIENT_FFMPEG = re.compile(
+    r"Server returned 5(?:\d\d|XX)|(?:Input/output|I/O) error|"
+    r"Connection (?:timed out|reset|refused)|Operation timed out|Error number -138|"
+    r"End of file|Network is unreachable|Temporary failure",
+    re.IGNORECASE,
+)
+_NON_RETRYABLE_HTTP = re.compile(
+    r"\b(?:HTTP (?:error )?|Server returned )(?:403|404)\b",
+    re.IGNORECASE,
+)
 _SHOWINFO = re.compile(
     r"showinfo[^]\n]*]\s+n:\s*(\d+).*?\bpts_time:\s*([\d.eE+-]+)([^\n]*)"
 )
@@ -115,6 +128,13 @@ class FrameTimeout(ScreenTimeout):
 
 class ScreenDependencyError(ScreenError):
     pass
+
+
+class _TransientSampleFrameError(ScreenError):
+    def __init__(self, at: int, error: ScreenError):
+        super().__init__(str(error))
+        self.at = at
+        self.error = error
 
 
 def failure_result(exc: Exception) -> str:
@@ -219,9 +239,15 @@ class Scan:
             if time.monotonic() > frame_deadline:
                 raise FrameTimeout("RapidOCR timed out")
         if result.returncode:
-            lines = (result.stderr or result.stdout).splitlines()
-            detail = lines[-1].strip() if lines else f"exit {result.returncode}"
-            raise ScreenError(f"{step} failed: {detail}")
+            lines = (result.stderr or result.stdout).rstrip().splitlines()
+            detail = lines[-1] if lines else f"exit {result.returncode}"
+            if result.stderr and len(lines) > 1:
+                # A trailing output error can mask a failure during input decoding.
+                detail = (
+                    next((line for line in lines if _NON_RETRYABLE_HTTP.search(line)), None)
+                    or next((line for line in reversed(lines) if _TRANSIENT_FFMPEG.search(line)), detail)
+                )
+            raise ScreenError(f"{step} failed: {detail.strip()}")
         return result
 
     def probe(self, versions: dict[str, str]) -> str:
@@ -987,11 +1013,36 @@ def sample_slides(
                 result_path = work / f"{at:04d}-%02d.jpg"
                 pair_started = time.monotonic()
                 started = pair_started
-                scan.run([
+                args = [
                     ffmpeg, "-y", "-hide_banner", "-nostdin", "-loglevel", "error",
                     "-rw_timeout", "8000000", *network, "-ss", str(at), "-i", media,
                     "-t", "2", "-vf", "fps=1", "-an", "-q:v", "3", str(result_path),
-                ], "FFmpeg sample frames")
+                ]
+                for attempt in range(1, AUTO_SAMPLE_PROBE_ATTEMPTS + 1):
+                    try:
+                        scan.run(args, "FFmpeg sample frames")
+                    except (ScreenTimeout, ScreenDependencyError):
+                        raise
+                    except ScreenError as exc:
+                        message = str(exc)
+                        if (not _TRANSIENT_FFMPEG.search(message)
+                                or _NON_RETRYABLE_HTTP.search(message)):
+                            raise
+                        for path in work.glob(f"{at:04d}-*.jpg"):
+                            path.unlink()
+                        if attempt < AUTO_SAMPLE_PROBE_ATTEMPTS:
+                            try:
+                                left = scan.remaining()
+                            except ScreenTimeout:
+                                left = 0.0
+                            steady_pairs = pair_durations[1:] if len(pair_durations) >= 2 else pair_durations
+                            mean_pair = sum(steady_pairs) / len(steady_pairs) if steady_pairs else 0.0
+                            if left > AUTO_SAMPLE_RETRY_BACKOFF + max(1.5 * mean_pair, 8.0):
+                                _sleep(AUTO_SAMPLE_RETRY_BACKOFF)
+                                started = time.monotonic()
+                                continue
+                        raise _TransientSampleFrameError(at, exc) from exc
+                    break
                 extract_elapsed = time.monotonic() - started
                 paths = sorted(work.glob(f"{at:04d}-*.jpg"))
                 if paths and math.isfinite(extract_elapsed) and extract_elapsed > 0:
@@ -1010,14 +1061,29 @@ def sample_slides(
                 scan.remaining()
                 probed_ats.add(at)
                 status["groups_checked"] += 1
+                if failures := status.get("probe_failures"):
+                    failures[:] = [item for item in failures if item["at"] != at]
+                    if not failures:
+                        del status["probe_failures"]
                 return at, qualifies
 
+            last_probe_error = None
             for fraction in AUTO_SAMPLE_POSITIONS:
-                at, qualifies = probe_position(fraction)
+                try:
+                    at, qualifies = probe_position(fraction)
+                except _TransientSampleFrameError as exc:
+                    last_probe_error = exc.error
+                    if exc.at not in probed_ats:
+                        status.setdefault("probe_failures", []).append({
+                            "at": exc.at, "reason": re.sub(r"\w+://\S+", "<URL>", str(exc)),
+                        })
+                    continue
                 if qualifies:
                     status["result"] = "slides_detected"
                     hit_at = at
                     break
+            if status["groups_checked"] == 0 and last_probe_error is not None:
+                raise last_probe_error
             if status["result"] != "slides_detected":
                 counted = _counted_overlay_positions(scan.overlay_evidence)
                 if len(counted) < AUTO_OVERLAY_MIN_POSITIONS:
@@ -1062,6 +1128,11 @@ def sample_slides(
                     status["calibration_reason"] = _sanitize_calibration_reason(str(exc), kind)
     except Exception as exc:
         status.update(result=failure_result(exc), reason=re.sub(r"\w+://\S+", "<URL>", str(exc)))
+    if status["result"] == "not_found" and status.get("probe_failures"):
+        status["result"] = "error"
+        status["reason"] = (
+            f"FFmpeg sample frames failed at {len(status['probe_failures'])}/{len(AUTO_SAMPLE_POSITIONS)} positions"
+        )
     if scan.frame_ocr_times:
         status["mean_frame_ocr_seconds"] = round(
             sum(scan.frame_ocr_times) / len(scan.frame_ocr_times), 6

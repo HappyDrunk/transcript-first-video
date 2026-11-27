@@ -178,8 +178,10 @@ class ScreenHostTests(unittest.TestCase):
 
 
 class SampleTests(unittest.TestCase):
-    def trial(self, hits, *, fault=None, requested_downloads=None, forbidden_step=None, steps=None,
-              stream_info=None):
+    TRANSIENT = "FFmpeg sample frames failed: Connection timed out"
+
+    def trial(self, hits, *, failures=None, failure_wall_delay=0.0, requested_downloads=None,
+              forbidden_step=None, steps=None, stream_info=None):
         info = {"duration": 1000, "height": 480, "url": "https://media.example/track"}
         if stream_info is not None:
             info.update(stream_info)
@@ -189,20 +191,34 @@ class SampleTests(unittest.TestCase):
         commands = []
         windows = []
         budgets = []
+        failures = {at: iter(errors) for at, errors in (failures or {}).items()}
+        elapsed = 0.0
+        wall_delay = 0.0
+
+        def sleep(seconds):
+            nonlocal elapsed
+            elapsed += seconds
 
         def run(scan, args, description, **kwargs):
+            nonlocal elapsed, wall_delay
             if steps is not None:
                 steps.append(description)
             if description == forbidden_step:
                 self.fail(f"Unexpected external command: {description}")
             budgets.append(scan.budget)
             commands.append(args)
-            if fault and args[0] == "ffmpeg":
-                raise fault
             if args[0] == "ffmpeg":
                 output = Path(args[-1])
+                at = int(args[args.index("-ss") + 1])
+                partial = output.with_name(output.name.replace("%02d", "09"))
+                self.assertFalse(partial.exists(), f"Partial frame from the last attempt at {at}")
+                if (fault := next(failures.get(at, iter(())), None)) is not None:
+                    partial.write_bytes(b"incomplete image")
+                    wall_delay += failure_wall_delay
+                    raise fault
                 for frame in (1, 2):
                     output.with_name(output.name.replace("%02d", f"{frame:02d}")).write_bytes(b"image")
+                elapsed += 0.25
             return SimpleNamespace(stdout=stream)
 
         def qualify(scan, ocr, paths, height):
@@ -216,9 +232,16 @@ class SampleTests(unittest.TestCase):
             patch.object(screen_ocr.Scan, "recognize", return_value=object()),
             patch.object(screen_ocr, "_sample_pair_qualifies", create=True, side_effect=qualify),
             patch.object(screen_ocr, "getproxies", create=True, return_value={"https": "http://proxy.test:8080"}),
+            patch.object(screen_ocr.time, "monotonic", side_effect=lambda: elapsed),
+            patch.object(screen_ocr.time, "time", side_effect=lambda: elapsed + wall_delay),
+            patch.object(screen_ocr, "_sleep", side_effect=sleep),
         ):
             result = screen_ocr.sample_slides(Path(folder), SOURCE, ["fetch"], lambda: [])
         return result, commands, windows, budgets
+
+    @staticmethod
+    def probe_calls(commands):
+        return [int(args[args.index("-ss") + 1]) for args in commands if args[0] == "ffmpeg"]
 
     def test_sample_rejects_1080p_only_requested_downloads_without_480p_sample(self):
         full_format = {"url": "https://media.example/1080.mp4", "height": 1080,
@@ -310,11 +333,206 @@ class SampleTests(unittest.TestCase):
         self.assertEqual(result["result"], "not_found")
 
     def test_timed_out_media_fetch_stops_probe(self):
-        result, commands, windows, _ = self.trial(iter(()), fault=subprocess.TimeoutExpired("ffmpeg", 45))
+        result, commands, windows, _ = self.trial(
+            iter(()), failures={100: [subprocess.TimeoutExpired("ffmpeg", 45)]},
+        )
 
         self.assertEqual(result["result"], "timeout")
         self.assertEqual(len(commands), 2)
         self.assertEqual(windows, [])
+
+    def test_transient_sample_failure_retries_same_stream_and_cleans_partial_frames(self):
+        with patch.object(screen_ocr, "AUTO_OVERLAY_EXTRA_POSITIONS", ()):
+            result, commands, windows, _ = self.trial(
+                iter((False,) * 4), failures={330: [screen_ocr.ScreenError(self.TRANSIENT)]},
+            )
+
+        self.assertEqual(self.probe_calls(commands), [100, 330, 330, 560, 800])
+        self.assertEqual(sum(args[0] == "fetch" for args in commands), 1)
+        self.assertEqual(commands[2], commands[3])
+        self.assertEqual(windows, [100, 330, 560, 800])
+        self.assertEqual(result["groups_checked"], 4)
+        self.assertEqual(result["result"], "not_found")
+        self.assertNotIn("probe_failures", result)
+        self.assertEqual(result["elapsed_seconds"], 2.0)
+        self.assertLess(result["elapsed_seconds"], screen_ocr.AUTO_SAMPLE_TIMEOUT)
+
+    def test_transient_sample_failure_with_too_little_budget_does_not_retry(self):
+        result, commands, _, _ = self.trial(
+            iter((False,) * 6), failures={330: [screen_ocr.ScreenError(self.TRANSIENT)]},
+            failure_wall_delay=35.75,  # 44.5s budget - 0.25s first pair - 35.75s delay = 8.5s left.
+        )
+
+        self.assertEqual(self.probe_calls(commands).count(330), 1)
+        self.assertEqual(result["probe_failures"], [{"at": 330, "reason": self.TRANSIENT}])
+        self.assertEqual(result["result"], "error")
+
+    def test_transient_sample_retry_budget_reserves_cleanup_once(self):
+        result, commands, _, _ = self.trial(
+            iter((False, True)), failures={330: [screen_ocr.ScreenError(self.TRANSIENT)]},
+            failure_wall_delay=35.0,  # 9.25s left, with cleanup already reserved.
+        )
+
+        self.assertEqual(self.probe_calls(commands), [100, 330, 330])
+        self.assertEqual(result["result"], "slides_detected")
+
+    def test_sample_retry_classifies_ffmpeg_stderr_from_subprocess(self):
+        output_error = "Nothing was written into output file, because no packets were received"
+        forbidden = "Server returned 403 Forbidden"
+        not_found = "HTTP error 404 Not Found"
+        for stderr, permanent_error in (
+            ("Server returned 5XX Server Error reply", None),
+            ("Server returned 503 Service Unavailable", None),
+            ("Input/output error", None),
+            ("Error number -138", None),
+            (f"[demux] Error during demuxing: Input/output error\n{output_error}\n\n", None),
+            (f"{forbidden}\nInput/output error\n{output_error}", forbidden),
+            (f"Input/output error\n{not_found}\n{output_error}", not_found),
+        ):
+            with self.subTest(stderr=stderr):
+                attempts = []
+
+                def run(args, **kwargs):
+                    if args[0] == "fetch":
+                        stream = {"duration": 1000, "height": 480, "url": "https://media.example/track"}
+                        return subprocess.CompletedProcess(args, 0, stdout=json.dumps(stream), stderr="")
+                    self.assertEqual(args[0], "ffmpeg")
+                    attempts.append(int(args[args.index("-ss") + 1]))
+                    if len(attempts) == 1:
+                        return subprocess.CompletedProcess(args, 1, stdout="", stderr=stderr)
+                    output = Path(args[-1])
+                    for frame in ("01", "02"):
+                        output.with_name(output.name.replace("%02d", frame)).write_bytes(b"image")
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+                with (
+                    tempfile.TemporaryDirectory() as folder,
+                    patch.object(screen_ocr.Scan, "probe", return_value="ffmpeg"),
+                    patch.object(screen_ocr.subprocess, "run", side_effect=run),
+                    patch.object(screen_ocr.Scan, "recognize", return_value=object()),
+                    patch.object(screen_ocr, "_sample_pair_qualifies", return_value=True),
+                    patch.object(screen_ocr, "getproxies", return_value={}),
+                    patch.object(screen_ocr, "_sleep") as sleep,
+                ):
+                    result = screen_ocr.sample_slides(Path(folder), SOURCE, ["fetch"], lambda: [])
+
+                if permanent_error:
+                    self.assertEqual(attempts, [100])
+                    self.assertEqual(result["result"], "error")
+                    self.assertEqual(result["reason"], f"FFmpeg sample frames failed: {permanent_error}")
+                    sleep.assert_not_called()
+                else:
+                    self.assertEqual(attempts, [100, 100])
+                    self.assertEqual(result["result"], "slides_detected")
+                    sleep.assert_called_once_with(screen_ocr.AUTO_SAMPLE_RETRY_BACKOFF)
+                self.assertNotIn("probe_failures", result)
+
+    def test_successful_probe_clears_earlier_failure_at_same_timestamp(self):
+        result, commands, windows, _ = self.trial(
+            iter((False,) * 3), failures={1: [screen_ocr.ScreenError(self.TRANSIENT)] * 2},
+            stream_info={"duration": 3},
+        )
+
+        self.assertEqual(self.probe_calls(commands), [0, 1, 1, 1, 1])
+        self.assertEqual(windows, [0, 1, 1])
+        self.assertEqual(result["result"], "not_found")
+        self.assertNotIn("probe_failures", result)
+
+    def test_failed_duplicate_probe_keeps_earlier_success_at_same_timestamp(self):
+        fault = screen_ocr.ScreenError(self.TRANSIENT)
+        status, commands, windows, _ = self.trial(
+            iter((False,) * 3), failures={1: [None, None, fault, fault]},
+            stream_info={"duration": 3},
+        )
+
+        self.assertEqual(self.probe_calls(commands), [0, 1, 1, 1, 1])
+        self.assertEqual(windows, [0, 1, 1])
+        self.assertEqual(status["result"], "not_found")
+        self.assertNotIn("probe_failures", status)
+
+    def test_non_retryable_sample_errors_stop_probe(self):
+        for fault, outcome in (
+            (screen_ocr.ScreenError("Server returned 403 Forbidden"), "error"),
+            (screen_ocr.ScreenError("HTTP error 404 Not Found: I/O error"), "error"),
+            (screen_ocr.ScreenTimeout(self.TRANSIENT), "timeout"),
+            (screen_ocr.ScreenDependencyError(self.TRANSIENT), "missing_dependencies"),
+        ):
+            with self.subTest(fault=fault):
+                result, commands, _, _ = self.trial(iter(()), failures={100: [fault]})
+
+                self.assertEqual(self.probe_calls(commands), [100])
+                self.assertEqual(result["result"], outcome)
+                self.assertNotIn("probe_failures", result)
+
+    def test_ocr_error_with_transient_text_stops_probe(self):
+        def hits():
+            yield False
+            raise screen_ocr.ScreenError("RapidOCR failed: I/O error")
+
+        result, commands, _, _ = self.trial(hits())
+
+        self.assertEqual(self.probe_calls(commands), [100, 330])
+        self.assertEqual(result["result"], "error")
+        self.assertEqual(result["reason"], "RapidOCR failed: I/O error")
+        self.assertNotIn("probe_failures", result)
+
+    def test_partial_sample_failure_redacts_url_and_reports_error_without_slides(self):
+        url = "https://media.example/track?signature=secret"
+        result, commands, windows, _ = self.trial(
+            iter((False,) * 6),
+            failures={560: [screen_ocr.ScreenError(f"{self.TRANSIENT} {url}")] * 2},
+        )
+
+        self.assertEqual(self.probe_calls(commands), [100, 330, 560, 560, 800, 220, 440, 680])
+        self.assertEqual(windows, [100, 330, 800, 220, 440, 680])
+        self.assertEqual(result["result"], "error")
+        self.assertEqual(result["reason"], "FFmpeg sample frames failed at 1/4 positions")
+        self.assertEqual(result["probe_failures"], [{"at": 560, "reason": f"{self.TRANSIENT} <URL>"}])
+
+    def test_sample_failure_preserves_later_slide_detection_and_calibration(self):
+        formats = [
+            {"url": "https://media.example/480.mp4", "height": 480, "ext": "mp4", "protocol": "https"},
+            {"url": "https://media.example/1080.mp4", "height": 1080, "ext": "mp4", "protocol": "https"},
+        ]
+        calibration = {"estimated_total_seconds": 120.0}
+        with patch.object(screen_ocr, "_calibrate_full_scan", return_value=calibration) as calibrate:
+            result, commands, _, _ = self.trial(
+                iter((True,)), failures={100: [screen_ocr.ScreenError(self.TRANSIENT)] * 2},
+                requested_downloads=formats,
+            )
+
+        self.assertEqual(self.probe_calls(commands), [100, 100, 330])
+        self.assertEqual(result["result"], "slides_detected")
+        self.assertEqual(result["probe_failures"], [{"at": 100, "reason": self.TRANSIENT}])
+        calibrate.assert_called_once()
+        self.assertEqual(calibrate.call_args.args[2:5], (formats[1], 1000.0, 330))
+        self.assertEqual(result["calibration_status"], "calibrated")
+        self.assertEqual(result["calibration"], calibration)
+
+    def test_all_main_positions_fail_reports_last_error_without_extra_probes(self):
+        positions = [100, 330, 560, 800]
+        result, commands, _, _ = self.trial(
+            iter(()), failures={
+                at: [screen_ocr.ScreenError(f"{self.TRANSIENT} at {at}")] * 2 for at in positions
+            },
+        )
+
+        self.assertEqual(self.probe_calls(commands), [at for at in positions for _ in range(2)])
+        self.assertEqual(result["groups_checked"], 0)
+        self.assertEqual(result["result"], "error")
+        self.assertEqual(result["reason"], f"{self.TRANSIENT} at 800")
+        self.assertEqual([failure["at"] for failure in result["probe_failures"]], positions)
+
+    def test_extra_positions_retry_and_stop_after_a_failed_retry(self):
+        fault = screen_ocr.ScreenError(self.TRANSIENT)
+        result, commands, _, _ = self.trial(
+            iter((False,) * 5), failures={220: [fault], 440: [fault, fault]},
+        )
+
+        self.assertEqual(self.probe_calls(commands), [100, 330, 560, 800, 220, 220, 440, 440])
+        self.assertEqual(result["groups_checked"], 5)
+        self.assertEqual(result["result"], "not_found")
+        self.assertNotIn("probe_failures", result)
 
 
 class AutoScreenBudgetTests(unittest.TestCase):

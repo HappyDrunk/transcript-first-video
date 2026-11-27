@@ -1,6 +1,6 @@
 # Review guide
 
-Reviewer-required guidance for an independent Task or the self-review fallback.
+Required for an independent Task or self-review.
 
 ## Independent semantic review
 
@@ -19,7 +19,7 @@ Report only located, evidenced issues. Do not repeat mechanical checks or add un
 - 访谈核实归属，覆盖标题人物。检查遗漏的主张、清单、步骤、数字、可运行命令和画面独有表格或清单，及后文回指缺前因的演示主体。核对取舍及参数。
 - 双向查术语。标出首次技术用法缺释，也查条目过密（建议 ≤12 条、每条 ≤60 字）、复述正文、藏入视频事实及冗余英文括号，保留专名、通用英文、检索词和代码。
 - 核对 `原文出入`。行型 1 查语境是否唯一支持纠正（含纯语音高置信同音 ASR），严查数字、版本变更和擅补人名。行型 2 按口述核对代码，严查虚构参数或 API。行型 3 的 `存疑` 须有真实冲突或细节缺失，以中性锚点保留不确定性。勿滥用 `存疑`，可确认的同音 ASR 转行型 1。`版本冲突` 仅在引文明确对比不同版本时标 `误报`，同一对象的版本冲突用行型 3 向读者说明。
-- 拒绝来历不明的代码标识符和无标签画面数字。对照画面核对序数语境、单位、对比对象和条件。删写作者核对或筛选的过程自白，保留来源归属与「视频未展开」「视频未给出完整命令」等读者向边界说明。
+- 拒绝无来源代码标识符和无标签画面数字。对照画面查序数语境、单位、对比对象及条件。删核对、筛选自白，保留来源归属与「视频未展开」「视频未给出完整命令」等读者向边界说明；画面识别失败时勿断言画面没有。
 
 Read the reading copy or preview section by section and include the section for the job's reading level in `review.md`.
 
