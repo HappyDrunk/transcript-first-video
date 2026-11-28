@@ -12,7 +12,7 @@ YouTube 是当前主动支持的平台。X/Twitter 视频支持已冻结并暂�
 
 笔记要等嘴里的话落成文字，并且通过质量检查。标题、简介、链接旁边的帖子，都不算看过。门槛读的是文稿，不听音频。
 
-### 实跑节选（v1.1.0 · The Plain Bagel）
+### 实跑成品节选（v1.1.0 真实生成 · The Plain Bagel）
 
 > **Is the S&P 500 Too Concentrated?** · The Plain Bagel · 2024-03-01 · [原视频](https://www.youtube.com/watch?v=h6nHqwkZOZg)
 >
@@ -28,7 +28,7 @@ YouTube 是当前主动支持的平台。X/Twitter 视频支持已冻结并暂�
 | 要从长视频里提取方法、步骤和条件 | 视频很短，只想知道大意 |
 | 要避免让模型根据标题猜内容 | 能接受回答未经核实 |
 
-### 快速安装（两条命令）
+### 快速安装
 
 可在对话中发送下面的请求，安装整个仓库：
 
@@ -232,7 +232,7 @@ python3 scripts/render_reading_note.py --require-review --task-dir "artifacts/yo
 
 Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame.
 
-`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#画面引文). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration (between 600 and 900 seconds) for slides and 120 seconds for nameplates. Uncropped videos with multiple slide groups use representative frame selection, and the slide scan skips isolated frame timeouts. The host proceeds with the transcript after an OCR failure and records scan details in `status.json` under `stage_seconds`, `wall_elapsed_seconds`, `frames_extracted`, `frames_selected`, `frames_ocred`, `frames_skipped_timeout`, `frames_capped`, and `skipped_timestamps`. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#动笔前通读和取舍). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration (between 600 and 900 seconds) for slides and 120 seconds for nameplates. Uncropped videos with multiple slide groups use representative frame selection, and the slide scan skips isolated frame timeouts. The host proceeds with the transcript after an OCR failure and records scan details in `status.json` under `stage_seconds`, `wall_elapsed_seconds`, `frames_extracted`, `frames_selected`, `frames_ocred`, `frames_skipped_timeout`, `frames_capped`, and `skipped_timestamps`. See [the evidence format](references/delivery-format.md) for quoting and attribution.
 
 Install Python and yt-dlp as above. On Debian or Ubuntu, install FFmpeg and install the OCR packages in the Python environment used to run the host.
 
