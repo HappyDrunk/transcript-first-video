@@ -22,6 +22,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1604,6 +1605,13 @@ def run_host(
         )
         reason = block if not detail else f"{block} Caption attempts: {detail}"
         log(reason)
+        if sys.platform == "win32":
+            python = "& '" + sys.executable.replace("'", "''") + "'"
+        else:
+            python = shlex.quote(sys.executable)
+        log(f'新手提示：本地转写可一键开启——`{python} -m pip install openai-whisper`，'
+            '再设 `export ASR_BACKEND=whisper`（PowerShell: `$env:ASR_BACKEND="whisper"`）'
+            '并用 `--asr auto` 重跑；需 ffmpeg。')
         return write_refusal(
             video_id=video_id,
             source=source,

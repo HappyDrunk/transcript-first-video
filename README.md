@@ -1,5 +1,7 @@
 # transcript-first-video
 
+v1.2.0（Release 将在合入 main 后发布，替代旧 v0.2.0 Latest）
+
 [English](#transcript-first-video) · [中文](#中文)
 
 [![gate](https://img.shields.io/github/actions/workflow/status/HappyDrunk/transcript-first-video/gate.yml?branch=main&label=gate)](https://github.com/HappyDrunk/transcript-first-video/actions/workflows/gate.yml)
@@ -9,6 +11,48 @@
 YouTube is the active supported platform, read from the transcript. X/Twitter video support is frozen: maintenance is paused, and its historical CLI remains documented in `scripts/README.md`. The scripts fetch and check. You write the note.
 
 The note waits until the spoken words are written down and pass a quality check. A title, a blurb, or the post beside the link is not a watch. The gate reads the transcript text. It does not listen to the audio.
+
+## 实跑节选（v1.1.0）
+
+### 实跑成品节选（v1.1.0 真实生成 · The Plain Bagel）
+
+> **Is the S&P 500 Too Concentrated?** · The Plain Bagel · 2024-03-01 · [原视频](https://www.youtube.com/watch?v=h6nHqwkZOZg)
+>
+> **先记住一句话**：买标普500并不等于完全被动、毫无偏向。你其实是在押美国大公司、尤其是少数科技巨头；集中度确实升高了，但讲者认为还没到危急程度，也可以改用更宽或等权的指数来调整这笔赌注。
+>
+> **画面图表实读节选（03:51–09:01）**：七巨头都在市值最大的前十名里，合计占标普500市值的28.6%，但按预期只贡献2024年指数盈利的19.5%。……前十大持仓只占指数成分公司数量的2%，却大约贡献了整个指数市值的三分之一，基本上是70年代以来最高的水平。截至2024年1月31日，前十大合计占31.26%；其中微软占7.26%，苹果占6.63%。……信息技术和通信这两个行业合计占38.4%，而全指数一共有11个行业类别。
+
+## 什么时候用本 Skill
+
+| 用本 Skill | 直接问裸模型 |
+| --- | --- |
+| 要让笔记里的说法逐句有出处 | 只要一句话印象 |
+| 要从长视频里提取方法、步骤和条件 | 视频很短，只想知道大意 |
+| 要避免让模型根据标题猜内容 | 能接受回答未经核实 |
+
+## 30 秒安装
+
+把整个仓库放到下面的目录，再进入仓库根目录运行安装命令。
+
+| 平台 | Skill 放置目录 | 触发话术 |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills/transcript-first-video` | `/transcript-first-video <YouTube URL>` |
+| Codex | `~/.agents/skills/transcript-first-video` | `用 $transcript-first-video 通读这个视频：<YouTube URL>` |
+| Antigravity | `<工作区>/.agents/skills/transcript-first-video` 或 `~/.gemini/config/skills/transcript-first-video`。独立 IDE 也兼容 `~/.gemini/antigravity/skills/transcript-first-video` | `用 transcript-first-video 通读这个视频：<YouTube URL>` |
+| Cursor | 把仓库放在项目内，在 `.cursor/rules/` 的 `.mdc` 规则里引用 `SKILL.md` | `按规则里的 transcript-first-video 流程通读：<YouTube URL>` |
+
+自定义目录以各平台官方文档为准。[Claude Code](https://code.claude.com/docs/en/skills) · [Codex](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Antigravity](https://antigravity.google/docs/skills) · [Cursor](https://cursor.com/docs/rules)
+
+```sh
+python scripts/setup.py
+python scripts/install_check.py --doctor
+```
+
+## 实测耗时
+
+| 模式 | 视频时长 | 安装 | 抓取 | 成稿 | 总计 | 机器/日期 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 待 P1-6 实测 | 待 P1-6 实测 | 待 P1-6 实测 | 待 P1-6 实测 | 待 P1-6 实测 | 待 P1-6 实测 | 待 P1-6 实测 |
 
 ## Quickstart
 
