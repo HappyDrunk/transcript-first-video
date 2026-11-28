@@ -745,6 +745,7 @@ def render_note(
     delivery_language: str | None = None,
     inline_terms: bool = False,
     screen_unread: bool = False,
+    fast: bool = False,
 ) -> bytes:
     if reading_level is not None and reading_level not in knowledge_note.READING_LEVELS:
         raise RenderError(f"invalid reading_level: {reading_level!r}")
@@ -803,7 +804,7 @@ def render_note(
 
     notice_parts = [
         part for part in (
-            "未经独立复核" if self_review else None,
+            "未经独立复核" if self_review and not fast else None,
             SPOKEN_CODE_NOTICE if has_spoken_code else None,
             "正文中「（注：…）」为整理者补充的极短术语解释，非视频原话" if gloss_count else None,
             "人名 " + "、".join(names) + " 按自动字幕转写，未经画面核对" if names else None,
@@ -811,6 +812,8 @@ def render_note(
         )
         if part is not None
     ]
+    if fast:
+        notice_parts.insert(0, "快读模式（已过机械核验，未做独立复核）")
     blocks: list[str] = [
         f"# {fields['title']}",
         f"{fields['channel'] or '—'} · {fields['published'] or '—'} · [原视频]({fields['source']})",
@@ -850,12 +853,17 @@ def check_destination(job: Path, output: Path) -> None:
             raise RenderError(f"--output would overwrite {name}: {output}")
 
 
-def check_finished(job: Path, inputs: dict, verifier: dict, review: bytes | None = None) -> None:
+def check_finished(
+    job: Path, inputs: dict, verifier: dict, review: bytes | None = None, *, fast: bool = False,
+) -> None:
     if verify_note.job_inputs(job) != inputs:
         raise RenderError("job files changed during rendering; rerun both checks")
     status = verify_note.read_job_status(job)
     coverage = status.get("coverage")
-    if (status.get("finished") is not True or status.get("verifier") != verifier
+    # The combined gate leaves mechanically passing C04c warnings pending review.
+    fast_pending = (fast and bool(verifier.get("c04c")) and status.get("finished") is False
+                    and status.get("status") == "transcript_ready" and status.get("next_step") == "review")
+    if ((status.get("finished") is not True and not fast_pending) or status.get("verifier") != verifier
             or not isinstance(coverage, dict)
             or coverage.get("allowed") is not True or coverage.get("inputs") != inputs):
         raise RenderError("verify and coverage must finish on the current job files")
@@ -910,7 +918,10 @@ def render_job(
     output_dir: Path | None = None,
     delivery_language: str | None = None,
     inline_terms: bool = False,
+    fast: bool = False,
 ) -> Path:
+    if fast and require_review:
+        raise RenderError("--fast and --require-review are mutually exclusive")
     job = job.resolve(strict=True)
     if not job.is_dir():
         raise RenderError(f"--task-dir is not a directory: {job}")
@@ -924,14 +935,14 @@ def render_job(
         status = verify_note.read_job_status(job)
         if status.get("status") == verify_note.SCREEN_PENDING:
             raise RenderError(verify_note.SCREEN_PENDING_MESSAGE)
-        if verify_note.repair_lock(status, review=True):
+        if verify_note.repair_lock(status, review=not fast):
             stopped = verify_note.stopped_result(job, status)
             raise RenderError(" · ".join([*stopped["reasons"], *(stopped[key] for key in ("draft", "issues") if key in stopped)]))
         reading_level = knowledge_note.read_reading_level(status)
         verify_note.prepare_job_note(job)
         note_path = job / "note.md"
         try:
-            receipt = verify_note.prepare_review_submission(job, required=require_review)
+            receipt = None if fast else verify_note.prepare_review_submission(job, required=require_review)
             if receipt is None and note_path.is_file():
                 verify_note.check_closing_heading_pair(note_path.read_bytes(), reading_level)
         except ValueError as exc:
@@ -947,14 +958,17 @@ def render_job(
                 if key in result:
                     print(f"{key}: {result[key]}", file=sys.stderr)
             raise RenderError("verify or coverage failed")
-        if result.get("c04c") and review is None:
-            raise RenderError("C04c warnings require a bound review before reading delivery")
+        if findings := result.get("c04c"):
+            if fast:
+                print(f"fast: {len(findings)} C04c warnings not reviewed", file=sys.stderr)
+            elif review is None:
+                raise RenderError("C04c warnings require a bound review before reading delivery")
         inputs = verify_note.job_inputs(job)
         status = verify_note.read_job_status(job)
         verifier = status.get("verifier")
         if not isinstance(verifier, dict) or verifier.get("allowed") is not True or verifier.get("inputs") != inputs:
             raise RenderError("job files changed during verification; rerun both checks")
-        check_finished(job, inputs, verifier, review)
+        check_finished(job, inputs, verifier, review, fast=fast)
         note = note_path.read_bytes()
         if hashlib.sha256(note).hexdigest() != inputs["note_file"]:
             raise RenderError("note.md changed during rendering; rerun both checks")
@@ -973,6 +987,7 @@ def render_job(
             delivery_language=delivery_language,
             inline_terms=inline_terms,
             screen_unread=screen_unread,
+            fast=fast,
         )
         if output is None:
             output = reading_path(output_dir, job, note)
@@ -993,10 +1008,14 @@ def render_job(
                 temp = Path(staged.name)
                 staged.write(markdown)
             check_destination(job, output)
-            check_finished(job, inputs, verifier, review)
+            check_finished(job, inputs, verifier, review, fast=fast)
             original_status = status_path.read_bytes()
             delivered = verify_note.read_job_status(job)
             delivered["next_step"] = "deliver"
+            if fast:
+                delivered.update(status="finished", finished=True, delivery_mode="fast")
+            else:
+                delivered.pop("delivery_mode", None)
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=job, delete=False) as staged_status:
                 status_temp = Path(staged_status.name)
                 staged_status.write(json.dumps(delivered, ensure_ascii=False, indent=2) + "\n")
@@ -1033,8 +1052,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--keep-frontmatter", action="store_true", help="Keep the evidence note's opening YAML block")
     parser.add_argument("--language", choices=user_prefs.VALID_LANGUAGES, default=None,
                         help="Delivery language (kept for CLI compatibility)")
-    parser.add_argument("--require-review", action="store_true",
-                        help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
+    review_mode = parser.add_mutually_exclusive_group()
+    review_mode.add_argument("--require-review", action="store_true",
+                             help="Require a bound review receipt (self-review allowed, marked 未经独立复核)")
+    review_mode.add_argument("--fast", action="store_true",
+                             help="Render after mechanical checks without independent review")
     parser.add_argument("--inline-terms", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     try:
@@ -1046,6 +1068,7 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             delivery_language=args.language,
             inline_terms=args.inline_terms,
+            fast=args.fast,
         )
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"Reading note not written: {exc}", file=sys.stderr)

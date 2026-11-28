@@ -3,11 +3,18 @@
 
 from __future__ import annotations
 
+import argparse
+import io
+import json
+import shlex
+import shutil
 import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+MIN_PYTHON = (3, 12)  # Keep in sync with .github/workflows/gate.yml.
 
 # These paths let the check work on a copied source directory that has no .git.
 # In a checkout, git's tracked-file list also catches files added in later releases.
@@ -23,6 +30,7 @@ FALLBACK_FILES = (
     "scripts/render_reading_note.py",
     "scripts/run_evidence.py",
     "scripts/screen_ocr.py",
+    "scripts/setup.py",
     "scripts/smoke.sh",
     "scripts/test_claim_ground_check.py",
     "scripts/test_coverage_check.py",
@@ -106,7 +114,7 @@ def skill_version(root: Path) -> str:
     return "unknown"
 
 
-def main() -> int:
+def files_check() -> int:
     print(f"skill_version: {skill_version(ROOT)}")
     missing = [name for name in required_files(ROOT) if not (ROOT / name).is_file()]
     if missing:
@@ -116,6 +124,106 @@ def main() -> int:
         return 1
     print("Installation check passed.")
     return 0
+
+
+def venv_python(directory: Path) -> Path:
+    return directory / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+
+
+def ffmpeg_fix() -> str:
+    return {
+        "win32": "winget install --id Gyan.FFmpeg -e",
+        "darwin": "brew install ffmpeg",
+    }.get(sys.platform, "sudo apt install -y ffmpeg")
+
+
+def probe(python: Path, code: str) -> str:
+    try:
+        result = subprocess.run(
+            [str(python), "-c", code], check=True, capture_output=True,
+            text=True, encoding="utf-8", errors="replace", timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip()
+
+
+def doctor(venv: Path | None = None) -> list[dict[str, str | None]]:
+    checks: list[dict[str, str | None]] = []
+
+    def add(name: str, found: bool, level: str, detail: str, fix: str) -> None:
+        checks.append({"name": name, "level": "OK" if found else level, "detail": detail,
+                       "fix": None if found else fix})
+
+    file_errors = io.StringIO()
+    with redirect_stdout(io.StringIO()), redirect_stderr(file_errors):
+        files_ok = files_check() == 0
+    add("files", files_ok, "FAIL", "installation complete" if files_ok else " ".join(
+        line.strip() for line in file_errors.getvalue().splitlines()
+    ), "git pull (or recopy the repository)")
+
+    venv_arg = ""
+    if venv is not None:
+        venv = venv.expanduser().absolute()
+        quoted_venv = ("'" + str(venv).replace("'", "''") + "'" if sys.platform == "win32"
+                       else shlex.quote(str(venv)))
+        venv_arg = f" --venv {quoted_venv}"
+        python = venv_python(venv)
+        has_venv = python.is_file()
+        venv_detail = f"using venv Python at {python}" if has_venv else f"no Python interpreter at {python}"
+    elif sys.prefix != sys.base_prefix:
+        python = Path(sys.executable)
+        has_venv = True
+        venv_detail = f"using active venv Python at {python}"
+    else:
+        vpy = venv_python(ROOT / ".venv")
+        has_venv = vpy.is_file()
+        python = vpy if has_venv else Path(sys.executable)
+        venv_detail = "using .venv Python" if has_venv else "using current Python"
+    version = probe(python, 'import sys; print(".".join(map(str, sys.version_info[:3])))')
+    parts = version.split(".")
+    version_ok = len(parts) == 3 and all(part.isascii() and part.isdecimal() for part in parts)
+    minimum = ".".join(map(str, MIN_PYTHON))
+    add("Python", version_ok and tuple(map(int, parts[:2])) >= MIN_PYTHON, "FAIL",
+        f"{version if version_ok else 'version unavailable'} (need {minimum} or later)",
+        f"Install Python {minimum} or later from https://www.python.org/downloads/")
+    setup = "python scripts/setup.py"
+    add(".venv", has_venv, "WARN", venv_detail, setup + venv_arg)
+
+    for name, module, level, fix in (
+        ("yt-dlp", "yt_dlp", "FAIL", f"{setup} --base-only"),
+        ("rapidocr", "rapidocr", "WARN", setup),
+        ("onnxruntime", "onnxruntime", "WARN", setup),
+    ):
+        found = probe(python, f"import importlib.util as u; print(u.find_spec({module!r}) is not None)") == "True"
+        add(name, found, level, "found" if found else "module not found", fix + venv_arg)
+    has_ffmpeg = shutil.which("ffmpeg") is not None
+    add("ffmpeg", has_ffmpeg, "WARN", "found on PATH" if has_ffmpeg else "not found on PATH", ffmpeg_fix())
+    return checks
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--doctor", action="store_true", help="Also check Python, dependencies, and FFmpeg")
+    parser.add_argument("--venv", type=Path, help="Virtual environment directory to check in doctor mode")
+    parser.add_argument("--json", action="store_true", help="Print doctor results as JSON")
+    args = parser.parse_args(argv)
+    if not (args.doctor or args.json):
+        return files_check()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    checks = doctor(args.venv)
+    ok = all(check["level"] != "FAIL" for check in checks)
+    if args.json:
+        print(json.dumps({"ok": ok, "checks": checks}))
+    else:
+        for check in checks:
+            line = f"[{check['level']}] {check['name']}: {check['detail']}"
+            line = line.encode("ascii", errors="backslashreplace").decode("ascii")
+            if check["fix"]:
+                line += f" | Fix: {check['fix']}"
+            print(line)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

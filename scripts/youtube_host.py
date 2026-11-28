@@ -22,6 +22,8 @@ import json
 import math
 import os
 import re
+import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -31,6 +33,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from contextlib import contextmanager
 from datetime import date
 from functools import partial
 from pathlib import Path
@@ -968,6 +971,39 @@ def render_scaffold(
     )
 
 
+@contextmanager
+def _attempt_staging_dir(job_dir: Path):
+    if os.name == "nt":
+        path = job_dir / f".tfv-attempt-{secrets.token_hex(6)}"
+        # Windows Python 3.13 uses a restrictive ACL for mkdir(mode=0o700).
+        path.mkdir()
+        body_failed = False
+        try:
+            yield path
+        except BaseException:
+            body_failed = True
+            raise
+        finally:
+            try:
+                try:
+                    shutil.rmtree(path)
+                except FileNotFoundError as exc:
+                    if exc.filename is not None and Path(exc.filename) != path:
+                        try:
+                            path.lstat()
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            raise
+            except OSError as exc:
+                if not body_failed:
+                    raise
+                log(f"[WARN] Could not remove staging directory {path}: {exc}")
+    else:
+        with tempfile.TemporaryDirectory(prefix=".tfv-attempt-", dir=job_dir) as temp_dir:
+            yield Path(temp_dir)
+
+
 def finalize_job(
     *,
     text: str,
@@ -1055,8 +1091,7 @@ def finalize_job(
         for cue in segments
     )
     groups = quality_gate.chunk_segments(segments)
-    with tempfile.TemporaryDirectory(prefix=".tfv-attempt-", dir=job_dir) as temp_dir:
-        staged = Path(temp_dir)
+    with _attempt_staging_dir(job_dir) as staged:
         staged_transcript = staged / "transcript.txt"
         staged_segments = staged / "segments.json"
         staged_chunks = staged / "chunks"
@@ -1604,6 +1639,14 @@ def run_host(
         )
         reason = block if not detail else f"{block} Caption attempts: {detail}"
         log(reason)
+        if backend == "off":
+            if sys.platform == "win32":
+                python = "& '" + sys.executable.replace("'", "''") + "'"
+            else:
+                python = shlex.quote(sys.executable)
+            log(f'新手提示：本地转写可一键开启——`{python} -m pip install openai-whisper`，'
+                '再设 `export ASR_BACKEND=whisper`（PowerShell: `$env:ASR_BACKEND="whisper"`）'
+                '并用 `--asr auto` 重跑；需 ffmpeg。')
         return write_refusal(
             video_id=video_id,
             source=source,

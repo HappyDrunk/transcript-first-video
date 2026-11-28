@@ -15,6 +15,13 @@ This repository is the portable gate and skill. A production host may live in an
 - `SKILL.md` hard gates no longer name eval-set people, works, mechanisms, or ordinal frames, and no longer paste the Hall J scoreboard. The receipt stays in `evals/results/hall_j_retest_receipt.md`. `test_no_overfit.py` scans `SKILL.md` and `references/note-examples.md` as well as `scripts/`. The 1.0.0 Hall J run used in-distribution eval notes. A held-out set is still required before a 9 claim. That run is not a completed 冲9. R01–R17 and coverage C are unchanged.
 - R17 requires same-section overlap. Same-script prose must share at least three content tokens with that section's quotes, and a number in the prose must be in those quotes. A swapped quote fails. `evals/good/good_en_*` and `good_zh_*` (and the long English notes) were rewritten so each claim sits on its own quote, without the repeated boilerplate sentence. `references/note-examples.md` has two synthetic good notes and three bad ones (quote swap, invented vehicle, title-as-watch). R01–R16 were not loosened. Coverage C is unchanged. This is not a 9 score.
 
+## v1.2.0 — 2026-11-28
+
+- Added one-click cross-platform setup with `scripts/setup.py`, which creates a `.venv` using the standard library, installs dependencies with older pip versions, and gives platform-specific `ffmpeg` guidance. `scripts/install_check.py --doctor` adds diagnostics with optional `--json` output and preserves the zero-argument CLI.
+- Added `render_reading_note.py --fast`, mutually exclusive with `--require-review`. Fast mode enforces all mechanical verification and coverage gates, skips independent review, displays `快读模式（已过机械核验，未做独立复核）` in the header, and records `delivery_mode: "fast"`. Normal review clears that field. The `reviewer="independent"` marker comes from the review receipt.
+- Fixed ACL inheritance in `youtube_host.py` and `screen_ocr.py` on Windows with Python 3.13 so sandboxed Windows agents can read staged artifacts and screen frames.
+- Added local Whisper guidance for videos without captions and stage progress lines in `SKILL.md` while keeping the writer-required documents within 30 KB. `README.md` now includes a real v1.1.0 excerpt, a cross-platform 30-second install table, and measured P1-6 timings.
+
 ## v1.1.0 — 2026-11-27
 
 - **Screen-reading fallback guard** shares the reading-note notice's condition. When `screen_ocr.state` is `fallback` and `result` differs from `not_found`, C04b fails body prose that asserts the video or screen lacks content (e.g. 「视频未给出…代码」) and asks for 「口述未给出」.

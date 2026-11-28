@@ -1391,7 +1391,12 @@ def _write_evidence(
 
     def retain(frame: Frame) -> None:
         if frame.path.name not in references:
-            frame.path.replace(screenshots / frame.path.name)
+            target = screenshots / frame.path.name
+            if os.name == "nt":
+                # Create the published frame with the screenshots directory's ACL.
+                shutil.copyfile(frame.path, target)
+            else:
+                frame.path.replace(target)
             references[frame.path.name] = []
         references[frame.path.name].append(len(rows))
 
