@@ -985,9 +985,17 @@ def _attempt_staging_dir(job_dir: Path):
             raise
         finally:
             try:
-                if path.exists():
+                try:
                     shutil.rmtree(path)
-            except Exception as exc:
+                except FileNotFoundError as exc:
+                    if exc.filename is not None and Path(exc.filename) != path:
+                        try:
+                            path.lstat()
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            raise
+            except OSError as exc:
                 if not body_failed:
                     raise
                 log(f"[WARN] Could not remove staging directory {path}: {exc}")

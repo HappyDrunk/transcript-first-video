@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import io
 import json
 import os
@@ -252,6 +253,15 @@ class InstallationTests(unittest.TestCase):
         self.assertEqual(checks["Python"]["level"], "FAIL")
         self.assertIn("version unavailable", checks["Python"]["detail"])
 
+    def test_doctor_fixes_target_missing_custom_venv(self):
+        custom = self.root / "missing custom"
+        result = self.run_script("install_check.py", "--doctor", "--venv", custom, "--json")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        checks = {check["name"]: check for check in json.loads(result.stdout)["checks"]}
+        for name, options in ((".venv", ""), ("yt-dlp", " --base-only"),
+                              ("rapidocr", ""), ("onnxruntime", "")):
+            self.assertEqual(checks[name]["fix"], f"python scripts/setup.py{options} --venv '{custom}'")
+
     def test_setup_rejects_old_venv_even_in_dry_run(self):
         custom = self.root / "old venv"
         python = install_check.venv_python(custom)
@@ -353,6 +363,23 @@ class InstallationTests(unittest.TestCase):
 
 
 class AttemptStagingTests(unittest.TestCase):
+    def test_windows_staging_attempts_cleanup_and_ignores_missing_root(self):
+        def missing_rmtree(path):
+            raise FileNotFoundError(errno.ENOENT, "staging directory is missing", str(path))
+
+        with (tempfile.TemporaryDirectory() as tmp,
+              patch.object(youtube_host, "os", SimpleNamespace(name="nt")),
+              patch.object(Path, "exists", return_value=False)):
+            with patch.object(shutil, "rmtree", side_effect=PermissionError("locked")) as remove:
+                with self.assertRaises(PermissionError), youtube_host._attempt_staging_dir(Path(tmp)) as staged:
+                    pass
+                remove.assert_called_once_with(staged)
+
+            with patch.object(shutil, "rmtree", side_effect=missing_rmtree) as remove:
+                with youtube_host._attempt_staging_dir(Path(tmp)) as staged:
+                    staged.rmdir()
+                remove.assert_called_once_with(staged)
+
     def test_windows_staging_surfaces_cleanup_failure_and_preserves_body_error(self):
         def blocked_rmtree(path, *, ignore_errors=False):
             if not ignore_errors:

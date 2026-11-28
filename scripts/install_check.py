@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -161,8 +162,13 @@ def doctor(venv: Path | None = None) -> list[dict[str, str | None]]:
         line.strip() for line in file_errors.getvalue().splitlines()
     ), "git pull (or recopy the repository)")
 
+    venv_arg = ""
     if venv is not None:
-        python = venv_python(venv.expanduser().absolute())
+        venv = venv.expanduser().absolute()
+        quoted_venv = ("'" + str(venv).replace("'", "''") + "'" if sys.platform == "win32"
+                       else shlex.quote(str(venv)))
+        venv_arg = f" --venv {quoted_venv}"
+        python = venv_python(venv)
         has_venv = python.is_file()
         venv_detail = f"using venv Python at {python}" if has_venv else f"no Python interpreter at {python}"
     elif sys.prefix != sys.base_prefix:
@@ -181,15 +187,16 @@ def doctor(venv: Path | None = None) -> list[dict[str, str | None]]:
     add("Python", version_ok and tuple(map(int, parts[:2])) >= MIN_PYTHON, "FAIL",
         f"{version if version_ok else 'version unavailable'} (need {minimum} or later)",
         f"Install Python {minimum} or later from https://www.python.org/downloads/")
-    add(".venv", has_venv, "WARN", venv_detail, "python scripts/setup.py")
+    setup = "python scripts/setup.py"
+    add(".venv", has_venv, "WARN", venv_detail, setup + venv_arg)
 
     for name, module, level, fix in (
-        ("yt-dlp", "yt_dlp", "FAIL", "python scripts/setup.py --base-only"),
-        ("rapidocr", "rapidocr", "WARN", "python scripts/setup.py"),
-        ("onnxruntime", "onnxruntime", "WARN", "python scripts/setup.py"),
+        ("yt-dlp", "yt_dlp", "FAIL", f"{setup} --base-only"),
+        ("rapidocr", "rapidocr", "WARN", setup),
+        ("onnxruntime", "onnxruntime", "WARN", setup),
     ):
         found = probe(python, f"import importlib.util as u; print(u.find_spec({module!r}) is not None)") == "True"
-        add(name, found, level, "found" if found else "module not found", fix)
+        add(name, found, level, "found" if found else "module not found", fix + venv_arg)
     has_ffmpeg = shutil.which("ffmpeg") is not None
     add("ffmpeg", has_ffmpeg, "WARN", "found on PATH" if has_ffmpeg else "not found on PATH", ffmpeg_fix())
     return checks
@@ -212,9 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         for check in checks:
             line = f"[{check['level']}] {check['name']}: {check['detail']}"
+            line = line.encode("ascii", errors="backslashreplace").decode("ascii")
             if check["fix"]:
                 line += f" | Fix: {check['fix']}"
-            print(line.encode("ascii", errors="backslashreplace").decode("ascii"))
+            print(line)
     return 0 if ok else 1
 
 
