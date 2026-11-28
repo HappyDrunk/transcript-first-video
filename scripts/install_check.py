@@ -147,7 +147,7 @@ def probe(python: Path, code: str) -> str:
     return result.stdout.strip()
 
 
-def doctor() -> list[dict[str, str | None]]:
+def doctor(venv: Path | None = None) -> list[dict[str, str | None]]:
     checks: list[dict[str, str | None]] = []
 
     def add(name: str, found: bool, level: str, detail: str, fix: str) -> None:
@@ -161,10 +161,19 @@ def doctor() -> list[dict[str, str | None]]:
         line.strip() for line in file_errors.getvalue().splitlines()
     ), "git pull (or recopy the repository)")
 
-    venv_dir = ROOT / ".venv"
-    vpy = venv_python(venv_dir)
-    has_venv = venv_dir.is_dir() and vpy.is_file()
-    python = vpy if has_venv else Path(sys.executable)
+    if venv is not None:
+        python = venv_python(venv.expanduser().absolute())
+        has_venv = python.is_file()
+        venv_detail = f"using venv Python at {python}" if has_venv else f"no Python interpreter at {python}"
+    elif sys.prefix != sys.base_prefix:
+        python = Path(sys.executable)
+        has_venv = True
+        venv_detail = f"using active venv Python at {python}"
+    else:
+        vpy = venv_python(ROOT / ".venv")
+        has_venv = vpy.is_file()
+        python = vpy if has_venv else Path(sys.executable)
+        venv_detail = "using .venv Python" if has_venv else "using current Python"
     version = probe(python, 'import sys; print(".".join(map(str, sys.version_info[:3])))')
     parts = version.split(".")
     version_ok = len(parts) == 3 and all(part.isascii() and part.isdecimal() for part in parts)
@@ -172,8 +181,7 @@ def doctor() -> list[dict[str, str | None]]:
     add("Python", version_ok and tuple(map(int, parts[:2])) >= MIN_PYTHON, "FAIL",
         f"{version if version_ok else 'version unavailable'} (need {minimum} or later)",
         f"Install Python {minimum} or later from https://www.python.org/downloads/")
-    add(".venv", has_venv, "WARN", "using .venv Python" if has_venv else "using current Python",
-        "python scripts/setup.py")
+    add(".venv", has_venv, "WARN", venv_detail, "python scripts/setup.py")
 
     for name, module, level, fix in (
         ("yt-dlp", "yt_dlp", "FAIL", "python scripts/setup.py --base-only"),
@@ -190,13 +198,14 @@ def doctor() -> list[dict[str, str | None]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--doctor", action="store_true", help="Also check Python, dependencies, and FFmpeg")
+    parser.add_argument("--venv", type=Path, help="Virtual environment directory to check in doctor mode")
     parser.add_argument("--json", action="store_true", help="Print doctor results as JSON")
     args = parser.parse_args(argv)
     if not (args.doctor or args.json):
         return files_check()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    checks = doctor()
+    checks = doctor(args.venv)
     ok = all(check["level"] != "FAIL" for check in checks)
     if args.json:
         print(json.dumps({"ok": ok, "checks": checks}))

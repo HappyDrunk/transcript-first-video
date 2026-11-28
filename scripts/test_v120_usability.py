@@ -14,6 +14,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import install_check
@@ -221,6 +222,62 @@ class InstallationTests(unittest.TestCase):
         self.assertIn("[FAIL] yt-dlp:", plain.stdout.decode("ascii"))
         self.assertIn(f" | Fix: {FFMPEG_FIX}", plain.stdout.decode("ascii"))
 
+    def test_doctor_probes_explicit_or_active_venv_ahead_of_default(self):
+        custom = self.root / "custom venv"
+        for directory in (self.root / ".venv", custom):
+            created = run_python("-m", "venv", "--without-pip", directory)
+            self.assertEqual(created.returncode, 0, created.stderr)
+        custom_python = install_check.venv_python(custom)
+        site = subprocess.check_output(
+            [str(custom_python), "-X", "utf8", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
+            encoding="utf-8", timeout=10,
+        ).strip()
+        (Path(site) / "yt_dlp.py").touch()
+
+        explicit = self.run_script("install_check.py", "--doctor", "--venv", custom, "--json")
+        self.assertEqual(explicit.returncode, 0, explicit.stderr or explicit.stdout)
+        active = subprocess.run(
+            [str(custom_python), str(self.root / "scripts/install_check.py"), "--doctor", "--json"],
+            cwd=self.root, env=self.env, capture_output=True, timeout=30,
+        )
+        self.assertEqual(active.returncode, 0, active.stderr or active.stdout)
+        for result in (explicit, active):
+            checks = {check["name"]: check for check in json.loads(result.stdout)["checks"]}
+            self.assertEqual(checks[".venv"]["level"], "OK")
+            self.assertEqual(checks["yt-dlp"]["level"], "OK")
+
+        missing = self.run_script("install_check.py", "--doctor", "--venv", self.root / "missing", "--json")
+        self.assertEqual(missing.returncode, 1, missing.stderr or missing.stdout)
+        checks = {check["name"]: check for check in json.loads(missing.stdout)["checks"]}
+        self.assertEqual(checks["Python"]["level"], "FAIL")
+        self.assertIn("version unavailable", checks["Python"]["detail"])
+
+    def test_setup_rejects_old_venv_even_in_dry_run(self):
+        custom = self.root / "old venv"
+        python = install_check.venv_python(custom)
+        python.parent.mkdir(parents=True)
+        python.touch()
+
+        for flags in ([], ["--dry-run"]):
+            with (self.subTest(flags=flags),
+                  patch.object(skill_setup, "ROOT", self.root),
+                  patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                      args=[], returncode=0, stdout="3.11\n",
+                  )) as run,
+                  contextlib.redirect_stderr(io.StringIO()) as errors,
+                  contextlib.redirect_stdout(io.StringIO()) as output):
+                code = skill_setup.main(["--venv", str(custom), "--json", *flags])
+                self.assertEqual(code, 1, errors.getvalue())
+                run.assert_called_once()
+                self.assertEqual(run.call_args.args[0][:2], [str(python), "-c"])
+                self.assertIn("3.11", errors.getvalue())
+                self.assertIn("3.12", errors.getvalue())
+                self.assertIn(str(custom), errors.getvalue())
+                self.assertIn("delete", errors.getvalue().lower())
+                report = json.loads(output.getvalue())
+                self.assertIs(report["ok"], False)
+                self.assertEqual(report["commands"], [])
+
     def test_setup_dry_run_selects_groups_without_creating_venv(self):
         custom = self.root / "path with spaces"
         cases = [
@@ -246,6 +303,9 @@ class InstallationTests(unittest.TestCase):
                 self.assertNotIn("--group", json.dumps(report["commands"]))
                 self.assertIn(str(executable), report["next"])
                 self.assertIn("--doctor", report["next"])
+                if args:
+                    self.assertIn("--venv", report["next"])
+                    self.assertTrue(report["next"].endswith(f"'{venv_dir}'"), report["next"])
                 self.assertEqual(report["ffmpeg"], {"found": False, "fix": FFMPEG_FIX})
                 self.assertIn(FFMPEG_FIX.encode("ascii"), result.stderr)
                 self.assertFalse(venv_dir.exists())
@@ -284,7 +344,7 @@ class InstallationTests(unittest.TestCase):
         self.assertIs(json.loads(cycled.stdout)["ok"], False)
 
     def test_writer_files_fit_budget_and_use_lf(self):
-        files = ("SKILL.md", "references/delivery-format.md", "references/review-guide.md")
+        files = ("SKILL.md", "references/delivery-format.md", "references/rules.md")
         contents = [(ROOT / path).read_bytes() for path in files]
         self.assertLessEqual(sum(map(len, contents)), 30_720)
         for content in contents:
@@ -293,6 +353,28 @@ class InstallationTests(unittest.TestCase):
 
 
 class AttemptStagingTests(unittest.TestCase):
+    def test_windows_staging_surfaces_cleanup_failure_and_preserves_body_error(self):
+        def blocked_rmtree(path, *, ignore_errors=False):
+            if not ignore_errors:
+                raise PermissionError("staging directory is locked")
+
+        for body_error in (None, ValueError("publication failed")):
+            with (self.subTest(body_error=body_error), tempfile.TemporaryDirectory() as tmp,
+                  patch.object(youtube_host, "os", SimpleNamespace(name="nt")),
+                  patch.object(shutil, "rmtree", side_effect=blocked_rmtree) as remove,
+                  contextlib.redirect_stderr(io.StringIO()) as errors):
+                with self.assertRaises(type(body_error) if body_error else PermissionError) as failure:
+                    with youtube_host._attempt_staging_dir(Path(tmp)) as staged:
+                        if body_error:
+                            raise body_error
+                remove.assert_called_once_with(staged)
+                if body_error:
+                    self.assertIs(failure.exception, body_error)
+                    self.assertIn("staging directory is locked", errors.getvalue())
+                    self.assertIn(str(staged), errors.getvalue())
+                else:
+                    self.assertIn("staging directory is locked", str(failure.exception))
+
     def test_published_file_inherits_job_acl_and_staging_is_cleaned(self):
         job = Path(tempfile.gettempdir()) / f"tfv-staging-test-{uuid.uuid4().hex}"
         job.mkdir()
@@ -319,32 +401,40 @@ class AttemptStagingTests(unittest.TestCase):
 
 class NoCaptionsTests(unittest.TestCase):
     def test_whisper_hint_is_stderr_only_and_keeps_stop_reason(self):
-        errors = io.StringIO()
-        with (tempfile.TemporaryDirectory() as tmp,
-              patch.dict(os.environ, INVIDIOUS_INSTANCE="off", ASR_BACKEND="off"),
-              patch.object(youtube_host, "ytdlp_base", return_value=["yt-dlp"]),
-              patch.object(youtube_host, "fetch_ytdlp_captions", return_value={"error": "no captions"}),
-              contextlib.redirect_stderr(errors)):
-            out = Path(tmp)
-            payload = youtube_host.run_host(video_id="fakecaption", source="https://example.invalid/watch",
-                                            out_dir=out, expected_lang="en", asr_choice="auto", verify=False)
-            job = out / payload["job_id"]
-            status = json.loads((job / "status.json").read_bytes())
-            self.assertFalse((job / "note.md").exists())
-
-        self.assertEqual(payload["exit_code"], 2)
-        self.assertEqual(status["next_step"], "configure-asr-or-retry-captions")
-        stop = ("The YouTube job is not finished because no usable captions were found and ASR is not configured. "
-                "Retry with a working caption mirror in INVIDIOUS_INSTANCE, or set ASR_BACKEND=whisper "
-                "for local transcription or ASR_BACKEND=openai with OPENAI_API_KEY. No note was written."
-                " Caption attempts: yt-dlp: no captions")
-        self.assertEqual(status["reason"], stop)
-        self.assertEqual(payload["reason"], stop)
-        self.assertEqual(errors.getvalue().splitlines()[-2], stop)
-        hint = errors.getvalue().splitlines()[-1]
-        for part in ("新手提示", "-m pip install openai-whisper", "export ASR_BACKEND=whisper",
-                     '$env:ASR_BACKEND="whisper"', "--asr auto", "ffmpeg"):
-            self.assertIn(part, hint)
+        stops = {
+            "off": ("The YouTube job is not finished because no usable captions were found and ASR is not configured. "
+                    "Retry with a working caption mirror in INVIDIOUS_INSTANCE, or set ASR_BACKEND=whisper "
+                    "for local transcription or ASR_BACKEND=openai with OPENAI_API_KEY. No note was written."),
+            "openai": ("not finished: ASR_BACKEND=openai but OPENAI_API_KEY is not set. No note was written."),
+        }
+        for backend, stop in stops.items():
+            with (self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp,
+                  patch.dict(os.environ, INVIDIOUS_INSTANCE="off", ASR_BACKEND=backend, OPENAI_API_KEY=""),
+                  patch.object(youtube_host, "ytdlp_base", return_value=["yt-dlp"]),
+                  patch.object(youtube_host, "fetch_ytdlp_captions", return_value={"error": "no captions"}),
+                  contextlib.redirect_stderr(io.StringIO()) as errors,
+                  contextlib.redirect_stdout(io.StringIO()) as output):
+                out = Path(tmp)
+                payload = youtube_host.run_host(video_id="fakecaption", source="https://example.invalid/watch",
+                                                out_dir=out, expected_lang="en", asr_choice="auto", verify=False)
+                job = out / payload["job_id"]
+                status = json.loads((job / "status.json").read_bytes())
+                self.assertFalse((job / "note.md").exists())
+                self.assertEqual(payload["exit_code"], 2)
+                self.assertEqual(status["next_step"], "configure-asr-or-retry-captions")
+                reason = stop + " Caption attempts: yt-dlp: no captions"
+                self.assertEqual(status["reason"], reason)
+                self.assertEqual(payload["reason"], reason)
+                self.assertEqual(output.getvalue(), "")
+                messages = errors.getvalue().splitlines()
+                if backend == "off":
+                    self.assertEqual(messages[-2], reason)
+                    for part in ("新手提示", "-m pip install openai-whisper", "export ASR_BACKEND=whisper",
+                                 '$env:ASR_BACKEND="whisper"', "--asr auto", "ffmpeg"):
+                        self.assertIn(part, messages[-1])
+                else:
+                    self.assertEqual(messages[-1], reason)
+                    self.assertNotIn("openai-whisper", errors.getvalue())
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from install_check import ffmpeg_fix, venv_python
+from install_check import MIN_PYTHON, ffmpeg_fix, probe, venv_python
 
 ROOT = Path(__file__).resolve().parents[1]
 DependencyGroups = dict[str, list[str | dict[str, str]]]
@@ -124,29 +124,50 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--venv", type=Path, default=ROOT / ".venv", help="Virtual environment directory (default: .venv in the skill)")
     parser.add_argument("--base-only", action="store_true", help="Install caption dependencies only")
-    parser.add_argument("--dry-run", action="store_true", help="Show commands without running them")
+    parser.add_argument("--dry-run", action="store_true", help="Show commands without creating a venv or installing packages")
     parser.add_argument("--json", action="store_true", help="Print a JSON installation report")
     args = parser.parse_args(argv)
 
     directory = args.venv.expanduser().absolute()
-    python = str(venv_python(directory))
+    python = venv_python(directory)
+    reuse = python.is_file()
     groups = ["base"] if args.base_only else ["base", "screen"]
     packages: list[str] = []
     commands: list[list[str]] = []
     has_ffmpeg = shutil.which("ffmpeg") is not None
     fix = None if has_ffmpeg else ffmpeg_fix()
-    next_command = shell_command([python, str(ROOT / "scripts/install_check.py"), "--doctor"])
+    next_args = [str(python), str(ROOT / "scripts/install_check.py"), "--doctor"]
+    if directory != ROOT / ".venv":
+        next_args.extend(["--venv", str(directory)])
+    next_command = shell_command(next_args)
+
     code = 0
-    try:
-        packages = expand_groups(load_dependency_groups(ROOT / "pyproject.toml"), groups)
-    except (OSError, ValueError, RecursionError) as exc:
-        print(f"Could not parse pyproject.toml: {exc}", file=sys.stderr)
-        code = 2
+    minimum = ".".join(map(str, MIN_PYTHON))
+    if reuse:
+        version = probe(python, 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        match = re.fullmatch(r"([0-9]+)\.([0-9]+)", version)
+        if not match or tuple(map(int, match.groups())) < MIN_PYTHON:
+            detail = f"found Python {version}" if match else "could not determine the Python version"
+            print(f"Cannot reuse {directory}: {detail}. Delete this venv and rerun setup with "
+                  f"Python {minimum} or later.", file=sys.stderr)
+            code = 1
+    elif sys.version_info[:2] < MIN_PYTHON:
+        version = ".".join(map(str, sys.version_info[:2]))
+        print(f"Cannot create a venv with Python {version}. Upgrade to Python {minimum} or later and rerun setup.",
+              file=sys.stderr)
+        code = 1
 
     if code == 0:
-        if not Path(python).is_file():
+        try:
+            packages = expand_groups(load_dependency_groups(ROOT / "pyproject.toml"), groups)
+        except (OSError, ValueError, RecursionError) as exc:
+            print(f"Could not parse pyproject.toml: {exc}", file=sys.stderr)
+            code = 2
+
+    if code == 0:
+        if not reuse:
             commands.append([sys.executable, "-m", "venv", str(directory)])
-        commands.append([python, "-m", "pip", "install", *packages])
+        commands.append([str(python), "-m", "pip", "install", *packages])
         try:
             for command in commands:
                 if not args.json:
@@ -161,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[WARN] ffmpeg not found on PATH. Fix: {fix}", file=sys.stderr)
     if args.json:
         print(json.dumps({
-            "ok": code == 0, "venv": str(directory), "python": python,
+            "ok": code == 0, "venv": str(directory), "python": str(python),
             "groups": groups, "packages": packages, "commands": commands,
             "ffmpeg": {"found": has_ffmpeg, "fix": fix}, "next": next_command,
         }))
