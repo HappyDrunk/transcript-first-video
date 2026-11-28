@@ -1,18 +1,16 @@
 # transcript-first-video
 
-v1.2.0（Release 将在合入 main 后发布，替代旧 v0.2.0 Latest）
-
-[English](#transcript-first-video) · [中文](#中文)
+[中文](#中文) · [English](#english)
 
 [![gate](https://img.shields.io/github/actions/workflow/status/HappyDrunk/transcript-first-video/gate.yml?branch=main&label=gate)](https://github.com/HappyDrunk/transcript-first-video/actions/workflows/gate.yml)
 [![MIT](https://img.shields.io/github/license/HappyDrunk/transcript-first-video)](LICENSE)
 [![tag](https://img.shields.io/github/v/tag/HappyDrunk/transcript-first-video?label=tag)](https://github.com/HappyDrunk/transcript-first-video/tags)
 
-YouTube is the active supported platform, read from the transcript. X/Twitter video support is frozen: maintenance is paused, and its historical CLI remains documented in `scripts/README.md`. The scripts fetch and check. You write the note.
+## 中文
 
-The note waits until the spoken words are written down and pass a quality check. A title, a blurb, or the post beside the link is not a watch. The gate reads the transcript text. It does not listen to the audio.
+YouTube 是当前主动支持的平台。X/Twitter 视频支持已冻结并暂停维护，历史 CLI 留在 `scripts/README.md`。脚本负责抓取和核对，笔记由你来写。
 
-## 实跑节选（v1.1.0）
+笔记要等嘴里的话落成文字，并且通过质量检查。标题、简介、链接旁边的帖子，都不算看过。门槛读的是文稿，不听音频。
 
 ### 实跑成品节选（v1.1.0 真实生成 · The Plain Bagel）
 
@@ -22,7 +20,7 @@ The note waits until the spoken words are written down and pass a quality check.
 >
 > **画面图表实读节选（03:51–09:01）**：七巨头都在市值最大的前十名里，合计占标普500市值的28.6%，但按预期只贡献2024年指数盈利的19.5%。……前十大持仓只占指数成分公司数量的2%，却大约贡献了整个指数市值的三分之一，基本上是70年代以来最高的水平。截至2024年1月31日，前十大合计占31.26%；其中微软占7.26%，苹果占6.63%。……信息技术和通信这两个行业合计占38.4%，而全指数一共有11个行业类别。
 
-## 什么时候用本 Skill
+### 什么时候用本 Skill
 
 | 用本 Skill | 直接问裸模型 |
 | --- | --- |
@@ -30,9 +28,19 @@ The note waits until the spoken words are written down and pass a quality check.
 | 要从长视频里提取方法、步骤和条件 | 视频很短，只想知道大意 |
 | 要避免让模型根据标题猜内容 | 能接受回答未经核实 |
 
-## 快速安装（两条命令）
+### 快速安装
 
-把整个仓库放到下面的目录，再进入仓库根目录运行安装命令。
+可在对话中发送下面的请求，安装整个仓库：
+
+```text
+帮我安装这个skill：https://github.com/HappyDrunk/transcript-first-video
+```
+
+也可以按下表克隆到对应目录，保留 `transcript-first-video` 文件夹名。以 Codex 为例：
+
+```bash
+git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
+```
 
 | 平台 | Skill 放置目录 | 触发话术 |
 | --- | --- | --- |
@@ -43,12 +51,16 @@ The note waits until the spoken words are written down and pass a quality check.
 
 自定义目录以各平台官方文档为准。[Claude Code](https://code.claude.com/docs/en/skills) · [Codex](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills) · [Antigravity](https://antigravity.google/docs/skills) · [Cursor](https://cursor.com/docs/rules)
 
+在仓库根目录运行这两条命令，然后按表中的话术触发 Skill。
+
 ```sh
 python scripts/setup.py
 python scripts/install_check.py --doctor
 ```
 
-## 实测耗时
+处理 YouTube 视频时，用 `scripts/youtube_host.py --show-pref` 查看已保存的偏好。本次可用 `--language` 指定中文、英文或中英文对照，用 `--reading-level` 指定 plain（通俗）或 concise（精炼）。同时指定这两项并加上 `--save-pref`，即可保存到仓库外的用户配置文件 `prefs.json`。
+
+### 实测耗时
 
 | 模式 | 视频时长 | 安装 | 抓取 | 成稿 | 总计 | 机器/日期 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -59,6 +71,69 @@ python scripts/install_check.py --doctor
 安装仅首次，后续复跑省略。第三行是历史云端全片 OCR 的参考实测。
 
 以上均为真实实测记录，耗时仅适用于表中场景。在默认 `auto` 模式且已装 OCR 依赖时，安装 `ffmpeg` 即可开启自动画面 OCR。无 `ffmpeg` 时自动降级为纯字幕。快读模式保留全部机械核验硬门禁，仅跳过独立复核，本次短视频实测提速约 2.7×。
+
+### 怎么跑
+
+在仓库根目录运行。安装并检查后，用 `.venv` 里的 Python 抓取、核验和渲染笔记。Windows 下将命令中的 `.venv/bin/python` 换成 `.venv/Scripts/python.exe`。
+
+```bash
+python scripts/setup.py
+python scripts/install_check.py --doctor
+.venv/bin/python scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
+.venv/bin/python scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
+.venv/bin/python scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
+# 复核通过后：
+.venv/bin/python scripts/render_reading_note.py --require-review --task-dir artifacts/youtube_jNQXAC9IVRw --output-dir 频道
+```
+
+如需手动安装依赖（pip ≥ 25.1，若系统 Python 报 PEP 668 / `externally-managed-environment`，请先创建并激活虚拟环境），也可运行 `python3 -m pip install --group base --group screen`。
+
+正常模式渲染时用 `--require-review`，快读模式可改用 `--fast` 跳过独立复核。
+
+通读后写选段和证据版，再按 [SKILL.md](SKILL.md) 送检和复核。阅读版由脚本命名。没开 `ASR_BACKEND` 时，缺字幕就停。离线自检用 `bash scripts/smoke.sh`。
+
+YouTube 默认先保存字幕，再限时 45 秒抽样画面。发现稳定文字才完整扫描。用 `TFV_SCREEN_MODE=slides` 跳过抽样完整扫描，`nameplate` 读取片头三分钟人名条，`off` 只用字幕。画面结果记入 `status.json` 后，等 `next_step` 为 `write-note` 再写稿。缺依赖、没有发现、失败或超时都继续用字幕。送检采用任务状态里的实际模式，改变模式需重跑获取。[画面识别的安装和用法](#optional-youtube-screen-text)
+
+### 笔记
+
+`selection.md` 按文稿顺序记下每段留或略和理由。`note.md` 从「先记住一句话」开篇，中间按视频类型组织，文末「原文依据」保留逐字引文。中文默认用初学者能懂的白话。
+
+格式模板和节选见[交付格式](references/delivery-format.md)，可选的完整成例见 [references/note-examples.md](references/note-examples.md)。`evals/fixtures/delivery-examples/` 是测试夹具，不是写作范例。
+
+### 读感旋钮
+
+
+读者提出要求时，可以调整下面这些写法。成稿按[交付格式](references/delivery-format.md)保留结构和证据。
+
+| 旋钮 | 改什么 |
+| :--- | :--- |
+| 语气 | 句子正式还是口语 |
+| 密度 | 段落紧还是松 |
+| 比喻 | 只用引文已经撑得住的比喻 |
+| 类比 | 只用引文已经撑得住的类比 |
+| 专名 | 拉丁专名按引文保留，除非明确要求改写成解释 |
+
+### 证据
+
+公开跑过的回执：[evals/results/live/](evals/results/live/)
+
+人读过的样本：[evals/results/spotcheck.md](evals/results/spotcheck.md)
+
+幻觉相关实测回执：[evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)
+
+机械抽查回执（只含核对和 Coverage C，不是 9 分）：[evals/results/held_out_mechanical_receipt.md](evals/results/held_out_mechanical_receipt.md)
+
+怎么改仓库：[CONTRIBUTING.md](CONTRIBUTING.md)、[CHANGELOG.md](CHANGELOG.md)
+
+### 许可
+
+[MIT](LICENSE)。Copyright (c) 2026 HappyDrunk。
+
+## English
+
+YouTube is the active supported platform, read from the transcript. X/Twitter video support is frozen: maintenance is paused, and its historical CLI remains documented in `scripts/README.md`. The scripts fetch and check. You write the note.
+
+The note waits until the spoken words are written down and pass a quality check. A title, a blurb, or the post beside the link is not a watch. The gate reads the transcript text. It does not listen to the audio.
 
 ## Quickstart
 
@@ -77,7 +152,9 @@ python3 ~/.agents/skills/transcript-first-video/scripts/install_check.py
 
 The check prints the installed commit (or the `VERSION` for a source copy) and fails with a list of missing files when the installation is incomplete.
 
-From the installed skill folder, use pip with `--group` support to install dependencies and fetch a captioned URL. If system Python reports `externally-managed-environment` (PEP 668), create and activate a `venv` (`python3 -m venv .venv && source .venv/bin/activate`) first.
+From the installed skill folder, run `python scripts/setup.py` and `python scripts/install_check.py --doctor` to set up and check `.venv`.
+
+For manual installation from the same folder, use pip with `--group` support to install dependencies and fetch a captioned URL. If system Python reports `externally-managed-environment` (PEP 668), create and activate a `venv` (`python3 -m venv .venv && source .venv/bin/activate`) first.
 
 ```bash
 python3 -m pip install --group base --group screen
@@ -98,6 +175,7 @@ flowchart LR
 
 ## Contents
 
+- [Quickstart](#quickstart)
 - [Note](#note)
 - [Read-feel knobs](#read-feel-knobs)
 - [Checks](#checks)
@@ -154,7 +232,7 @@ python3 scripts/render_reading_note.py --require-review --task-dir "artifacts/yo
 
 Slide OCR uses the full frame by default, including when slides are embedded in the video layout. `TFV_SLIDE_CROP` is an optional override using `x,y,width,height` as fractions of the source frame.
 
-`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#画面引文). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration (between 600 and 900 seconds) for slides and 120 seconds for nameplates. Uncropped videos with multiple slide groups use representative frame selection, and the slide scan skips isolated frame timeouts. The host proceeds with the transcript after an OCR failure and records scan details in `status.json` under `stage_seconds`, `wall_elapsed_seconds`, `frames_extracted`, `frames_selected`, `frames_ocred`, `frames_skipped_timeout`, `frames_capped`, and `skipped_timestamps`. See [the evidence format](references/delivery-format.md) for quoting and attribution.
+`screen.txt` contains recognized lines and their source timestamps. Only `[画面]` lines can be cited. RapidOCR reads each image at original size and half size. A numeric spelling must match exactly in both passes. Slides use [grouped deduplication and per-slide selection](references/delivery-format.md#动笔前通读和取舍). `screen-frames/` holds the original screenshots for the emitted lines. `status.json` records the installed versions of Python, FFmpeg, RapidOCR and ONNX Runtime, elapsed time including the download, and the line numbers for each screenshot. The video is deleted after frame extraction. The time budget is half the video duration (between 600 and 900 seconds) for slides and 120 seconds for nameplates. Uncropped videos with multiple slide groups use representative frame selection, and the slide scan skips isolated frame timeouts. The host proceeds with the transcript after an OCR failure and records scan details in `status.json` under `stage_seconds`, `wall_elapsed_seconds`, `frames_extracted`, `frames_selected`, `frames_ocred`, `frames_skipped_timeout`, `frames_capped`, and `skipped_timestamps`. See [the evidence format](references/delivery-format.md) for quoting and attribution.
 
 Install Python and yt-dlp as above. On Debian or Ubuntu, install FFmpeg and install the OCR packages in the Python environment used to run the host.
 
@@ -188,82 +266,3 @@ How to change this repo: [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHAN
 ## License
 
 [MIT](LICENSE). Copyright (c) 2026 HappyDrunk.
-
-## 中文
-
-YouTube 是当前主动支持的平台。X/Twitter 视频支持已冻结并暂停维护，历史 CLI 留在 `scripts/README.md`。脚本负责抓取和核对，笔记由你来写。
-
-笔记要等嘴里的话落成文字，并且通过质量检查。标题、简介、链接旁边的帖子，都不算看过。门槛读的是文稿，不听音频。
-
-### 安装
-
-处理 YouTube 视频时，用 `scripts/youtube_host.py --show-pref` 查看已保存的偏好。本次可用 `--language` 指定中文、英文或中英文对照，用 `--reading-level` 指定 plain（通俗）或 concise（精炼）。同时指定这两项并加上 `--save-pref`，即可保存到仓库外的用户配置文件 `prefs.json`。
-
-```text
-帮我安装这个skill：https://github.com/HappyDrunk/transcript-first-video
-```
-
-不能从链接安装时，自己克隆，文件夹名留着：
-
-```bash
-git clone https://github.com/HappyDrunk/transcript-first-video.git ~/.agents/skills/transcript-first-video
-```
-
-装好之后，在对话里：
-
-```text
-用 transcript-first-video，把这个视频看完再写笔记：<url>
-```
-
-### 怎么跑
-
-先进入安装目录；若系统 Python 报 `externally-managed-environment`（PEP 668），在该目录下先创建并激活虚拟环境（`python3 -m venv .venv && source .venv/bin/activate`）再安装依赖。
-
-```bash
-cd ~/.agents/skills/transcript-first-video
-python3 -m pip install --group base --group screen
-python3 scripts/youtube_host.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --out artifacts
-python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --structure-only
-python3 scripts/verify_note.py --job artifacts/youtube_jNQXAC9IVRw --with-coverage
-# 复核通过后：
-python3 scripts/render_reading_note.py --require-review --task-dir artifacts/youtube_jNQXAC9IVRw --output-dir 频道
-```
-
-通读后写选段和证据版，再按 [SKILL.md](SKILL.md) 送检和复核。阅读版由脚本命名。没开 `ASR_BACKEND` 时，缺字幕就停。离线自检用 `bash scripts/smoke.sh`。
-
-YouTube 默认先保存字幕，再限时 45 秒抽样画面。发现稳定文字才完整扫描。用 `TFV_SCREEN_MODE=slides` 跳过抽样完整扫描，`nameplate` 读取片头三分钟人名条，`off` 只用字幕。画面结果记入 `status.json` 后，等 `next_step` 为 `write-note` 再写稿。缺依赖、没有发现、失败或超时都继续用字幕。送检采用任务状态里的实际模式，改变模式需重跑获取。[画面识别的安装和用法](#optional-youtube-screen-text)
-
-### 笔记
-
-`selection.md` 按文稿顺序记下每段留或略和理由。`note.md` 从「先记住一句话」开篇，中间按视频类型组织，文末「原文依据」保留逐字引文。中文默认用初学者能懂的白话。
-
-格式模板和节选见[交付格式](references/delivery-format.md)，可选的完整成例见 [references/note-examples.md](references/note-examples.md)。`evals/fixtures/delivery-examples/` 是测试夹具，不是写作范例。
-
-### 读感旋钮
-
-
-读者提出要求时，可以调整下面这些写法。成稿按[交付格式](references/delivery-format.md)保留结构和证据。
-
-| 旋钮 | 改什么 |
-| :--- | :--- |
-| 语气 | 句子正式还是口语 |
-| 密度 | 段落紧还是松 |
-| 比喻 | 只用引文已经撑得住的比喻 |
-| 类比 | 只用引文已经撑得住的类比 |
-| 专名 | 拉丁专名按引文保留，除非明确要求改写成解释 |
-
-### 证据
-
-公开跑过的回执：[evals/results/live/](evals/results/live/)
-
-人读过的样本：[evals/results/spotcheck.md](evals/results/spotcheck.md)
-
-幻觉相关实测回执：[evals/results/hall_j_retest_receipt.md](evals/results/hall_j_retest_receipt.md)
-
-机械抽查回执（只含核对和 Coverage C，不是 9 分）：[evals/results/held_out_mechanical_receipt.md](evals/results/held_out_mechanical_receipt.md)
-
-怎么改仓库：[CONTRIBUTING.md](CONTRIBUTING.md)、[CHANGELOG.md](CHANGELOG.md)
-
-### 许可
-
-[MIT](LICENSE)。Copyright (c) 2026 HappyDrunk。
