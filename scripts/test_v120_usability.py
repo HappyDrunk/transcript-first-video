@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -289,6 +290,31 @@ class InstallationTests(unittest.TestCase):
         for content in contents:
             self.assertNotIn(b"\r", content)
         self.assertIn("scripts/setup.py", install_check.FALLBACK_FILES)
+
+
+class AttemptStagingTests(unittest.TestCase):
+    def test_published_file_inherits_job_acl_and_staging_is_cleaned(self):
+        job = Path(tempfile.gettempdir()) / f"tfv-staging-test-{uuid.uuid4().hex}"
+        job.mkdir()
+        self.addCleanup(shutil.rmtree, job)
+        target = job / "transcript.txt"
+        if os.name == "nt":
+            target.write_bytes(b"baseline")
+            acl_command = ["icacls", str(target)]
+            expected_acl = subprocess.check_output(acl_command, timeout=10)
+            self.assertIn(b"(I)", expected_acl)
+            target.unlink()
+
+        with youtube_host._attempt_staging_dir(job) as staged:
+            source = staged / target.name
+            source.write_bytes(b"transcript")
+            source.replace(target)
+            (staged / "leftover.txt").touch()
+
+        self.assertFalse(staged.exists())
+        self.assertEqual(target.read_bytes(), b"transcript")
+        if os.name == "nt":
+            self.assertEqual(subprocess.check_output(acl_command, timeout=10), expected_acl)
 
 
 class NoCaptionsTests(unittest.TestCase):
